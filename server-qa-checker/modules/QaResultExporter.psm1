@@ -128,10 +128,18 @@ $rowsHtml
     .summary .badge { padding: 6px 16px; border-radius: 4px; font-weight: 600; font-size: 13px; color: #1e1e2e; }
     .pct { color: #cdd6f4; font-size: 18px; font-weight: 700; align-self: center; margin-left: 12px; }
     details { margin-bottom: 12px; background: #181825; border: 1px solid #45475a; border-radius: 6px; overflow: hidden; }
-    summary { background: #313244; color: #89b4fa; font-size: 15px; font-weight: 600; padding: 10px 16px; cursor: pointer; user-select: none; display: flex; align-items: center; }
+    summary { background: #313244; color: #89b4fa; font-size: 15px; font-weight: 600; padding: 10px 16px; cursor: pointer; user-select: none; display: flex; align-items: center; list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: '\25B6'; margin-right: 10px; font-size: 12px; transition: transform 0.2s; }
+    details[open] > summary::before { content: '\25BC'; }
     summary:hover { background: #45475a; }
-    summary::marker { color: #89b4fa; }
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { word-wrap: break-word; overflow-wrap: break-word; }
+    th:nth-child(1), td:nth-child(1) { width: 14%; }
+    th:nth-child(2), td:nth-child(2) { width: 20%; }
+    th:nth-child(3), td:nth-child(3) { width: 28%; }
+    th:nth-child(4), td:nth-child(4) { width: 8%; }
+    th:nth-child(5), td:nth-child(5) { width: 30%; }
     th { background: #1e1e2e; color: #89b4fa; text-align: left; padding: 8px 12px; font-weight: 600; font-size: 12px; }
     td { padding: 8px 12px; border-bottom: 1px solid #313244; font-size: 13px; vertical-align: top; }
     tr:nth-child(even) { background: #1e1e2e; }

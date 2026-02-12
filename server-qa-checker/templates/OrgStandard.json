@@ -1,0 +1,71 @@
+{
+  "templateName": "ORGNAME",
+  "description": "ORGNAME standard server build - minimum security controls and network validation",
+  "version": "1.0",
+  "checks": {
+    "connectivity": {
+      "enabled": true
+    },
+    "cpu": {
+      "enabled": true,
+      "operator": "gte",
+      "expected": 2
+    },
+    "memoryGB": {
+      "enabled": true,
+      "operator": "gte",
+      "expected": 4
+    },
+    "installedSoftware": {
+      "enabled": true,
+      "required": [
+        "Configuration Manager Client",
+        "CrowdStrike*",
+        "Flexnet*",
+        "Illumio*",
+        "Local Administrator Password*",
+        "Nessus*",
+        "Nimsoft*",
+        "Tanium*",
+        "UniversalForwarder"
+      ]
+    },
+    "ipConfig": {
+      "enabled": true,
+      "minimumAdapters": 2,
+      "requireBackendNic": true,
+      "backendSubnets": ["172.25.", "172.24."],
+      "netBiosDisabled": true,
+      "expectedDnsServers": [],
+      "netBiosExpected": ""
+    },
+    "localAdmins": {
+      "enabled": true,
+      "allowed": []
+    },
+    "recentHotfixes": {
+      "enabled": true,
+      "minimumCount": 1
+    },
+    "drivePermissions": {
+      "enabled": true,
+      "everyoneAccessAllowed": false
+    },
+    "fDrive": {
+      "enabled": false
+    },
+    "traceroute": {
+      "enabled": true,
+      "target": "DOMAIN1.REDACTED",
+      "firstHopBackendSubnets": ["172.25.", "172.24."]
+    },
+    "vmwareTools": {
+      "enabled": true
+    },
+    "ouPath": {
+      "enabled": true,
+      "operator": "contains",
+      "expected": ""
+    }
+  }
+}
