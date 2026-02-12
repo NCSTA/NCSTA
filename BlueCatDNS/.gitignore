@@ -1,0 +1,15 @@
+# Dependencies
+lib/
+
+# Local data
+data/staging.db
+data/cred.xml
+
+# Logs
+logs/
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
