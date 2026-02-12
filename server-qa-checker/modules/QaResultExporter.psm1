@@ -45,17 +45,72 @@ function Export-QaResultsHtml {
         Skip  = '#6c7086'
     }
 
-    $rowsHtml = ''
-    foreach ($r in $Results) {
-        $bgColor = $statusColors[$r.Status]
-        $rowsHtml += @"
+    # Category groupings matching the GUI
+    $categories = @(
+        @{ Name = 'Connectivity';     Keys = @('connectivity') }
+        @{ Name = 'Hardware';         Keys = @('cpu', 'memoryGB') }
+        @{ Name = 'Network';          Keys = @('ipConfig', 'traceroute') }
+        @{ Name = 'Software';         Keys = @('installedSoftware', 'vmwareTools') }
+        @{ Name = 'Security';         Keys = @('localAdmins') }
+        @{ Name = 'Storage';          Keys = @('drivePermissions', 'fDrive') }
+        @{ Name = 'Patching';         Keys = @('recentHotfixes') }
+        @{ Name = 'Active Directory'; Keys = @('ouPath') }
+    )
+
+    # Build collapsible category sections
+    $sectionsHtml = ''
+    foreach ($cat in $categories) {
+        $catResults = @($Results | Where-Object { $_.CheckKey -in $cat.Keys -and $_.Status -ne 'Skip' })
+        if ($catResults.Count -eq 0) { continue }
+
+        # Count pass/fail for this category
+        $catPass = ($catResults | Where-Object { $_.Status -eq 'Pass' }).Count
+        $catFail = ($catResults | Where-Object { $_.Status -eq 'Fail' }).Count
+        $catBadge = ''
+        if ($catFail -gt 0) {
+            $catBadge = " <span class=`"badge`" style=`"background:#f38ba8; margin-left:8px;`">$catFail FAIL</span>"
+        } elseif ($catPass -gt 0) {
+            $catBadge = " <span class=`"badge`" style=`"background:#a6e3a1; margin-left:8px;`">ALL PASS</span>"
+        }
+
+        $rowsHtml = ''
+        $adapterSeen = $false
+        foreach ($r in $catResults) {
+            # Adapter separator for Network category
+            if ($cat.Name -eq 'Network' -and $r.Category -eq 'Adapter') {
+                if ($adapterSeen) {
+                    $rowsHtml += "            <tr class=`"adapter-sep`"><td colspan=`"5`"></td></tr>`n"
+                }
+                $adapterSeen = $true
+            }
+
+            $bgColor = $statusColors[$r.Status]
+            # Handle newlines in Actual and Details for HTML display
+            $actualHtml = [System.Web.HttpUtility]::HtmlEncode($r.Actual) -replace "`n", '<br/>'
+            $detailsHtml = [System.Web.HttpUtility]::HtmlEncode($r.Details) -replace "`n", '<br/>'
+            $rowsHtml += @"
             <tr>
                 <td>$($r.Category)</td>
                 <td>$([System.Web.HttpUtility]::HtmlEncode($r.Expected))</td>
-                <td>$([System.Web.HttpUtility]::HtmlEncode($r.Actual))</td>
+                <td>$actualHtml</td>
                 <td><span class="badge" style="background:$bgColor;">$($r.Status.ToUpper())</span></td>
-                <td>$([System.Web.HttpUtility]::HtmlEncode($r.Details))</td>
+                <td>$detailsHtml</td>
             </tr>
+"@
+        }
+
+        $sectionsHtml += @"
+<details open>
+    <summary>$($cat.Name)$catBadge</summary>
+    <table>
+        <thead>
+            <tr><th>Check</th><th>Expected</th><th>Actual</th><th>Status</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+$rowsHtml
+        </tbody>
+    </table>
+</details>
 "@
     }
 
@@ -69,13 +124,18 @@ function Export-QaResultsHtml {
     body { font-family: 'Segoe UI', sans-serif; background: #1e1e2e; color: #cdd6f4; margin: 0; padding: 20px; }
     h1 { color: #89b4fa; margin-bottom: 4px; }
     .meta { color: #a6adc8; font-size: 13px; margin-bottom: 20px; }
-    .summary { display: flex; gap: 12px; margin-bottom: 20px; }
+    .summary { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
     .summary .badge { padding: 6px 16px; border-radius: 4px; font-weight: 600; font-size: 13px; color: #1e1e2e; }
     .pct { color: #cdd6f4; font-size: 18px; font-weight: 700; align-self: center; margin-left: 12px; }
-    table { width: 100%; border-collapse: collapse; background: #181825; }
-    th { background: #313244; color: #89b4fa; text-align: left; padding: 10px 12px; font-weight: 600; }
-    td { padding: 8px 12px; border-bottom: 1px solid #313244; }
+    details { margin-bottom: 12px; background: #181825; border: 1px solid #45475a; border-radius: 6px; overflow: hidden; }
+    summary { background: #313244; color: #89b4fa; font-size: 15px; font-weight: 600; padding: 10px 16px; cursor: pointer; user-select: none; display: flex; align-items: center; }
+    summary:hover { background: #45475a; }
+    summary::marker { color: #89b4fa; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #1e1e2e; color: #89b4fa; text-align: left; padding: 8px 12px; font-weight: 600; font-size: 12px; }
+    td { padding: 8px 12px; border-bottom: 1px solid #313244; font-size: 13px; vertical-align: top; }
     tr:nth-child(even) { background: #1e1e2e; }
+    tr.adapter-sep td { padding: 0; height: 1px; border-bottom: 2px solid #45475a; background: transparent; }
     .badge { padding: 2px 10px; border-radius: 3px; font-weight: 600; font-size: 11px; color: #1e1e2e; display: inline-block; }
 </style>
 </head>
@@ -93,14 +153,7 @@ function Export-QaResultsHtml {
     <span class="badge" style="background:#6c7086;">Skip: $skipCount</span>
     <span class="pct">$pct% Pass</span>
 </div>
-<table>
-    <thead>
-        <tr><th>Category</th><th>Expected</th><th>Actual</th><th>Status</th><th>Details</th></tr>
-    </thead>
-    <tbody>
-        $rowsHtml
-    </tbody>
-</table>
+$sectionsHtml
 </body>
 </html>
 "@
