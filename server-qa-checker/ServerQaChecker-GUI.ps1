@@ -570,7 +570,19 @@ function Build-ResultsPanel {
         $sp.Children.Add((New-ResultHeaderRow)) | Out-Null
 
         # Data rows
+        $adapterSeen = $false
         foreach ($r in $catResults) {
+            # Add separator between adapters in Network category
+            if ($cat.Name -eq 'Network' -and $r.Category -eq 'Adapter') {
+                if ($adapterSeen) {
+                    $sep = New-Object System.Windows.Controls.Border
+                    $sep.BorderBrush = New-Brush '#45475a'
+                    $sep.BorderThickness = [System.Windows.Thickness]::new(0, 1, 0, 0)
+                    $sep.Margin = [System.Windows.Thickness]::new(4, 6, 4, 6)
+                    $sp.Children.Add($sep) | Out-Null
+                }
+                $adapterSeen = $true
+            }
             $sp.Children.Add((New-ResultRow -Result $r)) | Out-Null
         }
 

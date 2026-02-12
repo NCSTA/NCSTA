@@ -209,15 +209,16 @@ function Test-QaSoftwareCheck {
 
     foreach ($req in $required) {
         $found = $installedNames | Where-Object { $_ -like "*$req*" }
+        $displayReq = $req -replace '\*', ''
         if ($found) {
             $matchName = ($found | Select-Object -First 1)
             $results += New-QaValidationResult -Category 'Software' -CheckKey 'installedSoftware' `
-                -Enabled $true -Expected $req -Actual $matchName -Status 'Pass' `
+                -Enabled $true -Expected $displayReq -Actual $matchName -Status 'Pass' `
                 -Details "'$matchName' matches required '$req'" -ErrorMessage $null
         }
         else {
             $results += New-QaValidationResult -Category 'Software' -CheckKey 'installedSoftware' `
-                -Enabled $true -Expected $req -Actual 'Not Found' -Status 'Fail' `
+                -Enabled $true -Expected $displayReq -Actual 'Not Found' -Status 'Fail' `
                 -Details "Required software '$req' not found" -ErrorMessage $null
         }
     }
@@ -243,16 +244,6 @@ function Test-QaIpConfigCheck {
     $results = @()
     $adapterCount = 0
     if ($check.Data) { $adapterCount = @($check.Data).Count }
-
-    # --- NIC count check ---
-    $minAdapters = $CheckConfig.minimumAdapters
-    if ($minAdapters -and $minAdapters -gt 0) {
-        $pass = $adapterCount -ge $minAdapters
-        $results += New-QaValidationResult -Category 'NIC Count' -CheckKey 'ipConfig' `
-            -Enabled $true -Expected ">= $minAdapters NICs" -Actual "$adapterCount NICs" `
-            -Status $(if ($pass) { 'Pass' } else { 'Fail' }) `
-            -Details "$adapterCount enabled network adapters found" -ErrorMessage $null
-    }
 
     # --- Backend NIC check (172.25.x.x or 172.24.x.x) ---
     $backendSubnets = $CheckConfig.backendSubnets
@@ -358,15 +349,15 @@ function Test-QaLocalAdminsCheck {
 
     $allowed = $CheckConfig.allowed
     if (-not $allowed -or $allowed.Count -eq 0) {
-        $memberList = ($memberNames -join ', ')
+        $memberList = ($memberNames -join "`n")
         $results += New-QaValidationResult -Category 'Local Admins' -CheckKey 'localAdmins' `
-            -Enabled $true -Expected '(info)' -Actual "$($memberNames.Count) members" -Status 'Info' `
-            -Details $memberList -ErrorMessage $null
+            -Enabled $true -Expected '(info)' -Actual $memberList -Status 'Info' `
+            -Details "$($memberNames.Count) members" -ErrorMessage $null
         return $results
     }
 
     $results += New-QaValidationResult -Category 'Local Admins' -CheckKey 'localAdmins' `
-        -Enabled $true -Expected ($allowed -join ', ') -Actual ($memberNames -join ', ') `
+        -Enabled $true -Expected ($allowed -join ', ') -Actual ($memberNames -join "`n") `
         -Status 'Info' -Details "Full member list" -ErrorMessage $null
 
     # Check for members not in the allowed list
@@ -405,20 +396,20 @@ function Test-QaHotfixCheck {
     if ($check.Data) { $hotfixCount = $check.Data.Count }
 
     $minCount = $CheckConfig.minimumCount
+    $kbDisplay = if ($check.Data) { ($check.Data | ForEach-Object { $_.HotFixID }) -join "`n" } else { 'None' }
+
     if ($null -eq $minCount -or $minCount -eq '') {
-        $kbList = if ($check.Data) { ($check.Data | ForEach-Object { $_.HotFixID }) -join ', ' } else { 'None' }
         $results += New-QaValidationResult -Category 'Hotfixes' -CheckKey 'recentHotfixes' `
-            -Enabled $true -Expected '(info)' -Actual "$hotfixCount in past 30 days" -Status 'Info' `
-            -Details $kbList -ErrorMessage $null
+            -Enabled $true -Expected '(info)' -Actual $kbDisplay -Status 'Info' `
+            -Details "$hotfixCount patches in past 30 days" -ErrorMessage $null
         return $results
     }
 
     $pass = $hotfixCount -ge $minCount
-    $kbList = if ($check.Data) { ($check.Data | ForEach-Object { $_.HotFixID }) -join ', ' } else { 'None' }
     $results += New-QaValidationResult -Category 'Hotfixes' -CheckKey 'recentHotfixes' `
-        -Enabled $true -Expected ">= $minCount in 30 days" -Actual "$hotfixCount in past 30 days" `
+        -Enabled $true -Expected ">= $minCount in 30 days" -Actual $kbDisplay `
         -Status $(if ($pass) { 'Pass' } else { 'Fail' }) `
-        -Details $kbList -ErrorMessage $null
+        -Details "$hotfixCount patches in past 30 days" -ErrorMessage $null
 
     # Check for specific required KBs
     $requiredKBs = $CheckConfig.requiredKBs
