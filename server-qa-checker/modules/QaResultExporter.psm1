@@ -23,7 +23,10 @@ function Export-QaResultsHtml {
         [string]$TemplateName,
 
         [Parameter(Mandatory = $true)]
-        [string]$OutputPath
+        [string]$OutputPath,
+
+        [Parameter(Mandatory = $false)]
+        [string]$RunByUser = "$env:USERDOMAIN\$env:USERNAME"
     )
 
     $passCount = ($Results | Where-Object { $_.Status -eq 'Pass' }).Count
@@ -150,7 +153,7 @@ $rowsHtml
 <body>
 <h1>Server QA Report</h1>
 <div class="meta">
-    Server: <strong>$ComputerName</strong> | Template: <strong>$TemplateName</strong> | Generated: $timestamp
+    Server: <strong>$ComputerName</strong> | Template: <strong>$TemplateName</strong> | Generated: $timestamp | User: <strong>$RunByUser</strong>
 </div>
 <div class="summary">
     <span class="badge" style="background:#a6e3a1;">Pass: $passCount</span>
