@@ -105,7 +105,7 @@ function Test-QaConnectivityCheck {
 
     New-QaValidationResult -Category 'Connectivity' -CheckKey 'connectivity' `
         -Enabled $true -Expected 'Reachable' -Actual $actual -Status $status `
-        -Details "Test-Connection -ComputerName $($ServerData.ComputerName) -Count 2" -ErrorMessage $null
+        -Details '' -ErrorMessage $null
 }
 
 function Test-QaCpuCheck {
@@ -130,7 +130,7 @@ function Test-QaCpuCheck {
     if ($null -eq $expected -or $expected -eq '') {
         return New-QaValidationResult -Category 'CPU Count' -CheckKey 'cpu' `
             -Enabled $true -Expected '(info)' -Actual "$actual" -Status 'Info' `
-            -Details "Win32_ComputerSystem.NumberOfLogicalProcessors" -ErrorMessage $null
+            -Details '' -ErrorMessage $null
     }
 
     $pass = Compare-QaValue -Actual $actual -Expected $expected -Operator $operator
@@ -164,7 +164,7 @@ function Test-QaMemoryCheck {
     if ($null -eq $expected -or $expected -eq '') {
         return New-QaValidationResult -Category 'Memory' -CheckKey 'memoryGB' `
             -Enabled $true -Expected '(info)' -Actual "$actual GB" -Status 'Info' `
-            -Details "Win32_PhysicalMemory capacity sum" -ErrorMessage $null
+            -Details '' -ErrorMessage $null
     }
 
     $pass = Compare-QaValue -Actual $actual -Expected $expected -Operator $operator
@@ -263,7 +263,7 @@ function Test-QaIpConfigCheck {
         $results += New-QaValidationResult -Category 'Backend NIC' -CheckKey 'ipConfig' `
             -Enabled $true -Expected "NIC on $subnetDisplay" -Actual $(if ($hasBackend) { 'Found' } else { 'Not found' }) `
             -Status $(if ($hasBackend) { 'Pass' } else { 'Fail' }) `
-            -Details "At least one NIC must be on backend subnet ($subnetDisplay)" -ErrorMessage $null
+            -Details '' -ErrorMessage $null
     }
 
     # --- Per-adapter detail: IP, DNS, NetBIOS ---
@@ -276,12 +276,12 @@ function Test-QaIpConfigCheck {
             -Enabled $true -Expected '(info)' `
             -Actual "$($adapter.Description)" `
             -Status 'Info' `
-            -Details "Win32_NetworkAdapterConfiguration" -ErrorMessage $null
+            -Details '' -ErrorMessage $null
 
         # IP addresses - info row
         $results += New-QaValidationResult -Category '  IP Address' -CheckKey 'ipConfig' `
             -Enabled $true -Expected '(info)' -Actual $ipStr -Status 'Info' `
-            -Details $adapter.Description -ErrorMessage $null
+            -Details '' -ErrorMessage $null
 
         # DNS servers
         $expectedDns = $CheckConfig.expectedDnsServers
@@ -294,12 +294,12 @@ function Test-QaIpConfigCheck {
             $results += New-QaValidationResult -Category '  DNS Servers' -CheckKey 'ipConfig' `
                 -Enabled $true -Expected $expectedDnsStr -Actual $dnsActual `
                 -Status $(if ($dnsMatch) { 'Pass' } else { 'Fail' }) `
-                -Details $adapter.Description -ErrorMessage $null
+                -Details '' -ErrorMessage $null
         }
         else {
             $results += New-QaValidationResult -Category '  DNS Servers' -CheckKey 'ipConfig' `
                 -Enabled $true -Expected '(info)' -Actual $dnsActual -Status 'Info' `
-                -Details $adapter.Description -ErrorMessage $null
+                -Details '' -ErrorMessage $null
         }
 
         # NetBIOS check - value 2 = Disabled
@@ -309,20 +309,20 @@ function Test-QaIpConfigCheck {
             $results += New-QaValidationResult -Category '  NetBIOS' -CheckKey 'ipConfig' `
                 -Enabled $true -Expected 'Disabled (2)' -Actual "$($adapter.NetBIOS) ($nbValue)" `
                 -Status $(if ($nbDisabled) { 'Pass' } else { 'Fail' }) `
-                -Details "TcpipNetbiosOptions = $nbValue (0=Default, 1=Enabled, 2=Disabled)" -ErrorMessage $null
+                -Details '' -ErrorMessage $null
         }
         else {
             $nbValue = $adapter.NetBIOSValue
             $results += New-QaValidationResult -Category '  NetBIOS' -CheckKey 'ipConfig' `
                 -Enabled $true -Expected '(info)' -Actual "$($adapter.NetBIOS)" -Status 'Info' `
-                -Details "TcpipNetbiosOptions = $nbValue (0=Default, 1=Enabled, 2=Disabled)" -ErrorMessage $null
+                -Details '' -ErrorMessage $null
         }
     }
 
     if ($adapterCount -eq 0) {
         $results += New-QaValidationResult -Category 'IP Config' -CheckKey 'ipConfig' `
             -Enabled $true -Expected '(info)' -Actual 'No adapters' -Status 'Warn' `
-            -Details 'No enabled network adapters found' -ErrorMessage $null
+            -Details '' -ErrorMessage $null
     }
 
     return $results
@@ -354,13 +354,13 @@ function Test-QaLocalAdminsCheck {
         $memberList = ($memberNames -join "`n")
         $results += New-QaValidationResult -Category 'Local Admins' -CheckKey 'localAdmins' `
             -Enabled $true -Expected '(info)' -Actual $memberList -Status 'Info' `
-            -Details "Get-LocalGroupMember -Group 'Administrators'" -ErrorMessage $null
+            -Details '' -ErrorMessage $null
         return $results
     }
 
     $results += New-QaValidationResult -Category 'Local Admins' -CheckKey 'localAdmins' `
         -Enabled $true -Expected ($allowed -join ', ') -Actual ($memberNames -join "`n") `
-        -Status 'Info' -Details "Get-LocalGroupMember -Group 'Administrators'" -ErrorMessage $null
+        -Status 'Info' -Details '' -ErrorMessage $null
 
     # Check for members not in the allowed list
     foreach ($member in $memberNames) {
@@ -371,7 +371,7 @@ function Test-QaLocalAdminsCheck {
         if (-not $isAllowed) {
             $results += New-QaValidationResult -Category 'Local Admins' -CheckKey 'localAdmins' `
                 -Enabled $true -Expected 'Not in allowed list' -Actual $member -Status 'Warn' `
-                -Details "'$member' is not in the allowed admin list" -ErrorMessage $null
+                -Details '' -ErrorMessage $null
         }
     }
 
@@ -461,7 +461,7 @@ function Test-QaDrivePermissionsCheck {
         if ($null -eq $vol.EveryoneAccess) {
             $results += New-QaValidationResult -Category "ACL$typeTag" -CheckKey 'drivePermissions' `
                 -Enabled $true -Expected '(info)' -Actual "$label - Unable to read ACL" -Status 'Warn' `
-                -Details "Get-Acl $label returned error" -ErrorMessage $null
+                -Details '' -ErrorMessage $null
             continue
         }
 
@@ -470,7 +470,7 @@ function Test-QaDrivePermissionsCheck {
         if ($null -eq $everyoneAllowed) {
             $results += New-QaValidationResult -Category "ACL$typeTag" -CheckKey 'drivePermissions' `
                 -Enabled $true -Expected '(info)' -Actual "$label $actualStr" -Status 'Info' `
-                -Details "Get-Acl $label" -ErrorMessage $null
+                -Details '' -ErrorMessage $null
         }
         else {
             if ($everyoneAllowed) {
@@ -483,14 +483,14 @@ function Test-QaDrivePermissionsCheck {
             $results += New-QaValidationResult -Category "ACL$typeTag" -CheckKey 'drivePermissions' `
                 -Enabled $true -Expected "$label $expectedStr" -Actual "$label $actualStr" `
                 -Status $(if ($pass) { 'Pass' } else { 'Fail' }) `
-                -Details "Get-Acl $label" -ErrorMessage $null
+                -Details '' -ErrorMessage $null
         }
     }
 
     if ($results.Count -eq 0) {
         $results += New-QaValidationResult -Category 'Storage Permissions' -CheckKey 'drivePermissions' `
             -Enabled $true -Expected '(info)' -Actual 'No volumes found' -Status 'Warn' `
-            -Details 'No fixed drives or mountpoints found' -ErrorMessage $null
+            -Details '' -ErrorMessage $null
     }
 
     return $results
@@ -522,20 +522,20 @@ function Test-QaFDriveCheck {
         $results += New-QaValidationResult -Category 'F: Drive' -CheckKey 'fDrive' `
             -Enabled $true -Expected $expectedStr -Actual $actualStr `
             -Status $(if ($pass) { 'Pass' } else { 'Fail' }) `
-            -Details "Get-Volume -DriveLetter F" -ErrorMessage $null
+            -Details '' -ErrorMessage $null
     }
     else {
         $actualStr = if ($exists) { 'Exists' } else { 'Not found' }
         $results += New-QaValidationResult -Category 'F: Drive' -CheckKey 'fDrive' `
             -Enabled $true -Expected '(info)' -Actual $actualStr -Status 'Info' `
-            -Details "Get-Volume -DriveLetter F" -ErrorMessage $null
+            -Details '' -ErrorMessage $null
     }
 
     if ($exists) {
         $sizeStr = "$($check.Data.SizeGB) GB total, $($check.Data.FreeSpaceGB) GB free"
         $results += New-QaValidationResult -Category 'F: Drive' -CheckKey 'fDrive' `
             -Enabled $true -Expected '(info)' -Actual $sizeStr -Status 'Info' `
-            -Details "F: $($check.Data.FileSystem), Health: $($check.Data.HealthStatus)" -ErrorMessage $null
+            -Details '' -ErrorMessage $null
     }
 
     return $results
@@ -591,7 +591,7 @@ function Test-QaTracerouteCheck {
     $results += New-QaValidationResult -Category 'Reachable' -CheckKey 'traceroute' `
         -Enabled $true -Expected 'Yes' -Actual $(if ($reachable) { 'Yes' } else { 'No' }) `
         -Status $(if ($reachable) { 'Pass' } else { 'Warn' }) `
-        -Details "Test-NetConnection -ComputerName $target -TraceRoute" -ErrorMessage $null
+        -Details '' -ErrorMessage $null
 
     return $results
 }
@@ -618,7 +618,7 @@ function Test-QaVmwareToolsCheck {
     if (-not $operator -or -not $expected -or $expected -eq '') {
         return New-QaValidationResult -Category 'VMware Tools' -CheckKey 'vmwareTools' `
             -Enabled $true -Expected '(info)' -Actual "$actual" -Status 'Info' `
-            -Details "HKLM Uninstall registry" -ErrorMessage $null
+            -Details '' -ErrorMessage $null
     }
 
     $pass = Compare-QaValue -Actual $actual -Expected $expected -Operator $operator
@@ -627,7 +627,7 @@ function Test-QaVmwareToolsCheck {
     New-QaValidationResult -Category 'VMware Tools' -CheckKey 'vmwareTools' `
         -Enabled $true -Expected $expectedDisplay -Actual "$actual" `
         -Status $(if ($pass) { 'Pass' } else { 'Fail' }) `
-        -Details "HKLM Uninstall registry" -ErrorMessage $null
+        -Details '' -ErrorMessage $null
 }
 
 function Test-QaOuPathCheck {

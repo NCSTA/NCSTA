@@ -179,8 +179,6 @@ Import-Module (Join-Path $modulesPath 'QaResultExporter.psm1') -Force
                 </StackPanel>
                 <Button Grid.Column="2" x:Name="btnRunQa" Content="Run QA" Margin="10,0,0,0"
                         Style="{StaticResource SuccessButton}"/>
-                <CheckBox Grid.Column="3" x:Name="chkFailOnly" Content="Failures Only"
-                          Margin="12,0,0,0" VerticalAlignment="Center" IsEnabled="False"/>
                 <Ellipse Grid.Column="4" x:Name="statusLight" Width="14" Height="14"
                          Fill="#6c7086" Margin="12,0,0,0" VerticalAlignment="Center"/>
             </Grid>
@@ -202,31 +200,40 @@ Import-Module (Join-Path $modulesPath 'QaResultExporter.psm1') -Force
                     <!-- Summary Bar -->
                     <Border Grid.Row="0" x:Name="pnlSummary" Background="#181825"
                             Padding="16,10" Visibility="Collapsed">
-                        <StackPanel Orientation="Horizontal">
-                            <Border Background="#a6e3a1" CornerRadius="3" Padding="10,4" Margin="0,0,8,0">
-                                <TextBlock x:Name="lblPassCount" Text="Pass: 0"
-                                           Foreground="#1e1e2e" FontWeight="SemiBold" FontSize="12"/>
-                            </Border>
-                            <Border Background="#f38ba8" CornerRadius="3" Padding="10,4" Margin="0,0,8,0">
-                                <TextBlock x:Name="lblFailCount" Text="Fail: 0"
-                                           Foreground="#1e1e2e" FontWeight="SemiBold" FontSize="12"/>
-                            </Border>
-                            <Border Background="#f9e2af" CornerRadius="3" Padding="10,4" Margin="0,0,8,0">
-                                <TextBlock x:Name="lblWarnCount" Text="Warn: 0"
-                                           Foreground="#1e1e2e" FontWeight="SemiBold" FontSize="12"/>
-                            </Border>
-                            <Border Background="#89b4fa" CornerRadius="3" Padding="10,4" Margin="0,0,8,0">
-                                <TextBlock x:Name="lblInfoCount" Text="Info: 0"
-                                           Foreground="#1e1e2e" FontWeight="SemiBold" FontSize="12"/>
-                            </Border>
-                            <Border Background="#6c7086" CornerRadius="3" Padding="10,4" Margin="0,0,8,0">
-                                <TextBlock x:Name="lblErrorCount" Text="Error: 0"
-                                           Foreground="#1e1e2e" FontWeight="SemiBold" FontSize="12"/>
-                            </Border>
-                            <TextBlock x:Name="lblPassPct" Text=""
-                                       Foreground="#cdd6f4" FontSize="18" FontWeight="Bold"
-                                       VerticalAlignment="Center" Margin="12,0,0,0"/>
-                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                <Border Background="#a6e3a1" CornerRadius="3" Padding="10,4" Margin="0,0,8,0">
+                                    <TextBlock x:Name="lblPassCount" Text="Pass: 0"
+                                               Foreground="#1e1e2e" FontWeight="SemiBold" FontSize="12"/>
+                                </Border>
+                                <Border Background="#f38ba8" CornerRadius="3" Padding="10,4" Margin="0,0,8,0">
+                                    <TextBlock x:Name="lblFailCount" Text="Fail: 0"
+                                               Foreground="#1e1e2e" FontWeight="SemiBold" FontSize="12"/>
+                                </Border>
+                                <Border Background="#f9e2af" CornerRadius="3" Padding="10,4" Margin="0,0,8,0">
+                                    <TextBlock x:Name="lblWarnCount" Text="Warn: 0"
+                                               Foreground="#1e1e2e" FontWeight="SemiBold" FontSize="12"/>
+                                </Border>
+                                <Border Background="#89b4fa" CornerRadius="3" Padding="10,4" Margin="0,0,8,0">
+                                    <TextBlock x:Name="lblInfoCount" Text="Info: 0"
+                                               Foreground="#1e1e2e" FontWeight="SemiBold" FontSize="12"/>
+                                </Border>
+                                <Border Background="#6c7086" CornerRadius="3" Padding="10,4" Margin="0,0,8,0">
+                                    <TextBlock x:Name="lblErrorCount" Text="Error: 0"
+                                               Foreground="#1e1e2e" FontWeight="SemiBold" FontSize="12"/>
+                                </Border>
+                                <TextBlock x:Name="lblPassPct" Text=""
+                                           Foreground="#cdd6f4" FontSize="18" FontWeight="Bold"
+                                           VerticalAlignment="Center" Margin="12,0,0,0"/>
+                            </StackPanel>
+
+                            <CheckBox Grid.Column="1" x:Name="chkFailOnly" Content="Failures Only"
+                                      Margin="12,0,0,0" VerticalAlignment="Center" IsEnabled="False" HorizontalAlignment="Right"/>
+                        </Grid>
                     </Border>
 
                     <!-- Progress Bar -->
@@ -257,11 +264,11 @@ Import-Module (Join-Path $modulesPath 'QaResultExporter.psm1') -Force
             </TabItem>
 
             <!-- TAB: Remediation (future) -->
-            <TabItem Header="Remediation" x:Name="tabRemediation">
+            <TabItem Header="VMware" x:Name="tabRemediation">
                 <StackPanel Margin="16" VerticalAlignment="Center"
                             HorizontalAlignment="Center">
                     <TextBlock Foreground="#6c7086" FontSize="16"
-                               Text="Remediation actions will be available in a future release."
+                               Text="VMware actions will be available in a future release."
                                HorizontalAlignment="Center"/>
                     <TextBlock Foreground="#45475a" FontSize="12"
                                Text="This tab will support PowerCLI-based server modifications."
@@ -556,7 +563,7 @@ function Build-ResultsPanel {
     )
 
     foreach ($cat in $categories) {
-        $catResults = @($Results | Where-Object { $_.CheckKey -in $cat.Keys -and $_.Status -ne 'Skip' })
+        $catResults = @($Results | Where-Object { $_.CheckKey -in $cat.Keys -and $_.Status -ne 'Skip' -and $_.Category -ne 'Backend NIC' })
         if ($catResults.Count -eq 0) { continue }
 
         # GroupBox with pass/fail badge in header
