@@ -166,6 +166,7 @@ Import-Module (Join-Path $modulesPath 'QaResultExporter.psm1') -Force
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Server QA Checker"
                            Foreground="#89b4fa" FontSize="18" FontWeight="Bold"
@@ -178,7 +179,9 @@ Import-Module (Join-Path $modulesPath 'QaResultExporter.psm1') -Force
                 </StackPanel>
                 <Button Grid.Column="2" x:Name="btnRunQa" Content="Run QA" Margin="10,0,0,0"
                         Style="{StaticResource SuccessButton}"/>
-                <Ellipse Grid.Column="3" x:Name="statusLight" Width="14" Height="14"
+                <CheckBox Grid.Column="3" x:Name="chkFailOnly" Content="Failures Only"
+                          Margin="12,0,0,0" VerticalAlignment="Center" IsEnabled="False"/>
+                <Ellipse Grid.Column="4" x:Name="statusLight" Width="14" Height="14"
                          Fill="#6c7086" Margin="12,0,0,0" VerticalAlignment="Center"/>
             </Grid>
         </Border>
@@ -556,9 +559,54 @@ function Build-ResultsPanel {
         $catResults = @($Results | Where-Object { $_.CheckKey -in $cat.Keys -and $_.Status -ne 'Skip' })
         if ($catResults.Count -eq 0) { continue }
 
-        # GroupBox
+        # GroupBox with pass/fail badge in header
+        $catPass = @($catResults | Where-Object { $_.Status -eq 'Pass' }).Count
+        $catFail = @($catResults | Where-Object { $_.Status -eq 'Fail' }).Count
+        $catError = @($catResults | Where-Object { $_.Status -eq 'Error' }).Count
+
+        $headerPanel = New-Object System.Windows.Controls.StackPanel
+        $headerPanel.Orientation = 'Horizontal'
+
+        $headerText = New-Object System.Windows.Controls.TextBlock
+        $headerText.Text = $cat.Name
+        $headerText.VerticalAlignment = 'Center'
+        $headerText.Foreground = New-Brush '#89b4fa'
+        $headerPanel.Children.Add($headerText) | Out-Null
+
+        if ($catFail -gt 0 -or $catError -gt 0) {
+            $badgeBorder = New-Object System.Windows.Controls.Border
+            $badgeBorder.Background = New-Brush '#f38ba8'
+            $badgeBorder.CornerRadius = [System.Windows.CornerRadius]::new(3)
+            $badgeBorder.Padding = [System.Windows.Thickness]::new(6, 1, 6, 1)
+            $badgeBorder.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
+            $badgeBorder.VerticalAlignment = 'Center'
+            $badgeText = New-Object System.Windows.Controls.TextBlock
+            $failTotal = $catFail + $catError
+            $badgeText.Text = "$failTotal FAIL"
+            $badgeText.FontSize = 10
+            $badgeText.FontWeight = 'SemiBold'
+            $badgeText.Foreground = New-Brush '#1e1e2e'
+            $badgeBorder.Child = $badgeText
+            $headerPanel.Children.Add($badgeBorder) | Out-Null
+        }
+        elseif ($catPass -gt 0) {
+            $badgeBorder = New-Object System.Windows.Controls.Border
+            $badgeBorder.Background = New-Brush '#a6e3a1'
+            $badgeBorder.CornerRadius = [System.Windows.CornerRadius]::new(3)
+            $badgeBorder.Padding = [System.Windows.Thickness]::new(6, 1, 6, 1)
+            $badgeBorder.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
+            $badgeBorder.VerticalAlignment = 'Center'
+            $badgeText = New-Object System.Windows.Controls.TextBlock
+            $badgeText.Text = "ALL PASS"
+            $badgeText.FontSize = 10
+            $badgeText.FontWeight = 'SemiBold'
+            $badgeText.Foreground = New-Brush '#1e1e2e'
+            $badgeBorder.Child = $badgeText
+            $headerPanel.Children.Add($badgeBorder) | Out-Null
+        }
+
         $gb = New-Object System.Windows.Controls.GroupBox
-        $gb.Header = $cat.Name
+        $gb.Header = $headerPanel
         $gb.Foreground = New-Brush '#89b4fa'
         $gb.BorderBrush = New-Brush '#45475a'
         $gb.Padding = [System.Windows.Thickness]::new(10)
@@ -619,6 +667,7 @@ $btnRunQa.Add_Click({
     $btnRunQa.IsEnabled = $false
     $btnExportHtml.IsEnabled = $false
     $btnExportCsv.IsEnabled = $false
+    $chkFailOnly.IsEnabled = $false
     Set-StatusLight 'running'
     Set-Status "Running QA checks on $server..." '#f9e2af'
     $progressBar.Visibility = 'Visible'
@@ -676,6 +725,8 @@ $btnRunQa.Add_Click({
 
         $btnExportHtml.IsEnabled = $true
         $btnExportCsv.IsEnabled = $true
+        $chkFailOnly.IsEnabled = $true
+        $chkFailOnly.IsChecked = $false
     }
     catch {
         [System.Windows.MessageBox]::Show("QA check failed: $($_.Exception.Message)", 'QA Error', 'OK', 'Error')
@@ -698,6 +749,22 @@ $txtServer.Add_KeyDown({
     if ($e.Key -eq 'Return') {
         $btnRunQa.RaiseEvent([System.Windows.RoutedEventArgs]::new([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))
     }
+})
+
+# ---------------------------------------------------------------------------
+# Event: Fail-only filter toggle
+# ---------------------------------------------------------------------------
+
+$chkFailOnly.Add_Checked({
+    if (-not $script:CurrentResults) { return }
+    $filtered = @($script:CurrentResults | Where-Object { $_.Status -in @('Fail', 'Error', 'Warn') })
+    Build-ResultsPanel -Results $filtered
+})
+
+$chkFailOnly.Add_Unchecked({
+    if (-not $script:CurrentResults) { return }
+    Build-ResultsPanel -Results $script:CurrentResults
+    Update-SummaryBar -Results $script:CurrentResults
 })
 
 # ---------------------------------------------------------------------------

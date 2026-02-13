@@ -91,8 +91,9 @@ function Export-QaResultsHtml {
             # Handle newlines in Actual and Details for HTML display
             $actualHtml = [System.Web.HttpUtility]::HtmlEncode($r.Actual) -replace "`n", '<br/>'
             $detailsHtml = [System.Web.HttpUtility]::HtmlEncode($r.Details) -replace "`n", '<br/>'
+            $rowClass = if ($r.Status -eq 'Fail') { ' class="fail-row"' } else { '' }
             $rowsHtml += @"
-            <tr>
+            <tr$rowClass>
                 <td>$($r.Category)</td>
                 <td>$([System.Web.HttpUtility]::HtmlEncode($r.Expected))</td>
                 <td>$actualHtml</td>
@@ -127,7 +128,7 @@ $rowsHtml
     body { font-family: 'Segoe UI', sans-serif; background: #1e1e2e; color: #cdd6f4; margin: 0; padding: 20px; }
     h1 { color: #89b4fa; margin-bottom: 4px; }
     .meta { color: #a6adc8; font-size: 13px; margin-bottom: 20px; }
-    .summary { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .summary { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; position: sticky; top: 0; z-index: 10; background: #1e1e2e; padding: 12px 0; }
     .summary .badge { padding: 6px 16px; border-radius: 4px; font-weight: 600; font-size: 13px; color: #1e1e2e; }
     .pct { color: #cdd6f4; font-size: 18px; font-weight: 700; align-self: center; margin-left: 12px; }
     details { margin-bottom: 12px; background: #181825; border: 1px solid #45475a; border-radius: 6px; overflow: hidden; }
@@ -148,6 +149,10 @@ $rowsHtml
     tr:nth-child(even) { background: #1e1e2e; }
     tr.adapter-sep td { padding: 0; height: 1px; border-bottom: 2px solid #45475a; background: transparent; }
     .badge { padding: 2px 10px; border-radius: 3px; font-weight: 600; font-size: 11px; color: #1e1e2e; display: inline-block; }
+    tr.fail-row { background: #2a1a2a !important; }
+    .controls { margin-bottom: 12px; display: flex; gap: 8px; }
+    .controls button { background: #313244; color: #89b4fa; border: 1px solid #45475a; border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 12px; font-weight: 600; }
+    .controls button:hover { background: #45475a; }
 </style>
 </head>
 <body>
@@ -163,6 +168,10 @@ $rowsHtml
     <span class="badge" style="background:#6c7086;">Error: $errorCount</span>
     <span class="badge" style="background:#6c7086;">Skip: $skipCount</span>
     <span class="pct">$pct% Pass</span>
+</div>
+<div class="controls">
+    <button onclick="document.querySelectorAll('details').forEach(d=>d.open=true)">Expand All</button>
+    <button onclick="document.querySelectorAll('details').forEach(d=>d.open=false)">Collapse All</button>
 </div>
 $sectionsHtml
 </body>
