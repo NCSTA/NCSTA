@@ -63,7 +63,7 @@ function Export-QaResultsHtml {
     # Build collapsible category sections
     $sectionsHtml = ''
     foreach ($cat in $categories) {
-        $catResults = @($Results | Where-Object { $_.CheckKey -in $cat.Keys -and $_.Status -ne 'Skip' })
+        $catResults = @($Results | Where-Object { $_.CheckKey -in $cat.Keys -and $_.Status -ne 'Skip' -and $_.Category -ne 'Backend NIC' })
         if ($catResults.Count -eq 0) { continue }
 
         # Count pass/fail for this category
