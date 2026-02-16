@@ -284,12 +284,15 @@ Import-Module (Join-Path $modulesPath 'QaResultExporter.psm1') -Force
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" x:Name="statusText" Foreground="#a6adc8"
                            FontSize="12" Text="Ready" VerticalAlignment="Center"/>
-                <Button Grid.Column="1" x:Name="btnExportHtml" Content="Export HTML"
+                <Button Grid.Column="1" x:Name="btnRemovePatch" Content="Remove From Patch Group"
                         Margin="0,0,8,0" IsEnabled="False"/>
-                <Button Grid.Column="2" x:Name="btnExportCsv" Content="Export CSV"
+                <Button Grid.Column="2" x:Name="btnExportHtml" Content="Export HTML"
+                        Margin="0,0,8,0" IsEnabled="False"/>
+                <Button Grid.Column="3" x:Name="btnExportCsv" Content="Export CSV"
                         IsEnabled="False"/>
             </Grid>
         </Border>
@@ -674,6 +677,7 @@ $btnRunQa.Add_Click({
     $btnRunQa.IsEnabled = $false
     $btnExportHtml.IsEnabled = $false
     $btnExportCsv.IsEnabled = $false
+    $btnRemovePatch.IsEnabled = $false
     $chkFailOnly.IsEnabled = $false
     Set-StatusLight 'running'
     Set-Status "Running QA checks on $server..." '#f9e2af'
@@ -720,6 +724,7 @@ $btnRunQa.Add_Click({
         if ($failCount -eq 0 -and ($script:CurrentResults | Where-Object { $_.Status -eq 'Error' }).Count -eq 0) {
             Set-StatusLight 'pass'
             Set-Status "QA complete for $server - All checks passed ($passCount/$gradedCount)" '#a6e3a1'
+            $btnRemovePatch.IsEnabled = $true
         }
         elseif ($failCount -gt 0) {
             Set-StatusLight 'fail'
@@ -774,9 +779,76 @@ $chkFailOnly.Add_Unchecked({
     Update-SummaryBar -Results $script:CurrentResults
 })
 
-# ---------------------------------------------------------------------------
+# Event: Remove From Patch Group
+
+$btnRemovePatch.Add_Click({
+    $server = $txtServer.Text.Trim()
+    if (-not $server) { return }
+
+    $shortName = ($server -split '\.')[0]
+
+    $patchGroups = @(
+        @{ Server = 'DOMAIN1.REDACTED'; Group = 'Patch-nsm-newserverbuild' }
+        @{ Server = 'DOMAIN1.REDACTED'; Group = 'Patch-gov-newserverbuild' }
+        @{ Server = 'DOMAIN2.REDACTED';            Group = 'Patch-Newserverbuild' }
+    )
+
+    Set-Status "Searching patch groups for $shortName..." '#f9e2af'
+    $window.Dispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Background, [action]{})
+
+    $foundGroup = $null
+    $computerObj = $null
+
+    foreach ($pg in $patchGroups) {
+        try {
+            $members = Get-ADGroupMember -Identity $pg.Group -Server $pg.Server -ErrorAction Stop
+            $match = $members | Where-Object { $_.Name -eq $shortName }
+            if ($match) {
+                $foundGroup = $pg
+                $computerObj = $match
+                break
+            }
+        }
+        catch {
+            # Group not accessible or doesn't exist in this domain, continue searching
+        }
+    }
+
+    if (-not $foundGroup) {
+        [System.Windows.MessageBox]::Show(
+            "$shortName was not found in any new-server-build patch group.",
+            'Patch Group', 'OK', 'Information')
+        Set-Status 'Ready' '#a6adc8'
+        return
+    }
+
+    $groupDisplay = "$($foundGroup.Server)\$($foundGroup.Group)"
+    $confirm = [System.Windows.MessageBox]::Show(
+        "Remove $shortName from ${groupDisplay}?",
+        'Remove From Patch Group', 'YesNo', 'Question')
+
+    if ($confirm -ne 'Yes') {
+        Set-Status 'Ready' '#a6adc8'
+        return
+    }
+
+    try {
+        Remove-ADGroupMember -Identity $foundGroup.Group -Server $foundGroup.Server `
+            -Members $computerObj -Confirm:$false -ErrorAction Stop
+        [System.Windows.MessageBox]::Show(
+            "Success! $shortName removed from $groupDisplay.",
+            'Patch Group', 'OK', 'Information')
+        Set-Status "$shortName removed from $groupDisplay" '#a6e3a1'
+    }
+    catch {
+        [System.Windows.MessageBox]::Show(
+            "Failed to remove server from patch group: $($_.Exception.Message)",
+            'Patch Group Error', 'OK', 'Error')
+        Set-Status 'Patch group removal failed' '#f38ba8'
+    }
+})
+
 # Event: Export HTML
-# ---------------------------------------------------------------------------
 
 $btnExportHtml.Add_Click({
     if (-not $script:CurrentResults) { return }
