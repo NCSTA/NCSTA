@@ -42,10 +42,15 @@ function Connect-BlueCat {
     $script:CurrentUser = $Credential.UserName
 
     $uri = "$($script:BamUrl)/api/v2/sessions"
-    $basicBytes = [System.Text.Encoding]::ASCII.GetBytes(
-        "$($Credential.UserName):$($Credential.GetNetworkCredential().Password)"
-    )
-    $basicAuth = [Convert]::ToBase64String($basicBytes)
+    $plainUser = $Credential.UserName
+    $plainPass = $Credential.GetNetworkCredential().Password
+
+    $basicBytes = [System.Text.Encoding]::ASCII.GetBytes("${plainUser}:${plainPass}")
+    $basicAuth  = [Convert]::ToBase64String($basicBytes)
+
+    # Build JSON body with credentials (required by BAM 9.6+)
+    $bodyObj = @{ username = $plainUser; password = $plainPass }
+    $bodyJson = $bodyObj | ConvertTo-Json -Compress
 
     if ($SkipCertCheck) {
         $script:SkipCert = $true
@@ -58,7 +63,7 @@ function Connect-BlueCat {
         Method      = 'POST'
         Headers     = @{ Authorization = "Basic $basicAuth" }
         ContentType = 'application/json'
-        Body        = '{}'
+        Body        = $bodyJson
     }
 
     try {
