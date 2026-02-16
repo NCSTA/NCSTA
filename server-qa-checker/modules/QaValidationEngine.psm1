@@ -678,7 +678,7 @@ function Test-QaOuPathCheck {
 function Test-QaWinActivationCheck {
     param($ServerData, $CheckConfig)
 
-    if (-not $CheckConfig.enabled) {
+    if ($CheckConfig -and -not $CheckConfig.enabled) {
         return New-QaValidationResult -Category 'Windows Activation' -CheckKey 'winActivation' `
             -Enabled $false -Expected '' -Actual '' -Status 'Skip' -Details 'Check disabled' -ErrorMessage $null
     }
