@@ -76,7 +76,8 @@ function Get-QaServerData {
         $result.DrivePerms  = New-QaCheckResult -Success $false -Data $null -ErrorMessage $unreachableMsg
         $result.FDrive      = New-QaCheckResult -Success $false -Data $null -ErrorMessage $unreachableMsg
         $result.Traceroute  = New-QaCheckResult -Success $false -Data $null -ErrorMessage $unreachableMsg
-        $result.VMwareTools = New-QaCheckResult -Success $false -Data $null -ErrorMessage $unreachableMsg
+        $result.VMwareTools    = New-QaCheckResult -Success $false -Data $null -ErrorMessage $unreachableMsg
+        $result.WinActivation = New-QaCheckResult -Success $false -Data $null -ErrorMessage $unreachableMsg
     }
     else {
         # --- Step 2: Single Invoke-Command for all remote checks ---
