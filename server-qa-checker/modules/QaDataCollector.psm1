@@ -50,8 +50,9 @@ function Get-QaServerData {
         DrivePerms   = $null
         FDrive       = $null
         Traceroute   = $null
-        VMwareTools  = $null
-        OuPath       = $null
+        VMwareTools   = $null
+        WinActivation = $null
+        OuPath        = $null
     }
 
     # --- Step 1: Connectivity check (local) ---
@@ -291,6 +292,15 @@ function Get-QaServerData {
                     $output['VMwareTools'] = @{ Success = $false; Data = $null; ErrorMessage = $_.Exception.Message }
                 }
 
+                # Windows Activation status
+                try {
+                    $slmgrOutput = (cscript /Nologo "C:\Windows\System32\slmgr.vbs" /xpr) -join ' '
+                    $output['WinActivation'] = @{ Success = $true; Data = $slmgrOutput.Trim(); ErrorMessage = $null }
+                }
+                catch {
+                    $output['WinActivation'] = @{ Success = $false; Data = $null; ErrorMessage = $_.Exception.Message }
+                }
+
                 $output
             } -ArgumentList $TracerouteTarget
 
@@ -304,7 +314,8 @@ function Get-QaServerData {
             $result.DrivePerms  = New-QaCheckResult -Success $remoteData['DrivePerms'].Success  -Data $remoteData['DrivePerms'].Data  -ErrorMessage $remoteData['DrivePerms'].ErrorMessage
             $result.FDrive      = New-QaCheckResult -Success $remoteData['FDrive'].Success      -Data $remoteData['FDrive'].Data      -ErrorMessage $remoteData['FDrive'].ErrorMessage
             $result.Traceroute  = New-QaCheckResult -Success $remoteData['Traceroute'].Success  -Data $remoteData['Traceroute'].Data  -ErrorMessage $remoteData['Traceroute'].ErrorMessage
-            $result.VMwareTools = New-QaCheckResult -Success $remoteData['VMwareTools'].Success -Data $remoteData['VMwareTools'].Data -ErrorMessage $remoteData['VMwareTools'].ErrorMessage
+            $result.VMwareTools    = New-QaCheckResult -Success $remoteData['VMwareTools'].Success    -Data $remoteData['VMwareTools'].Data    -ErrorMessage $remoteData['VMwareTools'].ErrorMessage
+            $result.WinActivation = New-QaCheckResult -Success $remoteData['WinActivation'].Success -Data $remoteData['WinActivation'].Data -ErrorMessage $remoteData['WinActivation'].ErrorMessage
         }
         catch {
             $remoteError = "Invoke-Command failed: $($_.Exception.Message)"
@@ -317,7 +328,8 @@ function Get-QaServerData {
             $result.DrivePerms  = New-QaCheckResult -Success $false -Data $null -ErrorMessage $remoteError
             $result.FDrive      = New-QaCheckResult -Success $false -Data $null -ErrorMessage $remoteError
             $result.Traceroute  = New-QaCheckResult -Success $false -Data $null -ErrorMessage $remoteError
-            $result.VMwareTools = New-QaCheckResult -Success $false -Data $null -ErrorMessage $remoteError
+            $result.VMwareTools    = New-QaCheckResult -Success $false -Data $null -ErrorMessage $remoteError
+            $result.WinActivation = New-QaCheckResult -Success $false -Data $null -ErrorMessage $remoteError
         }
     }
 

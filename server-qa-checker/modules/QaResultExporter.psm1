@@ -50,7 +50,7 @@ function Export-QaResultsHtml {
 
     # Category groupings matching the GUI
     $categories = @(
-        @{ Name = 'Connectivity';     Keys = @('connectivity') }
+        @{ Name = 'Connectivity';     Keys = @('connectivity', 'winActivation') }
         @{ Name = 'Hardware';         Keys = @('cpu', 'memoryGB') }
         @{ Name = 'Network';          Keys = @('ipConfig', 'traceroute') }
         @{ Name = 'Software';         Keys = @('installedSoftware', 'vmwareTools') }

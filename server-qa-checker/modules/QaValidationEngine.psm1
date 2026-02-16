@@ -139,7 +139,7 @@ function Test-QaCpuCheck {
     New-QaValidationResult -Category 'CPU Count' -CheckKey 'cpu' `
         -Enabled $true -Expected $expectedDisplay -Actual "$actual" `
         -Status $(if ($pass) { 'Pass' } else { 'Fail' }) `
-        -Details "Win32_ComputerSystem.NumberOfLogicalProcessors" -ErrorMessage $null
+        -Details '' -ErrorMessage $null
 }
 
 function Test-QaMemoryCheck {
@@ -173,7 +173,7 @@ function Test-QaMemoryCheck {
     New-QaValidationResult -Category 'Memory' -CheckKey 'memoryGB' `
         -Enabled $true -Expected $expectedDisplay -Actual "$actual GB" `
         -Status $(if ($pass) { 'Pass' } else { 'Fail' }) `
-        -Details "Win32_PhysicalMemory capacity sum" -ErrorMessage $null
+        -Details '' -ErrorMessage $null
 }
 
 function Test-QaSoftwareCheck {
@@ -675,6 +675,35 @@ function Test-QaOuPathCheck {
     return $results
 }
 
+function Test-QaWinActivationCheck {
+    param($ServerData, $CheckConfig)
+
+    if (-not $CheckConfig.enabled) {
+        return New-QaValidationResult -Category 'Windows Activation' -CheckKey 'winActivation' `
+            -Enabled $false -Expected '' -Actual '' -Status 'Skip' -Details 'Check disabled' -ErrorMessage $null
+    }
+
+    $check = $ServerData.WinActivation
+    if (-not $check.Success) {
+        return New-QaValidationResult -Category 'Windows Activation' -CheckKey 'winActivation' `
+            -Enabled $true -Expected '' -Actual 'Error' -Status 'Error' `
+            -Details $check.ErrorMessage -ErrorMessage $check.ErrorMessage
+    }
+
+    $raw = $check.Data
+    # Determine if activated: look for "permanently activated" in slmgr output
+    $isActivated = $raw -match 'permanently activated'
+    $displayStatus = if ($isActivated) { 'Permanently Activated' }
+                     elseif ($raw -match 'notification mode') { 'Not Activated (Notification Mode)' }
+                     elseif ($raw -match 'expir') { 'Activation Expiring' }
+                     else { $raw }
+
+    New-QaValidationResult -Category 'Windows Activation' -CheckKey 'winActivation' `
+        -Enabled $true -Expected 'Permanently Activated' -Actual $displayStatus `
+        -Status $(if ($isActivated) { 'Pass' } else { 'Fail' }) `
+        -Details '' -ErrorMessage $null
+}
+
 # --- Main validation function ---
 
 function Invoke-QaValidation {
@@ -701,6 +730,7 @@ function Invoke-QaValidation {
     $results = @()
 
     $results += Test-QaConnectivityCheck     -ServerData $ServerData -CheckConfig $checks.connectivity
+    $results += Test-QaWinActivationCheck   -ServerData $ServerData -CheckConfig $checks.winActivation
     $results += Test-QaCpuCheck              -ServerData $ServerData -CheckConfig $checks.cpu
     $results += Test-QaMemoryCheck           -ServerData $ServerData -CheckConfig $checks.memoryGB
     $results += Test-QaSoftwareCheck         -ServerData $ServerData -CheckConfig $checks.installedSoftware
