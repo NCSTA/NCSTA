@@ -473,13 +473,10 @@ function Test-QaDrivePermissionsCheck {
                 -Details '' -ErrorMessage $null
         }
         else {
-            if ($everyoneAllowed) {
-                $pass = $true
-            }
-            else {
-                $pass = -not $vol.EveryoneAccess
-            }
-            $expectedStr = if ($everyoneAllowed) { "'Everyone' allowed" } else { "'Everyone' removed" }
+            # Policy: Everyone must be removed from all drive ACLs.
+            # Keep honoring the setting's presence, but enforce secure behavior.
+            $pass = -not $vol.EveryoneAccess
+            $expectedStr = "'Everyone' removed"
             $results += New-QaValidationResult -Category "ACL$typeTag" -CheckKey 'drivePermissions' `
                 -Enabled $true -Expected "$label $expectedStr" -Actual "$label $actualStr" `
                 -Status $(if ($pass) { 'Pass' } else { 'Fail' }) `
@@ -678,7 +675,7 @@ function Test-QaOuPathCheck {
 function Test-QaWinActivationCheck {
     param($ServerData, $CheckConfig)
 
-    if ($CheckConfig -and -not $CheckConfig.enabled) {
+    if (-not $CheckConfig.enabled) {
         return New-QaValidationResult -Category 'Windows Activation' -CheckKey 'winActivation' `
             -Enabled $false -Expected '' -Actual '' -Status 'Skip' -Details 'Check disabled' -ErrorMessage $null
     }
