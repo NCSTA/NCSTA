@@ -285,14 +285,17 @@ Import-Module (Join-Path $modulesPath 'QaResultExporter.psm1') -Force
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" x:Name="statusText" Foreground="#a6adc8"
                            FontSize="12" Text="Ready" VerticalAlignment="Center"/>
-                <Button Grid.Column="1" x:Name="btnRemovePatch" Content="Remove From Patch Group"
+                <CheckBox Grid.Column="1" x:Name="chkPatchDebug" Content="Patch Debug"
+                          Margin="0,0,12,0" VerticalAlignment="Center"/>
+                <Button Grid.Column="2" x:Name="btnRemovePatch" Content="Remove From Patch Group"
                         Margin="0,0,8,0" IsEnabled="False"/>
-                <Button Grid.Column="2" x:Name="btnExportHtml" Content="Export HTML"
+                <Button Grid.Column="3" x:Name="btnExportHtml" Content="Export HTML"
                         Margin="0,0,8,0" IsEnabled="False"/>
-                <Button Grid.Column="3" x:Name="btnExportCsv" Content="Export CSV"
+                <Button Grid.Column="4" x:Name="btnExportCsv" Content="Export CSV"
                         IsEnabled="False"/>
             </Grid>
         </Border>
@@ -324,6 +327,7 @@ $script:CurrentResults    = $null
 $script:CurrentServerData = $null
 $script:Templates         = @{}
 $script:IsRunning         = $false
+$script:PatchDebugLogFile = $null
 
 # ---------------------------------------------------------------------------
 # Helper: BrushConverter shorthand
@@ -357,6 +361,23 @@ function Set-StatusLight {
         'pass'    { $statusLight.Fill = New-Brush '#a6e3a1' }
         'fail'    { $statusLight.Fill = New-Brush '#f38ba8' }
         'mixed'   { $statusLight.Fill = New-Brush '#f9e2af' }
+    }
+}
+
+function Write-PatchDebug {
+    param([string]$Message)
+
+    if (-not $chkPatchDebug.IsChecked) { return }
+    if (-not $script:PatchDebugLogFile) {
+        $script:PatchDebugLogFile = Join-Path $logsPath ("PatchGroupDebug-{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
+    }
+
+    $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'), $Message
+    try {
+        Add-Content -Path $script:PatchDebugLogFile -Value $line -Encoding UTF8 -ErrorAction Stop
+    }
+    catch {
+        # Intentionally ignore debug logging failures to avoid interrupting QA flow.
     }
 }
 
@@ -794,30 +815,186 @@ $btnRemovePatch.Add_Click({
     )
 
     Set-Status "Searching patch groups for $shortName..." '#f9e2af'
+    Write-PatchDebug "START search shortName=$shortName"
     $window.Dispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Background, [action]{})
 
-    $foundGroup = $null
-    $computerObj = $null
+    function Get-GroupMemberDnList {
+        param(
+            [Parameter(Mandatory)][string]$GroupName,
+            [Parameter(Mandatory)][string]$DomainController
+        )
 
-    foreach ($pg in $patchGroups) {
+        $group = Get-ADGroup -Identity $GroupName -Server $DomainController -Properties DistinguishedName -ErrorAction Stop
+        $groupDn = $group.DistinguishedName
+
+        $memberDns = New-Object System.Collections.Generic.List[string]
+        $rangeStart = 0
+        $rangeSize = 1500
+
+        while ($true) {
+            $rangeEnd = $rangeStart + $rangeSize - 1
+            $rangeProp = "member;range=$rangeStart-$rangeEnd"
+            $obj = Get-ADObject -Identity $groupDn -Server $DomainController -Properties $rangeProp -ErrorAction Stop
+
+            $actualRangeProp = $obj.PSObject.Properties |
+                Where-Object { $_.Name -like 'member;range=*' } |
+                Select-Object -First 1
+
+            if (-not $actualRangeProp) { break }
+            if ($actualRangeProp.Value) {
+                foreach ($dn in $actualRangeProp.Value) {
+                    [void]$memberDns.Add([string]$dn)
+                }
+            }
+
+            if ($actualRangeProp.Name -like 'member;range=*-*') {
+                if ($actualRangeProp.Name -match '^member;range=\d+-\*$') { break }
+                if ($actualRangeProp.Name -match '^member;range=(\d+)-(\d+)$') {
+                    $rangeStart = [int]$matches[2] + 1
+                    continue
+                }
+            }
+
+            break
+        }
+
+        return ,$memberDns
+    }
+
+    function Resolve-MemberIdentity {
+        param(
+            [Parameter(Mandatory)][string]$MemberDn,
+            [Parameter(Mandatory)][string]$DomainController
+        )
+
+        $name = $null
+        $sam = $null
+        $sid = $null
+        $principal = $null
+
         try {
-            $members = Get-ADGroupMember -Identity $pg.Group -Server $pg.Server -ErrorAction Stop
-            $match = $members | Where-Object { $_.Name -eq $shortName }
-            if ($match) {
-                $foundGroup = $pg
-                $computerObj = $match
-                break
+            $obj = Get-ADObject -Identity $MemberDn -Server $DomainController -Properties Name,SamAccountName,ObjectSid -ErrorAction Stop
+            $name = $obj.Name
+            $sam = $obj.SamAccountName
+            if ($obj.ObjectSid) {
+                try { $sid = $obj.ObjectSid.Value } catch { $sid = [string]$obj.ObjectSid }
             }
         }
         catch {
+            $obj = $null
+        }
+
+        if (-not $sid -and $MemberDn -match '(?i)^CN=(S-\d-(?:\d+-)+\d+),CN=ForeignSecurityPrincipals,') {
+            $sid = $matches[1]
+        }
+
+        if ($sid) {
+            try {
+                $principal = ([System.Security.Principal.SecurityIdentifier]$sid).
+                    Translate([System.Security.Principal.NTAccount]).Value
+            }
+            catch {
+                $principal = $null
+            }
+        }
+
+        if (-not $name -and $MemberDn -match '(?i)^CN=([^,]+),') {
+            $name = $matches[1]
+        }
+
+        return [pscustomobject]@{
+            DistinguishedName = $MemberDn
+            Name              = $name
+            SamAccountName    = $sam
+            Sid               = $sid
+            PrincipalName     = $principal
+        }
+    }
+
+    function Test-MemberMatchesComputer {
+        param(
+            [Parameter(Mandatory)]$MemberInfo,
+            [Parameter(Mandatory)][string]$ComputerShortName
+        )
+
+        $target = $ComputerShortName.ToLowerInvariant()
+        $candidateNames = @()
+
+        if ($MemberInfo.Name)           { $candidateNames += [string]$MemberInfo.Name }
+        if ($MemberInfo.SamAccountName) { $candidateNames += [string]$MemberInfo.SamAccountName }
+        if ($MemberInfo.PrincipalName)  { $candidateNames += [string]$MemberInfo.PrincipalName }
+
+        foreach ($candidate in $candidateNames) {
+            $raw = $candidate.Trim()
+            if (-not $raw) { continue }
+
+            $trimmed = $raw
+            if ($trimmed.Contains('\')) {
+                $trimmed = ($trimmed -split '\\')[-1]
+            }
+            $trimmed = ($trimmed -replace '\$$', '')
+
+            if ($trimmed.ToLowerInvariant() -eq $target) { return $true }
+        }
+
+        return $false
+    }
+
+    $foundGroup = $null
+    $memberToRemoveDn = $null
+
+    foreach ($pg in $patchGroups) {
+        try {
+            Write-PatchDebug "Enumerating group $($pg.Server)\\$($pg.Group)"
+            $memberDns = Get-GroupMemberDnList -GroupName $pg.Group -DomainController $pg.Server
+            Write-PatchDebug "Group $($pg.Server)\\$($pg.Group) memberCount=$($memberDns.Count)"
+            foreach ($memberDn in $memberDns) {
+                $memberInfo = Resolve-MemberIdentity -MemberDn $memberDn -DomainController $pg.Server
+                $isMatch = Test-MemberMatchesComputer -MemberInfo $memberInfo -ComputerShortName $shortName
+                Write-PatchDebug ("EVAL group={0}\\{1} target={2} dn={3} name={4} sam={5} sid={6} principal={7} match={8}" -f `
+                    $pg.Server, $pg.Group, $shortName, $memberInfo.DistinguishedName, $memberInfo.Name, `
+                    $memberInfo.SamAccountName, $memberInfo.Sid, $memberInfo.PrincipalName, $isMatch)
+                if ($isMatch) {
+                    $foundGroup = $pg
+                    $memberToRemoveDn = $memberInfo.DistinguishedName
+                    Write-PatchDebug "MATCH group=$($pg.Server)\\$($pg.Group) removeDn=$memberToRemoveDn"
+                    break
+                }
+            }
+
+            if ($foundGroup) { break }
+        }
+        catch {
+            Write-PatchDebug "Group lookup failed for $($pg.Server)\\$($pg.Group): $($_.Exception.Message)"
             # Group not accessible or doesn't exist in this domain, continue searching
         }
     }
 
     if (-not $foundGroup) {
+        # Show helpful diagnostics (sample members from each patch group) to aid troubleshooting
+        $samples = foreach ($pg in $patchGroups) {
+            try {
+                $sampleDns = Get-GroupMemberDnList -GroupName $pg.Group -DomainController $pg.Server |
+                    Select-Object -First 8
+                $sampleMembers = foreach ($dn in $sampleDns) {
+                    $mi = Resolve-MemberIdentity -MemberDn $dn -DomainController $pg.Server
+                    if ($mi.PrincipalName) { $mi.PrincipalName }
+                    elseif ($mi.SamAccountName) { $mi.SamAccountName }
+                    elseif ($mi.Name) { $mi.Name }
+                    elseif ($mi.Sid) { $mi.Sid }
+                    else { $dn }
+                }
+                "$($pg.Server)\$($pg.Group): $($sampleMembers -join ', ')"
+            }
+            catch {
+                "$($pg.Server)\$($pg.Group): <unavailable>"
+            }
+        } -join "`n"
+
         [System.Windows.MessageBox]::Show(
-            "$shortName was not found in any new-server-build patch group.",
+            "$shortName was not found in any new-server-build patch group.`n`nSample members:`n$samples",
             'Patch Group', 'OK', 'Information')
+        Write-PatchDebug "NOT FOUND shortName=$shortName"
         Set-Status 'Ready' '#a6adc8'
         return
     }
@@ -828,19 +1005,22 @@ $btnRemovePatch.Add_Click({
         'Remove From Patch Group', 'YesNo', 'Question')
 
     if ($confirm -ne 'Yes') {
+        Write-PatchDebug "User cancelled removal for shortName=$shortName group=$groupDisplay"
         Set-Status 'Ready' '#a6adc8'
         return
     }
 
     try {
         Remove-ADGroupMember -Identity $foundGroup.Group -Server $foundGroup.Server `
-            -Members $computerObj -Confirm:$false -ErrorAction Stop
+            -Members $memberToRemoveDn -Confirm:$false -ErrorAction Stop
+        Write-PatchDebug "REMOVE SUCCESS shortName=$shortName group=$groupDisplay dn=$memberToRemoveDn"
         [System.Windows.MessageBox]::Show(
             "Success! $shortName removed from $groupDisplay.",
             'Patch Group', 'OK', 'Information')
         Set-Status "$shortName removed from $groupDisplay" '#a6e3a1'
     }
     catch {
+        Write-PatchDebug "REMOVE FAILED shortName=$shortName group=$groupDisplay dn=$memberToRemoveDn error=$($_.Exception.Message)"
         [System.Windows.MessageBox]::Show(
             "Failed to remove server from patch group: $($_.Exception.Message)",
             'Patch Group Error', 'OK', 'Error')
