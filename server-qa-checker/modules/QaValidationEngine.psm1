@@ -688,15 +688,15 @@ function Test-QaWinActivationCheck {
     }
 
     $raw = $check.Data
-    # Determine if activated: look for "permanently activated" in slmgr output
-    $isActivated = $raw -match 'permanently activated'
-    $displayStatus = if ($isActivated) { 'Permanently Activated' }
+    # Determine if activated: any form of "activated" in slmgr output is a pass
+    $isActivated = $raw -match 'activated'
+    $displayStatus = if ($raw -match 'permanently activated') { 'Permanently Activated' }
+                     elseif ($raw -match 'expir') { 'Activated (Expiring)' }
                      elseif ($raw -match 'notification mode') { 'Not Activated (Notification Mode)' }
-                     elseif ($raw -match 'expir') { 'Activation Expiring' }
                      else { $raw }
 
     New-QaValidationResult -Category 'Windows Activation' -CheckKey 'winActivation' `
-        -Enabled $true -Expected 'Permanently Activated' -Actual $displayStatus `
+        -Enabled $true -Expected 'Activated' -Actual $displayStatus `
         -Status $(if ($isActivated) { 'Pass' } else { 'Fail' }) `
         -Details '' -ErrorMessage $null
 }

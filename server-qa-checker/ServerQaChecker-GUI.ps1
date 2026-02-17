@@ -416,11 +416,11 @@ function Load-Templates {
 function Update-SummaryBar {
     param([PSCustomObject[]]$Results)
 
-    $passCount  = ($Results | Where-Object { $_.Status -eq 'Pass' }).Count
-    $failCount  = ($Results | Where-Object { $_.Status -eq 'Fail' }).Count
-    $warnCount  = ($Results | Where-Object { $_.Status -eq 'Warn' }).Count
-    $infoCount  = ($Results | Where-Object { $_.Status -eq 'Info' }).Count
-    $errorCount = ($Results | Where-Object { $_.Status -eq 'Error' }).Count
+    $passCount  = @($Results | Where-Object { $_.Status -eq 'Pass' }).Count
+    $failCount  = @($Results | Where-Object { $_.Status -eq 'Fail' }).Count
+    $warnCount  = @($Results | Where-Object { $_.Status -eq 'Warn' }).Count
+    $infoCount  = @($Results | Where-Object { $_.Status -eq 'Info' }).Count
+    $errorCount = @($Results | Where-Object { $_.Status -eq 'Error' }).Count
 
     $lblPassCount.Text  = "Pass: $passCount"
     $lblFailCount.Text  = "Fail: $failCount"
@@ -737,12 +737,12 @@ $btnRunQa.Add_Click({
         $txtRawData.Text = $rawJson
 
         # Set final status
-        $passCount = ($script:CurrentResults | Where-Object { $_.Status -eq 'Pass' }).Count
-        $failCount = ($script:CurrentResults | Where-Object { $_.Status -eq 'Fail' }).Count
+        $passCount = @($script:CurrentResults | Where-Object { $_.Status -eq 'Pass' }).Count
+        $failCount = @($script:CurrentResults | Where-Object { $_.Status -eq 'Fail' }).Count
         $gradedCount = $passCount + $failCount
         $pct = if ($gradedCount -gt 0) { [math]::Round(($passCount / $gradedCount) * 100) } else { 0 }
 
-        if ($failCount -eq 0 -and ($script:CurrentResults | Where-Object { $_.Status -eq 'Error' }).Count -eq 0) {
+        if ($failCount -eq 0 -and @($script:CurrentResults | Where-Object { $_.Status -eq 'Error' }).Count -eq 0) {
             Set-StatusLight 'pass'
             Set-Status "QA complete for $server - All checks passed ($passCount/$gradedCount)" '#a6e3a1'
             $btnRemovePatch.IsEnabled = $true
