@@ -20,6 +20,6 @@ $credential = Get-Credential -Message "Enter credentials to run Server QA Checke
 if (-not $credential) { exit 0 }
 
 Start-Process powershell.exe `
-    -ArgumentList "-ExecutionPolicy Bypass -NoProfile -File `"$guiScript`"" `
+    -ArgumentList "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File `"$guiScript`"" `
     -WorkingDirectory $scriptDir `
     -Credential $credential
