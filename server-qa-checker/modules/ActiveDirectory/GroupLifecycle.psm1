@@ -1,90 +1,58 @@
-function New-ActionResult {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)] [string]$Target,
-        [Parameter(Mandatory)] [string]$Action,
-        [Parameter(Mandatory)] [ValidateSet('Success', 'NotNeeded', 'Failed')] [string]$Status,
-        [Parameter(Mandatory)] [string]$Domain,
-        [Parameter(Mandatory)] [string]$Message
-    )
-
-    [pscustomobject]@{
-        TimeStamp = Get-Date
-        Target    = $Target
-        Action    = $Action
-        Status    = $Status
-        Domain    = $Domain
-        Message   = $Message
-    }
-}
-
 function Remove-ServerFromPatchGroups {
 
     [CmdletBinding(SupportsShouldProcess)]
     param(
-        [Parameter(Mandatory, ValueFromPipeline)]
-        [string[]]$ComputerFQDN,
+        [Parameter(Mandatory)]
+        [string]$ComputerFQDN,
 
         [Parameter(Mandatory)]
         [array]$PatchGroups
     )
 
-    begin {
-        $results = @()
+    $computerName   = $ComputerFQDN.Split('.')[0]
+    $computerDomain = $ComputerFQDN.Substring($ComputerFQDN.IndexOf('.') + 1)
+
+    Write-Verbose "Resolving computer '$computerName' in '$computerDomain'"
+
+    try {
+        $computer = Get-ADComputer -Identity $computerName -Server $computerDomain -ErrorAction Stop
+    }
+    catch {
+        Write-Error "Computer $ComputerFQDN not found in $computerDomain"
+        return
     }
 
-    process {
+    foreach ($group in $PatchGroups) {
 
-        foreach ($fqdn in $ComputerFQDN) {
+        $groupName   = $group.Name
+        $groupDomain = $group.Domain
 
-            $computerName   = $fqdn.Split('.')[0]
-            $computerDomain = $fqdn.Substring($fqdn.IndexOf('.') + 1)
+        Write-Verbose "Processing group '$groupName' in '$groupDomain'"
 
-            try {
-                $computer = Get-ADComputer -Identity $computerName -Server $computerDomain -Properties memberOf -ErrorAction Stop
-            }
-            catch {
-                $results += New-ActionResult $fqdn 'Resolve Computer' 'Failed' $computerDomain $_.Exception.Message
-                continue
-            }
+        try {
 
-            foreach ($group in $PatchGroups) {
+            if ($PSCmdlet.ShouldProcess($ComputerFQDN, "Remove from $groupName")) {
 
-                $groupName   = $group.Name
-                $groupDomain = $group.Domain
+                Remove-ADGroupMember `
+                    -Identity   $groupName `
+                    -Members    $computer `
+                    -Server     $groupDomain `
+                    -Confirm:$false `
+                    -ErrorAction Stop
 
-                try {
-
-                    $isMemberBefore = $computer.memberOf -match "CN=$groupName,"
-
-                    if (-not $isMemberBefore) {
-                        $results += New-ActionResult $fqdn "Remove from $groupName" 'NotNeeded' $groupDomain 'Not a member'
-                        continue
-                    }
-
-                    if ($PSCmdlet.ShouldProcess($fqdn, "Remove from $groupName")) {
-
-                        Remove-ADGroupMember `
-                            -Identity $groupName `
-                            -Members $computer `
-                            -Server $groupDomain `
-                            -Confirm:$false `
-                            -ErrorAction Stop
-                    }
-
-                    $results += New-ActionResult $fqdn "Remove from $groupName" 'Success' $groupDomain 'Membership removed'
-
-                }
-                catch {
-                    $results += New-ActionResult $fqdn "Remove from $groupName" 'Failed' $groupDomain $_.Exception.Message
+                [PSCustomObject]@{
+                    Computer  = $ComputerFQDN
+                    Group     = $groupName
+                    Domain    = $groupDomain
+                    Status    = 'Removed'
+                    TimeStamp = (Get-Date)
                 }
             }
         }
-    }
-
-    end {
-        return $results
+        catch {
+            Write-Verbose "$ComputerFQDN not in $groupName ($groupDomain)"
+        }
     }
 }
 
-Export-ModuleMember -Function New-ActionResult, Remove-ServerFromPatchGroups
+Export-ModuleMember -Function Remove-ServerFromPatchGroups

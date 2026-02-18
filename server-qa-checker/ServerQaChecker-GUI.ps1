@@ -815,138 +815,50 @@ $btnRemovePatch.Add_Click({
     $server = $txtServer.Text.Trim()
     if (-not $server) { return }
 
-    $confirmMessage = @(
-        "Remove server '$server' from all Patch Lifecycle groups?"
-        ''
-        'This action will:'
-        '- Attempt removal from all configured patch groups'
-        '- Only modify groups where membership exists'
-    ) -join "`r`n"
-
     $confirm = [System.Windows.MessageBox]::Show(
-        $confirmMessage,
+        "Confirm removal of '$server' from NewServerBuild patch group?",
         'Confirm Patch Group Removal',
         [System.Windows.MessageBoxButton]::YesNo,
         [System.Windows.MessageBoxImage]::Question
     )
-
-    if ($confirm -ne [System.Windows.MessageBoxResult]::Yes) {
-        return
-    }
+    if ($confirm -ne [System.Windows.MessageBoxResult]::Yes) { return }
 
     $btnRemovePatch.IsEnabled = $false
     Set-Status "Removing $server from patch lifecycle groups..." '#f9e2af'
 
-    $job = Start-Job -ScriptBlock {
-        param($ComputerFqdn, $PatchGroups, $LifecycleModulePath)
-        Import-Module $LifecycleModulePath -Force -ErrorAction Stop
-        Remove-ServerFromPatchGroups -ComputerFQDN $ComputerFqdn -PatchGroups $PatchGroups
-    } -ArgumentList $server, $script:PatchGroups, $groupLifecycleModulePath
-    $jobStartTime = [datetime]::UtcNow
-
-    $timer = New-Object System.Windows.Threading.DispatcherTimer
-    $timer.Interval = [TimeSpan]::FromMilliseconds(500)
-    $timer.Add_Tick({
-        $elapsed = ([datetime]::UtcNow - $jobStartTime).TotalSeconds
-        if ($job.State -eq 'Running' -and $elapsed -lt 60) { return }
-
-        $timer.Stop()
-        try {
-            if ($elapsed -ge 60 -and $job.State -eq 'Running') {
-                Stop-Job -Job $job
-                $resultObjects = @(
-                    [pscustomobject]@{
-                        TimeStamp = Get-Date
-                        Target    = $server
-                        Action    = 'Runspace Execution'
-                        Status    = 'Failed'
-                        Domain    = ''
-                        Message   = 'Operation timed out after 60 seconds'
-                    }
-                )
-            }
-            else {
-                $resultObjects = @(Receive-Job -Job $job -ErrorAction Stop)
-            }
-        }
-        catch {
-            $resultObjects = @(
-                [pscustomobject]@{
-                    TimeStamp = Get-Date
-                    Target    = $server
-                    Action    = 'Runspace Execution'
-                    Status    = 'Failed'
-                    Domain    = ''
-                    Message   = $_.Exception.Message
-                }
-            )
-        }
-        finally {
-            Remove-Job -Job $job -Force
-            $btnRemovePatch.IsEnabled = $true
-        }
-
-        $successItems = @($resultObjects | Where-Object { $_.Status -eq 'Success' })
-        $notNeededItems = @($resultObjects | Where-Object { $_.Status -eq 'NotNeeded' })
-        $failedItems = @($resultObjects | Where-Object { $_.Status -eq 'Failed' })
-        $resolveFailure = @($failedItems | Where-Object { $_.Action -eq 'Resolve Computer' })
-
-        if ($resolveFailure.Count -gt 0) {
+    try {
+        $results = Remove-ServerFromPatchGroups -ComputerFQDN $server -PatchGroups $script:PatchGroups -ErrorAction Stop
+        if ($results) {
             [System.Windows.MessageBox]::Show(
-                'Unable to locate computer object in Active Directory.',
-                'Server Not Found',
-                [System.Windows.MessageBoxButton]::OK,
-                [System.Windows.MessageBoxImage]::Error
-            ) | Out-Null
-            Set-Status 'Patch group removal failed' '#f38ba8'
-            return
-        }
-
-        if ($failedItems.Count -gt 0) {
-            $errorLines = $failedItems | ForEach-Object {
-                if ($_.Domain) { "$($_.Action) ($($_.Domain)): $($_.Message)" } else { "$($_.Action): $($_.Message)" }
-            }
-            $errorMessage = $errorLines -join "`r`n"
-
-            [System.Windows.MessageBox]::Show(
-                $errorMessage,
-                'Patch Group Removal Failed',
-                [System.Windows.MessageBoxButton]::OK,
-                [System.Windows.MessageBoxImage]::Error
-            ) | Out-Null
-            Set-Status 'Patch group removal failed' '#f38ba8'
-            return
-        }
-
-        if ($successItems.Count -gt 0) {
-            $messageLines = New-Object System.Collections.Generic.List[string]
-            $messageLines.Add("Server: $server")
-            $messageLines.Add('')
-            $messageLines.Add('Removed from:')
-            foreach ($item in $successItems) {
-                $groupName = ($item.Action -replace '^Remove from\s+', '')
-                $messageLines.Add("- $groupName ($($item.Domain))")
-            }
-
-            [System.Windows.MessageBox]::Show(
-                ($messageLines -join "`r`n"),
-                'Patch Group Update Complete',
+                'Success!',
+                'Patch Group Removal Complete',
                 [System.Windows.MessageBoxButton]::OK,
                 [System.Windows.MessageBoxImage]::Information
             ) | Out-Null
-            Set-Status "Patch group update complete for $server" '#a6e3a1'
-            return
+            Set-Status "Patch group removal complete for $server" '#a6e3a1'
         }
-
+        else {
+            [System.Windows.MessageBox]::Show(
+                'Server was not a member of any patch lifecycle groups.',
+                'No Changes Required',
+                [System.Windows.MessageBoxButton]::OK,
+                [System.Windows.MessageBoxImage]::Information
+            ) | Out-Null
+            Set-Status "No patch group changes required for $server" '#a6adc8'
+        }
+    }
+    catch {
         [System.Windows.MessageBox]::Show(
-            'Server was not a member of any patch lifecycle groups.',
-            'No Changes Required',
+            $_.Exception.Message,
+            'Patch Group Removal Failed',
             [System.Windows.MessageBoxButton]::OK,
-            [System.Windows.MessageBoxImage]::Information
+            [System.Windows.MessageBoxImage]::Error
         ) | Out-Null
-        Set-Status "No patch group changes required for $server" '#a6adc8'
-    })
-    $timer.Start()
+        Set-Status 'Patch group removal failed' '#f38ba8'
+    }
+    finally {
+        $btnRemovePatch.IsEnabled = $true
+    }
 })
 
 # Event: Export HTML
