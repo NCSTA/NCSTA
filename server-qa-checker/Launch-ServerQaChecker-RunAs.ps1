@@ -3,10 +3,17 @@
 .SYNOPSIS
     Launches Server QA Checker as an alternate user.
 .DESCRIPTION
-    Prompts for credentials and starts ServerQaChecker-GUI.ps1 under the
-    specified account. The working directory is set to the project folder so
-    all relative paths (modules, templates, reports) resolve correctly.
+    Uses runas to start ServerQaChecker-GUI.ps1 under a specified account.
+    Windows prompts for the password natively. The working directory is set
+    to the project folder so all relative paths resolve correctly.
+.NOTES
+    Syntax: .\Launch-ServerQaChecker-RunAs.ps1 -Username DOMAIN\user
+    If -Username is omitted you will be prompted to enter it.
 #>
+
+param(
+    [string]$Username
+)
 
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Definition }
 $guiScript = Join-Path $scriptDir 'ServerQaChecker-GUI.ps1'
@@ -16,10 +23,11 @@ if (-not (Test-Path $guiScript)) {
     exit 1
 }
 
-$credential = Get-Credential -Message "Enter credentials to run Server QA Checker"
-if (-not $credential) { exit 0 }
+if (-not $Username) {
+    $Username = Read-Host "Enter username (e.g. DOMAIN\tieraccount)"
+}
+if (-not $Username) { exit 0 }
 
-Start-Process powershell.exe `
-    -ArgumentList "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File `"$guiScript`"" `
-    -WorkingDirectory $scriptDir `
-    -Credential $credential
+$psArgs = "-ExecutionPolicy Bypass -NoProfile -STA -File `"$guiScript`""
+
+runas /user:$Username "powershell.exe $psArgs"
