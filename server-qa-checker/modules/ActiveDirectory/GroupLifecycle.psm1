@@ -1,21 +1,11 @@
 function New-ActionResult {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
-        [string]$Target,
-
-        [Parameter(Mandatory)]
-        [string]$Action,
-
-        [Parameter(Mandatory)]
-        [ValidateSet('Success', 'NotNeeded', 'Failed')]
-        [string]$Status,
-
-        [Parameter(Mandatory)]
-        [string]$Domain,
-
-        [Parameter(Mandatory)]
-        [string]$Message
+        [Parameter(Mandatory)] [string]$Target,
+        [Parameter(Mandatory)] [string]$Action,
+        [Parameter(Mandatory)] [ValidateSet('Success', 'NotNeeded', 'Failed')] [string]$Status,
+        [Parameter(Mandatory)] [string]$Domain,
+        [Parameter(Mandatory)] [string]$Message
     )
 
     [pscustomobject]@{
@@ -29,6 +19,7 @@ function New-ActionResult {
 }
 
 function Remove-ServerFromPatchGroups {
+
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
@@ -39,87 +30,60 @@ function Remove-ServerFromPatchGroups {
     )
 
     begin {
-        $results = New-Object System.Collections.Generic.List[object]
-
-        if (-not (Get-Module -Name ActiveDirectory)) {
-            Import-Module ActiveDirectory -ErrorAction Stop
-        }
+        $results = @()
     }
 
     process {
+
         foreach ($fqdn in $ComputerFQDN) {
-            if ([string]::IsNullOrWhiteSpace($fqdn)) {
-                continue
-            }
 
-            $targetFqdn = $fqdn.Trim()
-            $firstDot = $targetFqdn.IndexOf('.')
-            if ($firstDot -lt 1) {
-                $results.Add((New-ActionResult -Target $targetFqdn -Action 'Resolve Computer' -Status 'Failed' -Domain '' -Message 'Computer FQDN must include a domain.'))
-                continue
-            }
-
-            $computerName = $targetFqdn.Substring(0, $firstDot)
-            $computerDomain = $targetFqdn.Substring($firstDot + 1)
+            $computerName   = $fqdn.Split('.')[0]
+            $computerDomain = $fqdn.Substring($fqdn.IndexOf('.') + 1)
 
             try {
-                $computer = Get-ADComputer -Identity $computerName -Server $computerDomain -Properties DistinguishedName, memberOf -ErrorAction Stop
+                $computer = Get-ADComputer -Identity $computerName -Server $computerDomain -Properties memberOf -ErrorAction Stop
             }
             catch {
-                $results.Add((New-ActionResult -Target $targetFqdn -Action 'Resolve Computer' -Status 'Failed' -Domain $computerDomain -Message $_.Exception.Message))
+                $results += New-ActionResult $fqdn 'Resolve Computer' 'Failed' $computerDomain $_.Exception.Message
                 continue
             }
 
             foreach ($group in $PatchGroups) {
-                $groupName = [string]$group.Name
-                $groupDomain = [string]$group.Domain
 
-                if ([string]::IsNullOrWhiteSpace($groupName) -or [string]::IsNullOrWhiteSpace($groupDomain)) {
-                    $results.Add((New-ActionResult -Target $targetFqdn -Action 'Validate Patch Group Config' -Status 'Failed' -Domain $groupDomain -Message 'Patch group entry must include Name and Domain.'))
-                    continue
-                }
+                $groupName   = $group.Name
+                $groupDomain = $group.Domain
 
-                $actionLabel = "Remove from $groupName"
                 try {
-                    $groupObject = Get-ADGroup -Identity $groupName -Server $groupDomain -Properties DistinguishedName -ErrorAction Stop
-                    $groupDn = $groupObject.DistinguishedName
 
-                    $memberOfBefore = @($computer.memberOf)
-                    $isMemberBefore = $memberOfBefore -contains $groupDn
+                    $isMemberBefore = $computer.memberOf -match "CN=$groupName,"
 
                     if (-not $isMemberBefore) {
-                        $results.Add((New-ActionResult -Target $targetFqdn -Action $actionLabel -Status 'NotNeeded' -Domain $groupDomain -Message 'Not a member'))
+                        $results += New-ActionResult $fqdn "Remove from $groupName" 'NotNeeded' $groupDomain 'Not a member'
                         continue
                     }
 
-                    if ($PSCmdlet.ShouldProcess($targetFqdn, $actionLabel)) {
-                        Remove-ADGroupMember -Identity $groupDn -Members $computer.DistinguishedName -Server $groupDomain -Confirm:$false -ErrorAction Stop
-                    }
-                    elseif ($WhatIfPreference) {
-                        $results.Add((New-ActionResult -Target $targetFqdn -Action $actionLabel -Status 'NotNeeded' -Domain $groupDomain -Message 'WhatIf: no change applied'))
-                        continue
+                    if ($PSCmdlet.ShouldProcess($fqdn, "Remove from $groupName")) {
+
+                        Remove-ADGroupMember `
+                            -Identity $groupName `
+                            -Members $computer `
+                            -Server $groupDomain `
+                            -Confirm:$false `
+                            -ErrorAction Stop
                     }
 
-                    $computerAfter = Get-ADComputer -Identity $computer.DistinguishedName -Server $computerDomain -Properties memberOf -ErrorAction Stop
-                    $memberOfAfter = @($computerAfter.memberOf)
-                    $isMemberAfter = $memberOfAfter -contains $groupDn
+                    $results += New-ActionResult $fqdn "Remove from $groupName" 'Success' $groupDomain 'Membership removed'
 
-                    if (-not $isMemberAfter) {
-                        $results.Add((New-ActionResult -Target $targetFqdn -Action $actionLabel -Status 'Success' -Domain $groupDomain -Message 'Membership removed'))
-                    }
-                    else {
-                        $results.Add((New-ActionResult -Target $targetFqdn -Action $actionLabel -Status 'Failed' -Domain $groupDomain -Message 'Membership still present after removal attempt'))
-                    }
                 }
                 catch {
-                    $results.Add((New-ActionResult -Target $targetFqdn -Action $actionLabel -Status 'Failed' -Domain $groupDomain -Message $_.Exception.Message))
+                    $results += New-ActionResult $fqdn "Remove from $groupName" 'Failed' $groupDomain $_.Exception.Message
                 }
             }
         }
     }
 
     end {
-        $results
+        return $results
     }
 }
 

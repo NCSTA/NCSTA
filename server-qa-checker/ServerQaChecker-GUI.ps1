@@ -837,24 +837,37 @@ $btnRemovePatch.Add_Click({
     $btnRemovePatch.IsEnabled = $false
     Set-Status "Removing $server from patch lifecycle groups..." '#f9e2af'
 
-    $ps = [powershell]::Create()
-    $null = $ps.AddScript({
+    $job = Start-Job -ScriptBlock {
         param($ComputerFqdn, $PatchGroups, $LifecycleModulePath)
-
         Import-Module $LifecycleModulePath -Force -ErrorAction Stop
         Remove-ServerFromPatchGroups -ComputerFQDN $ComputerFqdn -PatchGroups $PatchGroups
-    }).AddArgument($server).AddArgument($script:PatchGroups).AddArgument($groupLifecycleModulePath)
-
-    $asyncResult = $ps.BeginInvoke()
+    } -ArgumentList $server, $script:PatchGroups, $groupLifecycleModulePath
+    $jobStartTime = [datetime]::UtcNow
 
     $timer = New-Object System.Windows.Threading.DispatcherTimer
-    $timer.Interval = [TimeSpan]::FromMilliseconds(250)
+    $timer.Interval = [TimeSpan]::FromMilliseconds(500)
     $timer.Add_Tick({
-        if (-not $asyncResult.IsCompleted) { return }
+        $elapsed = ([datetime]::UtcNow - $jobStartTime).TotalSeconds
+        if ($job.State -eq 'Running' -and $elapsed -lt 60) { return }
 
         $timer.Stop()
         try {
-            $resultObjects = @($ps.EndInvoke($asyncResult))
+            if ($elapsed -ge 60 -and $job.State -eq 'Running') {
+                Stop-Job -Job $job
+                $resultObjects = @(
+                    [pscustomobject]@{
+                        TimeStamp = Get-Date
+                        Target    = $server
+                        Action    = 'Runspace Execution'
+                        Status    = 'Failed'
+                        Domain    = ''
+                        Message   = 'Operation timed out after 60 seconds'
+                    }
+                )
+            }
+            else {
+                $resultObjects = @(Receive-Job -Job $job -ErrorAction Stop)
+            }
         }
         catch {
             $resultObjects = @(
@@ -869,7 +882,7 @@ $btnRemovePatch.Add_Click({
             )
         }
         finally {
-            $ps.Dispose()
+            Remove-Job -Job $job -Force
             $btnRemovePatch.IsEnabled = $true
         }
 
@@ -913,14 +926,6 @@ $btnRemovePatch.Add_Click({
             foreach ($item in $successItems) {
                 $groupName = ($item.Action -replace '^Remove from\s+', '')
                 $messageLines.Add("- $groupName ($($item.Domain))")
-            }
-            if ($notNeededItems.Count -gt 0) {
-                $messageLines.Add('')
-                $messageLines.Add('Not a member of:')
-                foreach ($item in $notNeededItems) {
-                    $groupName = ($item.Action -replace '^Remove from\s+', '')
-                    $messageLines.Add("- $groupName ($($item.Domain))")
-                }
             }
 
             [System.Windows.MessageBox]::Show(
