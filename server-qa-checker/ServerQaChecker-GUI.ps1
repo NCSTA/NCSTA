@@ -177,7 +177,12 @@ if (Test-Path $groupLifecycleModulePath) {
                            VerticalAlignment="Center" Margin="0,0,20,0"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Label Content="Server:" Margin="0,0,4,0"/>
-                    <TextBox x:Name="txtServer" Width="260" Margin="0,0,12,0"/>
+                    <Grid Width="260" Margin="0,0,12,0">
+                        <TextBox x:Name="txtServer"/>
+                        <TextBlock x:Name="txtServerHint" Text="ServerFQDN" Foreground="#585b70"
+                                   IsHitTestVisible="False" VerticalAlignment="Center" Margin="4,0,0,0"
+                                   FontStyle="Italic"/>
+                    </Grid>
                     <Label Content="Template:" Margin="0,0,4,0"/>
                     <ComboBox x:Name="cboTemplate" Width="200" Margin="0,0,12,0"/>
                 </StackPanel>
@@ -266,19 +271,6 @@ if (Test-Path $groupLifecycleModulePath) {
                          FontFamily="Consolas" FontSize="12"
                          Padding="16"/>
             </TabItem>
-
-            <!-- TAB: Remediation (future) -->
-            <TabItem Header="VMware" x:Name="tabRemediation">
-                <StackPanel Margin="16" VerticalAlignment="Center"
-                            HorizontalAlignment="Center">
-                    <TextBlock Foreground="#6c7086" FontSize="16"
-                               Text="VMware actions will be available in a future release."
-                               HorizontalAlignment="Center"/>
-                    <TextBlock Foreground="#45475a" FontSize="12"
-                               Text="This tab will support PowerCLI-based server modifications."
-                               HorizontalAlignment="Center" Margin="0,8,0,0"/>
-                </StackPanel>
-            </TabItem>
         </TabControl>
 
         <!-- Status Bar -->
@@ -289,17 +281,14 @@ if (Test-Path $groupLifecycleModulePath) {
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" x:Name="statusText" Foreground="#a6adc8"
                            FontSize="12" Text="Ready" VerticalAlignment="Center"/>
-                <CheckBox Grid.Column="1" x:Name="chkPatchDebug" Content="Patch Debug"
-                          Margin="0,0,12,0" VerticalAlignment="Center"/>
-                <Button Grid.Column="2" x:Name="btnRemovePatch" Content="Remove From Patch Group"
+                <Button Grid.Column="1" x:Name="btnRemovePatch" Content="Remove From Patch Group"
                         Margin="0,0,8,0" IsEnabled="False"/>
-                <Button Grid.Column="3" x:Name="btnExportHtml" Content="Export HTML"
+                <Button Grid.Column="2" x:Name="btnExportHtml" Content="Export HTML"
                         Margin="0,0,8,0" IsEnabled="False"/>
-                <Button Grid.Column="4" x:Name="btnExportCsv" Content="Export CSV"
+                <Button Grid.Column="3" x:Name="btnExportCsv" Content="Export CSV"
                         IsEnabled="False"/>
             </Grid>
         </Border>
@@ -331,7 +320,6 @@ $script:CurrentResults    = $null
 $script:CurrentServerData = $null
 $script:Templates         = @{}
 $script:IsRunning         = $false
-$script:PatchDebugLogFile = $null
 $script:PatchGroups       = @(
     @{ Name = 'Patch-nsm-newserverbuild'; Domain = 'DOMAIN1.REDACTED' }
     @{ Name = 'Patch-gov-newserverbuild'; Domain = 'DOMAIN1.REDACTED' }
@@ -370,23 +358,6 @@ function Set-StatusLight {
         'pass'    { $statusLight.Fill = New-Brush '#a6e3a1' }
         'fail'    { $statusLight.Fill = New-Brush '#f38ba8' }
         'mixed'   { $statusLight.Fill = New-Brush '#f9e2af' }
-    }
-}
-
-function Write-PatchDebug {
-    param([string]$Message)
-
-    if (-not $chkPatchDebug.IsChecked) { return }
-    if (-not $script:PatchDebugLogFile) {
-        $script:PatchDebugLogFile = Join-Path $logsPath ("PatchGroupDebug-{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
-    }
-
-    $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'), $Message
-    try {
-        Add-Content -Path $script:PatchDebugLogFile -Value $line -Encoding UTF8 -ErrorAction Stop
-    }
-    catch {
-        # Intentionally ignore debug logging failures to avoid interrupting QA flow.
     }
 }
 
@@ -792,6 +763,10 @@ $txtServer.Add_KeyDown({
         $btnRunQa.RaiseEvent([System.Windows.RoutedEventArgs]::new([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))
     }
 })
+
+$txtServer.Add_TextChanged({ $txtServerHint.Visibility = if ($txtServer.Text) { 'Hidden' } else { 'Visible' } })
+$txtServer.Add_GotFocus({   $txtServerHint.Visibility = 'Hidden' })
+$txtServer.Add_LostFocus({  $txtServerHint.Visibility = if ($txtServer.Text) { 'Hidden' } else { 'Visible' } })
 
 # ---------------------------------------------------------------------------
 # Event: Fail-only filter toggle
