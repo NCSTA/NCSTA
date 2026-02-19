@@ -34,8 +34,13 @@ function Get-QaServerData {
         [Parameter(Mandatory = $true)]
         [string]$ComputerName,
 
-        [string]$TracerouteTarget = 'DOMAIN1.REDACTED'
+        [string]$TracerouteTarget = 'DOMAIN1.REDACTED',
+
+        [System.Management.Automation.PSCredential]$Credential
     )
+
+    $credSplat = @{}
+    if ($Credential) { $credSplat['Credential'] = $Credential }
 
     $result = [PSCustomObject]@{
         ComputerName = $ComputerName
@@ -82,7 +87,7 @@ function Get-QaServerData {
     else {
         # --- Step 2: Single Invoke-Command for all remote checks ---
         try {
-            $remoteData = Invoke-Command -ComputerName $ComputerName -ScriptBlock {
+            $remoteData = Invoke-Command -ComputerName $ComputerName @credSplat -ScriptBlock {
                 param($TraceTarget)
 
                 $output = @{}
@@ -346,7 +351,7 @@ function Get-QaServerData {
             if ($domainParts.Count -gt 0) {
                 $serverParam['Server'] = $domainParts -join '.'
             }
-            $adComputer = Get-ADComputer -Identity $shortName -Properties CanonicalName, DistinguishedName @serverParam
+            $adComputer = Get-ADComputer -Identity $shortName -Properties CanonicalName, DistinguishedName @serverParam @credSplat
             $result.OuPath = New-QaCheckResult -Success $true -Data ([PSCustomObject]@{
                 Name              = $adComputer.Name
                 CanonicalName     = $adComputer.CanonicalName
