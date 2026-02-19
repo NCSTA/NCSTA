@@ -188,6 +188,10 @@ if (Test-Path $groupLifecycleModulePath) {
                 </StackPanel>
                 <Button Grid.Column="2" x:Name="btnRunQa" Content="Run QA" Margin="10,0,0,0"
                         Style="{StaticResource SuccessButton}"/>
+                <Button Grid.Column="3" x:Name="btnCredential" Content="Credentials"
+                        Margin="8,0,0,0" FontSize="11" Padding="10,6"
+                        Background="#45475a" Foreground="#a6adc8"
+                        ToolTip="Left-click: set alternate credentials. Right-click: clear."/>
                 <Ellipse Grid.Column="4" x:Name="statusLight" Width="14" Height="14"
                          Fill="#6c7086" Margin="12,0,0,0" VerticalAlignment="Center"/>
             </Grid>
@@ -320,6 +324,8 @@ $script:CurrentResults    = $null
 $script:CurrentServerData = $null
 $script:Templates         = @{}
 $script:IsRunning         = $false
+$script:Credential        = $null
+$script:CredentialSplat   = @{}
 $script:PatchGroups       = @(
     @{ Name = 'Patch-nsm-newserverbuild'; Domain = 'DOMAIN1.REDACTED' }
     @{ Name = 'Patch-gov-newserverbuild'; Domain = 'DOMAIN1.REDACTED' }
@@ -651,6 +657,29 @@ function Build-ResultsPanel {
 }
 
 # ---------------------------------------------------------------------------
+# Event: Set / Clear alternate credentials
+# ---------------------------------------------------------------------------
+
+$btnCredential.Add_Click({
+    $cred = Get-Credential -Message 'Enter alternate credentials for remote server access'
+    if ($cred) {
+        $script:Credential      = $cred
+        $script:CredentialSplat = @{ Credential = $cred }
+        $btnCredential.Content    = $cred.UserName
+        $btnCredential.Background = New-Brush '#fab387'
+        $btnCredential.Foreground = New-Brush '#1e1e2e'
+    }
+})
+
+$btnCredential.Add_MouseRightButtonUp({
+    $script:Credential      = $null
+    $script:CredentialSplat = @{}
+    $btnCredential.Content    = 'Credentials'
+    $btnCredential.Background = New-Brush '#45475a'
+    $btnCredential.Foreground = New-Brush '#a6adc8'
+})
+
+# ---------------------------------------------------------------------------
 # Event: Run QA
 # ---------------------------------------------------------------------------
 
@@ -700,7 +729,7 @@ $btnRunQa.Add_Click({
         Set-Status "Collecting data from $server..." '#f9e2af'
         $window.Dispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Background, [action]{})
 
-        $script:CurrentServerData = Get-QaServerData -ComputerName $server -TracerouteTarget $traceTarget
+        $script:CurrentServerData = Get-QaServerData -ComputerName $server -TracerouteTarget $traceTarget @script:CredentialSplat
 
         # Validate
         Set-Status "Validating results against template '$templateName'..." '#f9e2af'
@@ -802,7 +831,7 @@ $btnRemovePatch.Add_Click({
     Set-Status "Removing $server from patch lifecycle groups..." '#f9e2af'
 
     try {
-        $results = Remove-ServerFromPatchGroups -ComputerFQDN $server -PatchGroups $script:PatchGroups -ErrorAction Stop
+        $results = Remove-ServerFromPatchGroups -ComputerFQDN $server -PatchGroups $script:PatchGroups @script:CredentialSplat -ErrorAction Stop
         if ($results) {
             [System.Windows.MessageBox]::Show(
                 'Success!',
