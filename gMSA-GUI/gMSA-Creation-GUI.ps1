@@ -352,7 +352,7 @@ function Get-InputState {
         Servers        = $servers
         SamAccountName = $samAccountName
         DnsHostName    = $dnsHostName
-        EnableDelegation = [bool]$ui.DelegationCheckBox.IsChecked
+        EnableDelegation = ($ui.DelegationCheckBox.IsChecked -eq $true)
     }
 }
 
@@ -450,16 +450,18 @@ function Get-LookupCommandText {
 function Invoke-ManagedPasswordLookup {
     param([switch]$Silent)
 
-    $state = Get-InputState
-    $issues = Test-LookupInputs -InputState $state
-    if ($issues.Count -gt 0) {
-        $message = $issues -join [Environment]::NewLine
-        Write-Log -Level 'ERROR' -Message $message
-        if (-not $Silent) { Show-ErrorDialog -Message $message }
-        return
-    }
-
+    # Everything inside one try-catch — Get-InputState and validation included —
+    # so no exception can escape and crash the WPF dispatcher.
     try {
+        $state = Get-InputState
+        $issues = Test-LookupInputs -InputState $state
+        if ($issues.Count -gt 0) {
+            $message = $issues -join [Environment]::NewLine
+            Write-Log -Level 'ERROR' -Message $message
+            if (-not $Silent) { Show-ErrorDialog -Message $message }
+            return
+        }
+
         Ensure-ActiveDirectoryModule
         $lookupCommand = Get-LookupCommandText -InputState $state
         Write-Log -Level 'STEP' -Message ("Running lookup command: {0}" -f $lookupCommand)
@@ -472,7 +474,7 @@ function Invoke-ManagedPasswordLookup {
         if ($principals.Count -eq 0) {
             $ui.LookupOutputTextBox.Text = 'No principals are currently configured.'
         } else {
-            $ui.LookupOutputTextBox.Text = ($principals | ForEach-Object { $_ }) -join [Environment]::NewLine
+            $ui.LookupOutputTextBox.Text = ($principals | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
         }
 
         Write-Log -Level 'SUCCESS' -Message ("Lookup completed successfully for '{0}' in '{1}'." -f $state.ServiceName, $state.Domain)
@@ -531,56 +533,63 @@ function Register-DirtyTracking {
 }
 
 $ui.PreviewButton.Add_Click({
-    $state = Get-InputState
-    $issues = Test-CreateInputs -InputState $state
-    if ($issues.Count -gt 0) {
-        $message = $issues -join [Environment]::NewLine
-        Write-Log -Level 'ERROR' -Message $message
-        Show-ErrorDialog -Message $message
-        return
+    try {
+        $state = Get-InputState
+        $issues = Test-CreateInputs -InputState $state
+        if ($issues.Count -gt 0) {
+            $message = $issues -join [Environment]::NewLine
+            Write-Log -Level 'ERROR' -Message $message
+            Show-ErrorDialog -Message $message
+            return
+        }
+
+        $script:PreviewCommandText = Format-Preview -InputState $state
+        $script:PreviewSignature   = Get-StateSignature -InputState $state
+        $ui.PreviewTextBox.Text    = $script:PreviewCommandText
+        $ui.ExecuteButton.IsEnabled = $true
+
+        Write-Log -Level 'STEP' -Message ("Preview generated for '{0}' in '{1}'." -f $state.ServiceName, $state.Domain)
     }
-
-    $script:PreviewCommandText = Format-Preview -InputState $state
-    $script:PreviewSignature   = Get-StateSignature -InputState $state
-    $ui.PreviewTextBox.Text    = $script:PreviewCommandText
-    $ui.ExecuteButton.IsEnabled = $true
-
-    Write-Log -Level 'STEP' -Message ("Preview generated for '{0}' in '{1}'." -f $state.ServiceName, $state.Domain)
+    catch {
+        $errorText = ($_ | Out-String).Trim()
+        Write-Log -Level 'ERROR' -Message ("Preview failed: {0}" -f $errorText)
+        Show-ErrorDialog -Message ("Preview failed.`n`n{0}" -f $_.Exception.Message)
+    }
 })
 
 $ui.ExecuteButton.Add_Click({
-    $state  = Get-InputState
-    $issues = Test-CreateInputs -InputState $state
-    if ($issues.Count -gt 0) {
-        $message = $issues -join [Environment]::NewLine
-        Write-Log -Level 'ERROR' -Message $message
-        Show-ErrorDialog -Message $message
-        return
-    }
-
-    $signature = Get-StateSignature -InputState $state
-    if ($signature -ne $script:PreviewSignature) {
-        $message = 'The form has changed since the last preview. Generate a new preview before executing.'
-        Write-Log -Level 'ERROR' -Message $message
-        Show-ErrorDialog -Message $message
-        Reset-PreviewState
-        return
-    }
-
-    $confirmation = [System.Windows.MessageBox]::Show(
-        $window,
-        ("Execute gMSA creation for '{0}' in '{1}' now?" -f $state.ServiceName, $state.Domain),
-        'Confirm Execution',
-        [System.Windows.MessageBoxButton]::YesNo,
-        [System.Windows.MessageBoxImage]::Warning
-    )
-
-    if ($confirmation -ne [System.Windows.MessageBoxResult]::Yes) {
-        Write-Log -Level 'INFO' -Message 'Execution cancelled by user.'
-        return
-    }
-
     try {
+        $state  = Get-InputState
+        $issues = Test-CreateInputs -InputState $state
+        if ($issues.Count -gt 0) {
+            $message = $issues -join [Environment]::NewLine
+            Write-Log -Level 'ERROR' -Message $message
+            Show-ErrorDialog -Message $message
+            return
+        }
+
+        $signature = Get-StateSignature -InputState $state
+        if ($signature -ne $script:PreviewSignature) {
+            $message = 'The form has changed since the last preview. Generate a new preview before executing.'
+            Write-Log -Level 'ERROR' -Message $message
+            Show-ErrorDialog -Message $message
+            Reset-PreviewState
+            return
+        }
+
+        $confirmation = [System.Windows.MessageBox]::Show(
+            $window,
+            ("Execute gMSA creation for '{0}' in '{1}' now?" -f $state.ServiceName, $state.Domain),
+            'Confirm Execution',
+            [System.Windows.MessageBoxButton]::YesNo,
+            [System.Windows.MessageBoxImage]::Warning
+        )
+
+        if ($confirmation -ne [System.Windows.MessageBoxResult]::Yes) {
+            Write-Log -Level 'INFO' -Message 'Execution cancelled by user.'
+            return
+        }
+
         Write-Log -Level 'STEP' -Message 'Execution confirmed by user.'
         Invoke-CreateGmsa -InputState $state
 
@@ -607,28 +616,41 @@ $ui.ExecuteButton.Add_Click({
 })
 
 $ui.LookupButton.Add_Click({
-    Invoke-ManagedPasswordLookup
+    try { Invoke-ManagedPasswordLookup }
+    catch {
+        $errorText = ($_ | Out-String).Trim()
+        Write-Log -Level 'ERROR' -Message ("Unhandled lookup error: {0}" -f $errorText)
+        Show-ErrorDialog -Message ("An unexpected error occurred during lookup.`n`n{0}" -f $_.Exception.Message)
+    }
 })
 
 $ui.ClearLookupButton.Add_Click({
-    $ui.LookupOutputTextBox.Clear()
-    Write-Log -Level 'INFO' -Message 'Lookup output cleared.'
+    try {
+        $ui.LookupOutputTextBox.Clear()
+        Write-Log -Level 'INFO' -Message 'Lookup output cleared.'
+    } catch { Write-Log -Level 'ERROR' -Message ("Clear lookup failed: {0}" -f $_.Exception.Message) }
 })
 
 $ui.ClearLogButton.Add_Click({
-    $ui.LogTextBox.Clear()
-    Write-Log -Level 'INFO' -Message 'Log cleared.'
+    try {
+        $ui.LogTextBox.Clear()
+        Write-Log -Level 'INFO' -Message 'Log cleared.'
+    } catch { }
 })
 
 $ui.ResetButton.Add_Click({
-    $ui.DomainTextBox.Clear()
-    $ui.ServiceNameTextBox.Clear()
-    $ui.ServersTextBox.Clear()
-    $ui.DelegationCheckBox.IsChecked = $false
-    $ui.PreviewTextBox.Clear()
-    $ui.LookupOutputTextBox.Clear()
-    Reset-PreviewState
-    Write-Log -Level 'INFO' -Message 'Form reset to defaults.'
+    try {
+        $ui.DomainTextBox.Clear()
+        $ui.ServiceNameTextBox.Clear()
+        $ui.ServersTextBox.Clear()
+        $ui.DelegationCheckBox.IsChecked = $false
+        $ui.PreviewTextBox.Clear()
+        $ui.LookupOutputTextBox.Clear()
+        Reset-PreviewState
+        Write-Log -Level 'INFO' -Message 'Form reset to defaults.'
+    } catch {
+        Write-Log -Level 'ERROR' -Message ("Reset failed: {0}" -f $_.Exception.Message)
+    }
 })
 
 $ui.DomainTextBox.Add_TextChanged({ Reset-PreviewState })
