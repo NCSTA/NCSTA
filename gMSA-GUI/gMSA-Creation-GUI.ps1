@@ -289,10 +289,30 @@ function Write-Log {
         [string]$Level = 'INFO'
     )
 
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $entry = "[{0}] [{1}] {2}" -f $timestamp, $Level, $Message
-    $ui.LogTextBox.AppendText($entry + [Environment]::NewLine)
-    $ui.LogTextBox.ScrollToEnd()
+    try {
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $entry = "[{0}] [{1}] {2}" -f $timestamp, $Level, $Message
+        $ui.LogTextBox.AppendText($entry + [Environment]::NewLine)
+        $ui.LogTextBox.ScrollToEnd()
+    } catch {
+        # Write-Log must never throw — silently swallow if the TextBox is unavailable
+    }
+}
+
+# Logs an error, switches to the Console Log tab, and optionally shows a dialog.
+function Write-ErrorLog {
+    param(
+        [string]$Context,
+        [string]$FullText,
+        [string]$ShortMessage,
+        [switch]$ShowDialog
+    )
+
+    Write-Log -Level 'ERROR' -Message ("{0}: {1}" -f $Context, $FullText)
+    try { $ui.MainTabControl.SelectedIndex = 1 } catch { }
+    if ($ShowDialog) {
+        Show-ErrorDialog -Message ("{0} failed.`n`n{1}" -f $Context, $ShortMessage)
+    }
 }
 
 function Show-ErrorDialog {
@@ -482,12 +502,8 @@ function Invoke-ManagedPasswordLookup {
     catch {
         $errorText    = ($_ | Out-String).Trim()
         $errorMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { $errorText }
-        $ui.LookupOutputTextBox.Text = $errorText
-        Write-Log -Level 'ERROR' -Message ("Lookup failed: {0}" -f $errorText)
-        if (-not $Silent) {
-            $ui.MainTabControl.SelectedIndex = 1
-            Show-ErrorDialog -Message ("Lookup failed.`n`n{0}" -f $errorMessage)
-        }
+        try { $ui.LookupOutputTextBox.Text = $errorText } catch { }
+        Write-ErrorLog -Context 'Lookup' -FullText $errorText -ShortMessage $errorMessage -ShowDialog:(-not $Silent)
     }
 }
 
@@ -528,8 +544,14 @@ function Invoke-CreateGmsa {
 
 function Register-DirtyTracking {
     param([System.Windows.Controls.Primitives.ToggleButton]$ToggleControl)
-    $ToggleControl.Add_Checked({ Reset-PreviewState })
-    $ToggleControl.Add_Unchecked({ Reset-PreviewState })
+    $ToggleControl.Add_Checked({
+        try { Reset-PreviewState }
+        catch { Write-Log -Level 'ERROR' -Message ("DirtyTracking (Checked) error: {0}" -f $_.Exception.Message) }
+    })
+    $ToggleControl.Add_Unchecked({
+        try { Reset-PreviewState }
+        catch { Write-Log -Level 'ERROR' -Message ("DirtyTracking (Unchecked) error: {0}" -f $_.Exception.Message) }
+    })
 }
 
 $ui.PreviewButton.Add_Click({
@@ -551,9 +573,9 @@ $ui.PreviewButton.Add_Click({
         Write-Log -Level 'STEP' -Message ("Preview generated for '{0}' in '{1}'." -f $state.ServiceName, $state.Domain)
     }
     catch {
-        $errorText = ($_ | Out-String).Trim()
-        Write-Log -Level 'ERROR' -Message ("Preview failed: {0}" -f $errorText)
-        Show-ErrorDialog -Message ("Preview failed.`n`n{0}" -f $_.Exception.Message)
+        $errorText    = ($_ | Out-String).Trim()
+        $errorMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { $errorText }
+        Write-ErrorLog -Context 'Preview' -FullText $errorText -ShortMessage $errorMessage -ShowDialog
     }
 })
 
@@ -609,18 +631,16 @@ $ui.ExecuteButton.Add_Click({
     catch {
         $errorText    = ($_ | Out-String).Trim()
         $errorMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { $errorText }
-        Write-Log -Level 'ERROR' -Message ("Execution failed: {0}" -f $errorText)
-        $ui.MainTabControl.SelectedIndex = 1
-        Show-ErrorDialog -Message ("Execution failed.`n`n{0}" -f $errorMessage)
+        Write-ErrorLog -Context 'Execution' -FullText $errorText -ShortMessage $errorMessage -ShowDialog
     }
 })
 
 $ui.LookupButton.Add_Click({
     try { Invoke-ManagedPasswordLookup }
     catch {
-        $errorText = ($_ | Out-String).Trim()
-        Write-Log -Level 'ERROR' -Message ("Unhandled lookup error: {0}" -f $errorText)
-        Show-ErrorDialog -Message ("An unexpected error occurred during lookup.`n`n{0}" -f $_.Exception.Message)
+        $errorText    = ($_ | Out-String).Trim()
+        $errorMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { $errorText }
+        Write-ErrorLog -Context 'Lookup' -FullText $errorText -ShortMessage $errorMessage -ShowDialog
     }
 })
 
@@ -653,14 +673,40 @@ $ui.ResetButton.Add_Click({
     }
 })
 
-$ui.DomainTextBox.Add_TextChanged({ Reset-PreviewState })
-$ui.ServiceNameTextBox.Add_TextChanged({ Reset-PreviewState })
-$ui.ServersTextBox.Add_TextChanged({ Reset-PreviewState })
+$ui.DomainTextBox.Add_TextChanged({
+    try { Reset-PreviewState } catch { Write-Log -Level 'ERROR' -Message ("TextChanged error: {0}" -f $_.Exception.Message) }
+})
+$ui.ServiceNameTextBox.Add_TextChanged({
+    try { Reset-PreviewState } catch { Write-Log -Level 'ERROR' -Message ("TextChanged error: {0}" -f $_.Exception.Message) }
+})
+$ui.ServersTextBox.Add_TextChanged({
+    try { Reset-PreviewState } catch { Write-Log -Level 'ERROR' -Message ("TextChanged error: {0}" -f $_.Exception.Message) }
+})
 Register-DirtyTracking -ToggleControl $ui.DelegationCheckBox
 
 $window.Add_SourceInitialized({
-    Write-Log -Level 'INFO' -Message 'gMSA Creation Utility loaded.'
-    Write-Log -Level 'INFO' -Message 'Use Preview Command before Execute. Lookup can be run independently at any time.'
+    try {
+        Write-Log -Level 'INFO' -Message 'gMSA Creation Utility loaded.'
+        Write-Log -Level 'INFO' -Message 'Use Preview Command before Execute. Lookup can be run independently at any time.'
+    } catch { }
+})
+
+# Last-resort safety net: any exception that somehow escapes all handlers is
+# caught here, logged, and marked handled so the window stays open.
+$window.Dispatcher.Add_UnhandledException({
+    param($sender, $e)
+    try {
+        $errorText = ($e.Exception | Out-String).Trim()
+        Write-Log -Level 'ERROR' -Message ("UNHANDLED DISPATCHER EXCEPTION: {0}" -f $errorText)
+        try { $ui.MainTabControl.SelectedIndex = 1 } catch { }
+        [System.Windows.MessageBox]::Show(
+            "An unexpected error was caught and logged to the Console Log tab.`n`nThe application will remain open.`n`n{0}" -f $e.Exception.Message,
+            'gMSA Creation Utility - Unexpected Error',
+            [System.Windows.MessageBoxButton]::OK,
+            [System.Windows.MessageBoxImage]::Error
+        ) | Out-Null
+    } catch { }
+    $e.Handled = $true
 })
 
 [void]$window.ShowDialog()
