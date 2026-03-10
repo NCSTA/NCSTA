@@ -2,6 +2,7 @@ Add-Type -AssemblyName PresentationCore, PresentationFramework, WindowsBase, Sys
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -9,8 +10,8 @@ $ErrorActionPreference = 'Stop'
         Title="gMSA Creation Utility"
         Height="860"
         Width="1120"
-        MinHeight="760"
-        MinWidth="980"
+        MinHeight="640"
+        MinWidth="820"
         WindowStartupLocation="CenterScreen"
         Background="#17191F"
         Foreground="#F3F5F7"
@@ -26,6 +27,7 @@ $ErrorActionPreference = 'Stop'
         <SolidColorBrush x:Key="TextBrush" Color="#F3F5F7" />
         <SolidColorBrush x:Key="MutedTextBrush" Color="#AEB7C4" />
         <SolidColorBrush x:Key="InputBrush" Color="#111318" />
+        <SolidColorBrush x:Key="SplitterBrush" Color="#3A4250" />
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
         </Style>
@@ -85,6 +87,14 @@ $ErrorActionPreference = 'Stop'
                 </Trigger>
             </Style.Triggers>
         </Style>
+        <Style x:Key="SplitterStyle" TargetType="GridSplitter">
+            <Setter Property="Background" Value="{StaticResource SplitterBrush}" />
+            <Setter Property="Cursor" Value="SizeWE" />
+            <Setter Property="Width" Value="5" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="0" />
+        </Style>
     </Window.Resources>
     <Grid Margin="18">
         <TabControl Name="MainTabControl">
@@ -108,10 +118,19 @@ $ErrorActionPreference = 'Stop'
                     </Border>
                     <Grid Grid.Row="1">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="360" />
-                            <ColumnDefinition Width="16" />
-                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="320" MinWidth="240" />
+                            <ColumnDefinition Width="5" />
+                            <ColumnDefinition Width="*" MinWidth="360" />
                         </Grid.ColumnDefinitions>
+
+                        <!-- Resizable splitter between left and right panels -->
+                        <GridSplitter Grid.Column="1"
+                                      Style="{StaticResource SplitterStyle}"
+                                      ResizeBehavior="PreviousAndNext"
+                                      ResizeDirection="Columns"
+                                      ShowsPreview="False"
+                                      ToolTip="Drag to resize panels" />
+
                         <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
                             <StackPanel>
                                 <GroupBox Header="Inputs">
@@ -121,12 +140,12 @@ $ErrorActionPreference = 'Stop'
                                                  ToolTip="Example: domain.com" />
                                         <Label Content="gMSA Short Name" />
                                         <TextBox Name="ServiceNameTextBox"
-                                                 ToolTip="Example: gMSA-sqlp100z" />
+                                                 ToolTip="Example: gMSA-sqlp100z (do not include trailing $)" />
                                         <Label Content="Allowed Servers (one per line)" />
                                         <TextBox Name="ServersTextBox"
                                                  AcceptsReturn="True"
                                                  VerticalScrollBarVisibility="Auto"
-                                                 Height="180"
+                                                 Height="160"
                                                  TextWrapping="Wrap"
                                                  ToolTip="Example: edcwsqlp100a&#x0a;edcwsqlp100b" />
                                         <CheckBox Name="DelegationCheckBox"
@@ -135,11 +154,11 @@ $ErrorActionPreference = 'Stop'
                                 </GroupBox>
                                 <GroupBox Header="Actions">
                                     <StackPanel>
-                                        <UniformGrid Rows="2" Columns="2" Margin="0,0,0,8">
-                                            <Button Name="PreviewButton" Content="Preview Command" Width="140" HorizontalAlignment="Left" Margin="0,0,10,10" />
-                                            <Button Name="ExecuteButton" Content="Execute" Width="110" HorizontalAlignment="Left" Margin="0,0,0,10" IsEnabled="False" />
-                                            <Button Name="ResetButton" Content="Reset Form" Width="110" HorizontalAlignment="Left" Margin="0,0,10,0" />
-                                        </UniformGrid>
+                                        <WrapPanel Margin="0,0,0,8">
+                                            <Button Name="PreviewButton" Content="Preview Command" Padding="14,8" Margin="0,0,10,6" />
+                                            <Button Name="ExecuteButton" Content="Execute" Padding="14,8" Margin="0,0,10,6" IsEnabled="False" />
+                                            <Button Name="ResetButton" Content="Reset Form" Padding="14,8" Margin="0,0,0,6" />
+                                        </WrapPanel>
                                         <TextBlock Foreground="#AEB7C4"
                                                    TextWrapping="Wrap"
                                                    Text="Execute stays disabled until a fresh preview is generated from the current field values." />
@@ -147,22 +166,34 @@ $ErrorActionPreference = 'Stop'
                                 </GroupBox>
                             </StackPanel>
                         </ScrollViewer>
+
                         <Grid Grid.Column="2">
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="*" />
-                                <RowDefinition Height="14" />
-                                <RowDefinition Height="*" />
+                                <RowDefinition Height="*" MinHeight="120" />
+                                <RowDefinition Height="5" />
+                                <RowDefinition Height="*" MinHeight="120" />
                             </Grid.RowDefinitions>
-                            <GroupBox Header="Preview">
-                                <Grid>
-                                    <TextBox Name="PreviewTextBox"
-                                             IsReadOnly="True"
-                                             AcceptsReturn="True"
-                                             VerticalScrollBarVisibility="Auto"
-                                             HorizontalScrollBarVisibility="Auto"
-                                             TextWrapping="NoWrap"
-                                             FontFamily="Consolas" />
-                                </Grid>
+
+                            <!-- Vertical splitter between Preview and Lookup panels -->
+                            <GridSplitter Grid.Row="1"
+                                          Height="5"
+                                          HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Stretch"
+                                          Background="#3A4250"
+                                          Cursor="SizeNS"
+                                          ResizeBehavior="PreviousAndNext"
+                                          ResizeDirection="Rows"
+                                          ShowsPreview="False"
+                                          ToolTip="Drag to resize Preview / Lookup panels" />
+
+                            <GroupBox Header="Preview" Grid.Row="0">
+                                <TextBox Name="PreviewTextBox"
+                                         IsReadOnly="True"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         TextWrapping="NoWrap"
+                                         FontFamily="Consolas" />
                             </GroupBox>
                             <GroupBox Header="Managed Password Retrieval Lookup" Grid.Row="2">
                                 <Grid>
@@ -172,11 +203,12 @@ $ErrorActionPreference = 'Stop'
                                     </Grid.RowDefinitions>
                                     <DockPanel Margin="0,0,0,10" LastChildFill="True">
                                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                                            <Button Name="LookupButton" Content="Run Lookup" Width="110" />
-                                            <Button Name="ClearLookupButton" Content="Clear Output" Width="110" />
+                                            <Button Name="LookupButton" Content="Run Lookup" Padding="14,8" Margin="0,0,10,0" />
+                                            <Button Name="ClearLookupButton" Content="Clear Output" Padding="14,8" Margin="0,0,0,0" />
                                         </StackPanel>
                                         <TextBlock VerticalAlignment="Center"
                                                    Foreground="#AEB7C4"
+                                                   Margin="12,0,0,0"
                                                    Text="Uses the current Domain and gMSA Short Name fields." />
                                     </DockPanel>
                                     <TextBox Name="LookupOutputTextBox"
@@ -200,9 +232,10 @@ $ErrorActionPreference = 'Stop'
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <DockPanel Margin="0,0,0,12" LastChildFill="True">
-                        <Button Name="ClearLogButton" Content="Clear Log" Width="110" DockPanel.Dock="Left" />
+                        <Button Name="ClearLogButton" Content="Clear Log" Padding="14,8" DockPanel.Dock="Left" />
                         <TextBlock VerticalAlignment="Center"
                                    Foreground="#AEB7C4"
+                                   Margin="12,0,0,0"
                                    Text="Timestamps, step details, generated commands, and raw errors are shown here for troubleshooting." />
                     </DockPanel>
                     <TextBox Name="LogTextBox"
@@ -264,13 +297,29 @@ function Write-Log {
 
 function Show-ErrorDialog {
     param([string]$Message)
-    [System.Windows.MessageBox]::Show(
-        $window,
-        $Message,
-        'gMSA Creation Utility',
-        [System.Windows.MessageBoxButton]::OK,
-        [System.Windows.MessageBoxImage]::Error
-    ) | Out-Null
+
+    try {
+        [System.Windows.MessageBox]::Show(
+            $window,
+            $Message,
+            'gMSA Creation Utility',
+            [System.Windows.MessageBoxButton]::OK,
+            [System.Windows.MessageBoxImage]::Error
+        ) | Out-Null
+    }
+    catch {
+        try {
+            [System.Windows.MessageBox]::Show(
+                $Message,
+                'gMSA Creation Utility',
+                [System.Windows.MessageBoxButton]::OK,
+                [System.Windows.MessageBoxImage]::Error
+            ) | Out-Null
+        }
+        catch {
+            Write-Log -Level 'ERROR' -Message ("Unable to show error dialog: {0}" -f $_.Exception.Message)
+        }
+    }
 }
 
 function Ensure-ActiveDirectoryModule {
@@ -288,21 +337,21 @@ function Reset-PreviewState {
 
 function Get-InputState {
     $domain = $ui.DomainTextBox.Text.Trim()
-    $serviceName = $ui.ServiceNameTextBox.Text.Trim()
+    $serviceName = $ui.ServiceNameTextBox.Text.Trim().TrimEnd('$')
     $servers = @(
         $ui.ServersTextBox.Text -split "(`r`n|`n|`r)" |
         ForEach-Object { $_.Trim() } |
         Where-Object { $_ }
     )
-    $samAccountName = if ($serviceName) { '{0}$' -f $serviceName.TrimEnd('$') } else { '' }
-    $dnsHostName = if ($serviceName -and $domain) { '{0}.{1}' -f $serviceName.TrimEnd('$'), $domain } else { '' }
+    $samAccountName = if ($serviceName) { '{0}$' -f $serviceName } else { '' }
+    $dnsHostName    = if ($serviceName -and $domain) { '{0}.{1}' -f $serviceName, $domain } else { '' }
 
     [pscustomobject]@{
-        Domain = $domain
-        ServiceName = $serviceName.TrimEnd('$')
-        Servers = $servers
+        Domain         = $domain
+        ServiceName    = $serviceName
+        Servers        = $servers
         SamAccountName = $samAccountName
-        DnsHostName = $dnsHostName
+        DnsHostName    = $dnsHostName
         EnableDelegation = [bool]$ui.DelegationCheckBox.IsChecked
     }
 }
@@ -311,9 +360,11 @@ function Test-CreateInputs {
     param([object]$InputState)
 
     $issues = New-Object System.Collections.Generic.List[string]
-    if (-not $InputState.Domain) { $issues.Add('Domain / AD Server is required.') }
-    if (-not $InputState.ServiceName) { $issues.Add('gMSA Short Name is required.') }
-    if (-not $InputState.Servers -or $InputState.Servers.Count -eq 0) { $issues.Add('At least one allowed server is required.') }
+    if (-not $InputState.Domain)       { $issues.Add('Domain / AD Server is required.') }
+    if (-not $InputState.ServiceName)  { $issues.Add('gMSA Short Name is required.') }
+    if (-not $InputState.Servers -or $InputState.Servers.Count -eq 0) {
+        $issues.Add('At least one allowed server is required.')
+    }
 
     return $issues
 }
@@ -322,7 +373,7 @@ function Test-LookupInputs {
     param([object]$InputState)
 
     $issues = New-Object System.Collections.Generic.List[string]
-    if (-not $InputState.Domain) { $issues.Add('Domain / AD Server is required for lookup.') }
+    if (-not $InputState.Domain)      { $issues.Add('Domain / AD Server is required for lookup.') }
     if (-not $InputState.ServiceName) { $issues.Add('gMSA Short Name is required for lookup.') }
 
     return $issues
@@ -353,8 +404,8 @@ function Format-Preview {
     $delegationBlock = if ($InputState.EnableDelegation) {
 @"
 
-`$msa = Get-ADServiceAccount -Identity '$($InputState.ServiceName)' -Server '$($InputState.Domain)'
-`$msa | Set-ADAccountControl -TrustedForDelegation `$true -TrustedToAuthForDelegation `$false -Server '$($InputState.Domain)'
+`$msa = Get-ADServiceAccount -Identity '$($InputState.SamAccountName)' -Server '$($InputState.Domain)'
+Set-ADAccountControl -Identity `$msa -TrustedForDelegation `$true -TrustedToAuthForDelegation `$false -Server '$($InputState.Domain)'
 "@
     } else {
         @"
@@ -365,10 +416,10 @@ function Format-Preview {
 
 @"
 # Generated preview for gMSA creation
-`$domain = '$($InputState.Domain)'
-`$serviceName = '$($InputState.ServiceName)'
+`$domain         = '$($InputState.Domain)'
+`$serviceName    = '$($InputState.ServiceName)'
 `$samAccountName = '$($InputState.SamAccountName)'
-`$dnsHostName = '$($InputState.DnsHostName)'
+`$dnsHostName    = '$($InputState.DnsHostName)'
 `$servers = @(
 $serverLines
 )
@@ -377,30 +428,34 @@ $serverLines
     (Get-ADComputer -Identity `$server -Server `$domain).DistinguishedName
 }
 
-New-ADServiceAccount -Name `$serviceName `
-    -DNSHostName `$dnsHostName `
-    -SamAccountName `$samAccountName `
-    -PrincipalsAllowedToRetrieveManagedPassword `$serverDns `
+New-ADServiceAccount -Name `$serviceName ``
+    -DNSHostName `$dnsHostName ``
+    -SamAccountName `$samAccountName ``
+    -PrincipalsAllowedToRetrieveManagedPassword `$serverDns ``
     -Server `$domain
 $delegationBlock
 
-(Get-ADServiceAccount -Identity '$($InputState.ServiceName)' -Server '$($InputState.Domain)' -Properties PrincipalsAllowedToRetrieveManagedPassword).PrincipalsAllowedToRetrieveManagedPassword
+(Get-ADServiceAccount -Identity '$($InputState.SamAccountName)' -Server '$($InputState.Domain)' -Properties PrincipalsAllowedToRetrieveManagedPassword).PrincipalsAllowedToRetrieveManagedPassword
 "@
 }
 
 function Get-LookupCommandText {
     param([object]$InputState)
 
-    return "(Get-ADServiceAccount -Identity '{0}' -Server '{1}' -Properties PrincipalsAllowedToRetrieveManagedPassword).PrincipalsAllowedToRetrieveManagedPassword" -f $InputState.ServiceName, $InputState.Domain
+    return "(Get-ADServiceAccount -Identity '{0}' -Server '{1}' -Properties PrincipalsAllowedToRetrieveManagedPassword).PrincipalsAllowedToRetrieveManagedPassword" -f $InputState.SamAccountName, $InputState.Domain
 }
 
+# $Silent suppresses the error dialog and tab-switch when called from the Execute flow.
+# Errors are always written to the log regardless.
 function Invoke-ManagedPasswordLookup {
+    param([switch]$Silent)
+
     $state = Get-InputState
     $issues = Test-LookupInputs -InputState $state
     if ($issues.Count -gt 0) {
         $message = $issues -join [Environment]::NewLine
         Write-Log -Level 'ERROR' -Message $message
-        Show-ErrorDialog -Message $message
+        if (-not $Silent) { Show-ErrorDialog -Message $message }
         return
     }
 
@@ -409,7 +464,9 @@ function Invoke-ManagedPasswordLookup {
         $lookupCommand = Get-LookupCommandText -InputState $state
         Write-Log -Level 'STEP' -Message ("Running lookup command: {0}" -f $lookupCommand)
 
-        $result = Get-ADServiceAccount -Identity $state.ServiceName -Server $state.Domain -Properties PrincipalsAllowedToRetrieveManagedPassword -ErrorAction Stop
+        # Use SamAccountName (includes trailing $) for reliable MSA identity resolution
+        $result = Get-ADServiceAccount -Identity $state.SamAccountName -Server $state.Domain `
+                      -Properties PrincipalsAllowedToRetrieveManagedPassword -ErrorAction Stop
         $principals = @($result.PrincipalsAllowedToRetrieveManagedPassword)
 
         if ($principals.Count -eq 0) {
@@ -421,10 +478,14 @@ function Invoke-ManagedPasswordLookup {
         Write-Log -Level 'SUCCESS' -Message ("Lookup completed successfully for '{0}' in '{1}'." -f $state.ServiceName, $state.Domain)
     }
     catch {
-        $ui.LookupOutputTextBox.Text = $_ | Out-String
-        Write-Log -Level 'ERROR' -Message ("Lookup failed: {0}" -f ($_ | Out-String).Trim())
-        Show-ErrorDialog -Message ("Lookup failed.`n`n{0}" -f $_.Exception.Message)
-        $ui.MainTabControl.SelectedIndex = 1
+        $errorText    = ($_ | Out-String).Trim()
+        $errorMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { $errorText }
+        $ui.LookupOutputTextBox.Text = $errorText
+        Write-Log -Level 'ERROR' -Message ("Lookup failed: {0}" -f $errorText)
+        if (-not $Silent) {
+            $ui.MainTabControl.SelectedIndex = 1
+            Show-ErrorDialog -Message ("Lookup failed.`n`n{0}" -f $errorMessage)
+        }
     }
 }
 
@@ -443,19 +504,21 @@ function Invoke-CreateGmsa {
 
     Write-Log -Level 'STEP' -Message ("Creating gMSA '{0}' with DNS host '{1}'." -f $InputState.ServiceName, $InputState.DnsHostName)
     $newParams = @{
-        Name = $InputState.ServiceName
-        DNSHostName = $InputState.DnsHostName
-        SamAccountName = $InputState.SamAccountName
+        Name                                   = $InputState.ServiceName
+        DNSHostName                            = $InputState.DnsHostName
+        SamAccountName                         = $InputState.SamAccountName
         PrincipalsAllowedToRetrieveManagedPassword = $resolvedDns.ToArray()
-        Server = $InputState.Domain
-        ErrorAction = 'Stop'
+        Server                                 = $InputState.Domain
+        ErrorAction                            = 'Stop'
     }
     New-ADServiceAccount @newParams
 
     if ($InputState.EnableDelegation) {
         Write-Log -Level 'STEP' -Message ("Enabling unconstrained delegation for '{0}'." -f $InputState.ServiceName)
-        $msa = Get-ADServiceAccount -Identity $InputState.ServiceName -Server $InputState.Domain -ErrorAction Stop
-        $msa | Set-ADAccountControl -TrustedForDelegation $true -TrustedToAuthForDelegation $false -Server $InputState.Domain -ErrorAction Stop
+        # Retrieve the created account, then use -Identity (not pipeline) for Set-ADAccountControl
+        $msa = Get-ADServiceAccount -Identity $InputState.SamAccountName -Server $InputState.Domain -ErrorAction Stop
+        Set-ADAccountControl -Identity $msa -TrustedForDelegation $true -TrustedToAuthForDelegation $false `
+            -Server $InputState.Domain -ErrorAction Stop
     }
 
     Write-Log -Level 'SUCCESS' -Message ("gMSA '{0}' created successfully." -f $InputState.ServiceName)
@@ -478,16 +541,15 @@ $ui.PreviewButton.Add_Click({
     }
 
     $script:PreviewCommandText = Format-Preview -InputState $state
-    $script:PreviewSignature = Get-StateSignature -InputState $state
-    $ui.PreviewTextBox.Text = $script:PreviewCommandText
+    $script:PreviewSignature   = Get-StateSignature -InputState $state
+    $ui.PreviewTextBox.Text    = $script:PreviewCommandText
     $ui.ExecuteButton.IsEnabled = $true
 
     Write-Log -Level 'STEP' -Message ("Preview generated for '{0}' in '{1}'." -f $state.ServiceName, $state.Domain)
-    $ui.MainTabControl.SelectedIndex = 0
 })
 
 $ui.ExecuteButton.Add_Click({
-    $state = Get-InputState
+    $state  = Get-InputState
     $issues = Test-CreateInputs -InputState $state
     if ($issues.Count -gt 0) {
         $message = $issues -join [Environment]::NewLine
@@ -521,19 +583,26 @@ $ui.ExecuteButton.Add_Click({
     try {
         Write-Log -Level 'STEP' -Message 'Execution confirmed by user.'
         Invoke-CreateGmsa -InputState $state
-        Invoke-ManagedPasswordLookup
+
+        # Disable Execute immediately after creation to prevent double-execution.
+        # Run lookup silently (errors go to log only — the creation already succeeded).
+        Reset-PreviewState
+        Invoke-ManagedPasswordLookup -Silent
+
         [System.Windows.MessageBox]::Show(
             $window,
-            'gMSA creation completed successfully. The latest retrieval principals have been loaded.',
+            'gMSA creation completed successfully. The latest retrieval principals have been loaded into the Lookup panel.',
             'Success',
             [System.Windows.MessageBoxButton]::OK,
             [System.Windows.MessageBoxImage]::Information
         ) | Out-Null
     }
     catch {
-        Write-Log -Level 'ERROR' -Message ("Execution failed: {0}" -f ($_ | Out-String).Trim())
-        Show-ErrorDialog -Message ("Execution failed.`n`n{0}" -f $_.Exception.Message)
+        $errorText    = ($_ | Out-String).Trim()
+        $errorMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { $errorText }
+        Write-Log -Level 'ERROR' -Message ("Execution failed: {0}" -f $errorText)
         $ui.MainTabControl.SelectedIndex = 1
+        Show-ErrorDialog -Message ("Execution failed.`n`n{0}" -f $errorMessage)
     }
 })
 
@@ -573,4 +642,3 @@ $window.Add_SourceInitialized({
 })
 
 [void]$window.ShowDialog()
-
