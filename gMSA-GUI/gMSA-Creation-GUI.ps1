@@ -474,7 +474,7 @@ function Invoke-ManagedPasswordLookup {
     # so no exception can escape and crash the WPF dispatcher.
     try {
         $state = Get-InputState
-        $issues = Test-LookupInputs -InputState $state
+        $issues = @(Test-LookupInputs -InputState $state)
         if ($issues.Count -gt 0) {
             $message = $issues -join [Environment]::NewLine
             Write-Log -Level 'ERROR' -Message $message
@@ -557,7 +557,7 @@ function Register-DirtyTracking {
 $ui.PreviewButton.Add_Click({
     try {
         $state = Get-InputState
-        $issues = Test-CreateInputs -InputState $state
+        $issues = @(Test-CreateInputs -InputState $state)
         if ($issues.Count -gt 0) {
             $message = $issues -join [Environment]::NewLine
             Write-Log -Level 'ERROR' -Message $message
@@ -582,7 +582,7 @@ $ui.PreviewButton.Add_Click({
 $ui.ExecuteButton.Add_Click({
     try {
         $state  = Get-InputState
-        $issues = Test-CreateInputs -InputState $state
+        $issues = @(Test-CreateInputs -InputState $state)
         if ($issues.Count -gt 0) {
             $message = $issues -join [Environment]::NewLine
             Write-Log -Level 'ERROR' -Message $message
