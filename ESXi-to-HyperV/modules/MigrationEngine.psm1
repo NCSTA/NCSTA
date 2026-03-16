@@ -107,9 +107,9 @@ function Invoke-V2VConversion {
         throw "Source VM '$VMName' not found on host '$SourceHost' in SCVMM. Ensure the ESXi host is managed by SCVMM."
     }
 
-    # Get all network adapters for the source VM from SCVMM
-    $scAdapters = Get-SCVirtualNetworkAdapter -VMMServer $VMMServer -VM $vm
-    if (-not $scAdapters -or $scAdapters.Count -eq 0) {
+    # Get all network adapters for the source VM from SCVMM (wrap in array for single-NIC VMs)
+    $scAdapters = @(Get-SCVirtualNetworkAdapter -VMMServer $VMMServer -VM $vm)
+    if ($scAdapters.Count -eq 0) {
         throw "No network adapters found for VM '$VMName' in SCVMM."
     }
 

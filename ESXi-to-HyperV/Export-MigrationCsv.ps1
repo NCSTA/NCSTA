@@ -139,8 +139,8 @@ try {
     foreach ($vm in $allVMs) {
         Write-Host "  Processing: $($vm.Name) on $($vm.VMHost.Name) ..." -ForegroundColor Gray
 
-        # Get network adapters from VMware
-        $vmAdapters = VMware.VimAutomation.Core\Get-NetworkAdapter -VM $vm
+        # Get network adapters from VMware (wrap in array for single-NIC VMs)
+        $vmAdapters = @(VMware.VimAutomation.Core\Get-NetworkAdapter -VM $vm)
 
         # Build the row with base VM properties
         $row = [ordered]@{
