@@ -90,8 +90,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$scriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
+
 if (-not $OutputPath) {
-    $OutputPath = Join-Path $PSScriptRoot 'configs\migration-export.csv'
+    $OutputPath = Join-Path $scriptDir 'configs\migration-export.csv'
+}
+# Resolve to full path if relative path was provided
+if (-not [System.IO.Path]::IsPathRooted($OutputPath)) {
+    $OutputPath = Join-Path (Get-Location).Path $OutputPath
 }
 
 # ── Verify PowerCLI is available ──────────────────────────────────────────────
