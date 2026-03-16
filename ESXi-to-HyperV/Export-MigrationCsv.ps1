@@ -245,8 +245,8 @@ try {
     }
 
     Write-Host ''
-    Write-Host "Next step — review the CSV, then run:" -ForegroundColor Cyan
-    Write-Host "  .\Convert-EsxiToHyperV.ps1 -CsvPath '$OutputPath' -VMMServer '<your-vmm-server>'" -ForegroundColor Cyan
+    Write-Host 'Next step - review the CSV, then run:' -ForegroundColor Cyan
+    Write-Host "  .\Convert-EsxiToHyperV.ps1 -CsvPath `"$OutputPath`" -VMMServer `"<your-vmm-server>`"" -ForegroundColor Cyan
 }
 finally {
     # Disconnect from vCenter
