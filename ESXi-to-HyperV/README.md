@@ -55,13 +55,15 @@ This approach requires no `Import-Module` gymnastics and makes every call self-d
 Pull VM configuration from vCenter/ESXi using PowerCLI:
 
 ```powershell
-.\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
+C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
     -VMName "server01" `
     -TargetHost "hyperv01.domain.com" `
     -StoragePath "C:\ClusterStorage\Volume5"
 ```
 
-This connects to VMware and exports each VM's CPU, memory, NIC port groups, and VLAN IDs into the CSV format.
+This connects to VMware and exports each VM's CPU, memory, NIC port groups, and VLAN IDs into the CSV format. The output CSV defaults to `configs\migration-export.csv` relative to the script directory.
+
+All paths are resolved to absolute internally - relative paths are supported but full paths are recommended.
 
 #### Using a Network Map
 
@@ -73,7 +75,7 @@ $netMap = @{
     'VLAN_200_Management'        = @{ Switch = 'Management Switch';        VMNetwork = '10.0.2.x Network' }
 }
 
-.\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
+C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
     -VMName "server*" `
     -TargetHost "hyperv01.domain.com" `
     -StoragePath "C:\ClusterStorage\Volume5" `
@@ -86,13 +88,22 @@ Without `-NetworkMap`, the TargetSwitch and TargetVMNetwork columns are left bla
 
 ```powershell
 # Wildcard
-.\Export-MigrationCsv.ps1 ... -VMName "server*"
+C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
+    -VMName "server*" `
+    -TargetHost "hyperv01.domain.com" `
+    -StoragePath "C:\ClusterStorage\Volume5"
 
 # Specific list
-.\Export-MigrationCsv.ps1 ... -VMName "server01v","server02v","server03v"
+C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
+    -VMName "server01v","server02v","server03v" `
+    -TargetHost "hyperv01.domain.com" `
+    -StoragePath "C:\ClusterStorage\Volume5"
 
 # Append to existing CSV (e.g., different target hosts)
-.\Export-MigrationCsv.ps1 ... -VMName "server04v" -TargetHost "hypp004.domain.com" -Append
+C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
+    -VMName "server04v" `
+    -TargetHost "hyperv02.domain.com" `
+    -StoragePath "C:\ClusterStorage\Volume5" -Append
 ```
 
 #### Export Parameters
@@ -102,12 +113,12 @@ Without `-NetworkMap`, the TargetSwitch and TargetVMNetwork columns are left bla
 | `-VIServer` | Yes | vCenter or ESXi host FQDN |
 | `-VMName` | Yes | VM name(s), supports wildcards |
 | `-TargetHost` | Yes | Destination Hyper-V host FQDN |
-| `-StoragePath` | Yes | CSV path on target (e.g., `C:\ClusterStorage\Volume5`) |
+| `-StoragePath` | Yes | Cluster storage path on target (e.g., `C:\ClusterStorage\Volume5`) |
 | `-Credential` | No | PSCredential for vCenter auth (prompts if omitted) |
 | `-Generation` | No | VM generation (default: 2) |
 | `-DelayedStartSec` | No | Auto-start delay in seconds (default: 120) |
 | `-NetworkMap` | No | Hashtable mapping VMware port groups to SCVMM networks |
-| `-OutputPath` | No | Output CSV path (default: `.\configs\migration-export.csv`) |
+| `-OutputPath` | No | Output CSV full path (default: `<script-dir>\configs\migration-export.csv`) |
 | `-Append` | No | Append to existing CSV |
 
 ### Step 2: Review the CSV
@@ -140,12 +151,14 @@ Up to 4 NICs per VM (NIC1 through NIC4). Empty NIC columns are skipped.
 ### Step 3: Run the Migration
 
 ```powershell
-# Dry run — validates CSV, modules, connectivity, and resources without converting
-.\Convert-EsxiToHyperV.ps1 -CsvPath .\configs\migration-export.csv `
+# Dry run - validates CSV, modules, connectivity, and resources without converting
+C:\Scripts\ESXi-to-HyperV\Convert-EsxiToHyperV.ps1 `
+    -CsvPath "C:\Scripts\ESXi-to-HyperV\configs\migration-export.csv" `
     -VMMServer scvmm01.domain.com -WhatIf
 
 # Execute the migration
-.\Convert-EsxiToHyperV.ps1 -CsvPath .\configs\migration-export.csv `
+C:\Scripts\ESXi-to-HyperV\Convert-EsxiToHyperV.ps1 `
+    -CsvPath "C:\Scripts\ESXi-to-HyperV\configs\migration-export.csv" `
     -VMMServer scvmm01.domain.com
 ```
 
@@ -153,7 +166,7 @@ Up to 4 NICs per VM (NIC1 through NIC4). Empty NIC columns are skipped.
 
 | Parameter | Required | Description |
 |---|---|---|
-| `-CsvPath` | Yes | Path to the migration CSV |
+| `-CsvPath` | Yes | Full path to the migration CSV |
 | `-VMMServer` | Yes | SCVMM management server FQDN |
 | `-WhatIf` | No | Dry run (pre-flight only, no conversion) |
 
