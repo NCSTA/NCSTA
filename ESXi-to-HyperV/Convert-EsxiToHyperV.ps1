@@ -41,10 +41,17 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# ── Load Modules ──────────────────────────────────────────────────────────────
-$scriptRoot = $PSScriptRoot
-$modulePath = Join-Path $scriptRoot 'modules'
+# ── Resolve Full Paths ────────────────────────────────────────────────────────
+$scriptDir  = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
+$modulePath = Join-Path $scriptDir 'modules'
 
+# Resolve CsvPath to absolute if relative was provided
+if (-not [System.IO.Path]::IsPathRooted($CsvPath)) {
+    $CsvPath = Join-Path (Get-Location).Path $CsvPath
+}
+$CsvPath = Resolve-Path $CsvPath
+
+# ── Load Modules ──────────────────────────────────────────────────────────────
 Import-Module (Join-Path $modulePath 'MigrationLogger.psm1')    -Force
 Import-Module (Join-Path $modulePath 'PreFlightValidator.psm1')  -Force
 Import-Module (Join-Path $modulePath 'MigrationEngine.psm1')     -Force
@@ -94,7 +101,7 @@ function Test-CsvColumns {
 #  MAIN EXECUTION
 # ══════════════════════════════════════════════════════════════════════════════
 
-$logDir = Join-Path $scriptRoot 'logs'
+$logDir = Join-Path $scriptDir 'logs'
 Start-MigrationLog -LogDirectory $logDir
 
 $results = [System.Collections.ArrayList]::new()
