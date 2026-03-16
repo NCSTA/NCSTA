@@ -182,7 +182,7 @@ function Test-PostConversion {
     # Verify NIC count and VLAN/switch assignments via SCVMM
     if ($ExpectedNICs.Count -gt 0) {
         try {
-            $scAdapters = Get-SCVirtualNetworkAdapter -VMMServer $VMMServer -VM $VMName
+            $scAdapters = @(Get-SCVirtualNetworkAdapter -VMMServer $VMMServer -VM $VMName)
 
             if ($scAdapters.Count -ne $ExpectedNICs.Count) {
                 $issues += "Expected $($ExpectedNICs.Count) NICs, found $($scAdapters.Count)."

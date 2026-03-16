@@ -79,7 +79,7 @@ function Get-NICsFromRow {
             TargetVMNetwork = $Row."NIC${i}_TargetVMNetwork"
         }
     }
-    return $nics
+    return , $nics
 }
 
 # ── Helper: Validate CSV Columns ─────────────────────────────────────────────
@@ -109,7 +109,7 @@ $results = [System.Collections.ArrayList]::new()
 try {
     # ── Import and Validate CSV ───────────────────────────────────────────────
     Write-MigrationLog -Message "Importing CSV: $CsvPath" -Level Info
-    $csvData = Import-Csv -Path $CsvPath
+    $csvData = @(Import-Csv -Path $CsvPath)
     if ($csvData.Count -eq 0) { throw "CSV file is empty." }
 
     $headers = ($csvData | Get-Member -MemberType NoteProperty).Name

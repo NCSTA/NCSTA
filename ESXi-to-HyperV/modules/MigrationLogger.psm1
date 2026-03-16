@@ -136,10 +136,10 @@ function Write-MigrationSummary {
         [array]$Results
     )
 
-    $total     = $Results.Count
-    $succeeded = ($Results | Where-Object Status -eq 'Success').Count
-    $failed    = ($Results | Where-Object Status -eq 'Failed').Count
-    $skipped   = ($Results | Where-Object Status -eq 'Skipped').Count
+    $total     = @($Results).Count
+    $succeeded = @($Results | Where-Object Status -eq 'Success').Count
+    $failed    = @($Results | Where-Object Status -eq 'Failed').Count
+    $skipped   = @($Results | Where-Object Status -eq 'Skipped').Count
 
     Write-Host ''
     Write-Host '═══════════════════════════════════════════════════════════' -ForegroundColor White
