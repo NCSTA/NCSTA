@@ -173,7 +173,8 @@ function Invoke-V2VConversion {
                         -DelayStartSeconds $DelayedStartSec
 
     # Monitor the SCVMM job until completion or timeout
-    $jobResult = Wait-SCVMMJob -VMMServer $VMMServer -JobTimeout $JobTimeoutMinutes
+    # New-SCV2V with -RunAsynchronously returns the job object directly
+    $jobResult = Wait-SCVMMJob -VMMServer $VMMServer -Job $v2vJob -JobTimeout $JobTimeoutMinutes
 
     return $jobResult
 }
@@ -181,9 +182,11 @@ function Invoke-V2VConversion {
 function Wait-SCVMMJob {
     <#
     .SYNOPSIS
-        Monitors the most recent SCVMM job until completion or timeout.
+        Monitors an SCVMM job until completion or timeout.
     .PARAMETER VMMServer
         FQDN of the VMM server.
+    .PARAMETER Job
+        The SCVMM job object returned by the async cmdlet (e.g., New-SCV2V).
     .PARAMETER JobTimeout
         Timeout in minutes.
     #>
@@ -192,18 +195,16 @@ function Wait-SCVMMJob {
         [Parameter(Mandatory)]
         [string]$VMMServer,
 
+        [Parameter(Mandatory)]
+        $Job,
+
         [int]$JobTimeout = 240
     )
 
     $deadline = (Get-Date).AddMinutes($JobTimeout)
     $pollInterval = 30  # seconds
 
-    # Get the most recent running job
-    $job = Get-SCJob -VMMServer $VMMServer -Running |
-           Sort-Object StartTime -Descending |
-           Select-Object -First 1
-
-    if (-not $job) {
+    if (-not $Job) {
         return [PSCustomObject]@{
             Success      = $true
             Status       = 'Completed'
@@ -211,7 +212,10 @@ function Wait-SCVMMJob {
         }
     }
 
-    while ($job.Status -eq 'Running') {
+    # Store the job ID as a single Guid to avoid array conversion errors
+    [Guid]$jobId = $Job.ID
+
+    while ($Job.Status -eq 'Running') {
         if ((Get-Date) -gt $deadline) {
             return [PSCustomObject]@{
                 Success      = $false
@@ -220,15 +224,15 @@ function Wait-SCVMMJob {
             }
         }
 
-        $progress = if ($job.Progress) { $job.Progress } else { 0 }
+        $progress = if ($Job.Progress) { $Job.Progress } else { 0 }
         Write-Host "  V2V job progress: $progress% ..." -ForegroundColor Gray
         Start-Sleep -Seconds $pollInterval
 
-        # Refresh job status
-        $job = Get-SCJob -VMMServer $VMMServer -ID $job.ID
+        # Refresh job status using the stored Guid
+        $Job = Get-SCJob -VMMServer $VMMServer -ID $jobId
     }
 
-    if ($job.Status -eq 'Completed') {
+    if ($Job.Status -eq 'Completed') {
         [PSCustomObject]@{
             Success      = $true
             Status       = 'Completed'
@@ -238,8 +242,8 @@ function Wait-SCVMMJob {
     else {
         [PSCustomObject]@{
             Success      = $false
-            Status       = $job.Status
-            ErrorMessage = "SCVMM job ended with status: $($job.Status). $($job.ErrorInfo)"
+            Status       = $Job.Status
+            ErrorMessage = "SCVMM job ended with status: $($Job.Status). $($Job.ErrorInfo)"
         }
     }
 }
