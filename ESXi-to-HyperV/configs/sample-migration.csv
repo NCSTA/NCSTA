@@ -1,0 +1,2 @@
+VMName,SourceHost,TargetHost,StoragePath,CPUCount,MemoryMB,Generation,DelayedStartSec,NIC1_SourcePortGroup,NIC1_VLAN,NIC1_TargetSwitch,NIC1_TargetVMNetwork,NIC2_SourcePortGroup,NIC2_VLAN,NIC2_TargetSwitch,NIC2_TargetVMNetwork,NIC3_SourcePortGroup,NIC3_VLAN,NIC3_TargetSwitch,NIC3_TargetVMNetwork,NIC4_SourcePortGroup,NIC4_VLAN,NIC4_TargetSwitch,NIC4_TargetVMNetwork
+server01,esxi01.domain.com,hyperv01.domain.com,C:\ClusterStorage\Volume5,6,16384,2,120,VLAN_100_Production,2071,Production Switch,10.0.1.x Network,VLAN_200_Management,2746,Management Switch,10.0.2.x Network,,,,,,,,
