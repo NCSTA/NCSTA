@@ -22,45 +22,46 @@ foreach ($row in $data) {
         -PercentComplete ([math]::Min(100, ($i / $total) * 100))
 
     # Skip if already filled or ID is empty
-    if ($row.'ID Owner' -or -not $row.ID) {
+    if ($row.'ID Owners' -or -not $row.ID) {
         $skipped++
         continue
     }
 
     try {
-        # Split "domain\group-name" into domain and group
-        $parts  = $row.ID -split '\\', 2
-        $domain = $parts[0]
-        $grp    = $parts[1]
+        # Split "Domain\group-name" — append .com to domain for AD server
+        $parts  = $row.ID.Trim() -split '\\', 2
+        $domain = "$($parts[0].Trim()).com"
+        $grp    = $parts[1].Trim()
         $cacheKey = "$domain\$grp"
 
         # Check cache first
         if ($cache.ContainsKey($cacheKey)) {
-            $row.'ID Owner' = $cache[$cacheKey]
+            $row.'ID Owners' = $cache[$cacheKey]
             $cacheHits++
             continue
         }
 
         # Not cached - query AD for the single group member
         $adQueries++
-        $members = @(Get-ADGroupMember -Identity $grp -Server $domain -ErrorAction Stop)
+        $members = @(Get-ADGroupMember -Identity $grp -Server $domain -ErrorAction Stop |
+                     Select-Object -ExpandProperty Name)
 
         if ($members.Count -eq 1) {
-            $cache[$cacheKey] = $members[0].Name
+            $cache[$cacheKey] = $members[0]
         }
         elseif ($members.Count -eq 0) {
             $cache[$cacheKey] = "No members found"
         }
         else {
-            $cache[$cacheKey] = ($members | ForEach-Object { $_.Name }) -join '; '
+            $cache[$cacheKey] = $members -join '; '
         }
 
-        $row.'ID Owner' = $cache[$cacheKey]
+        $row.'ID Owners' = $cache[$cacheKey]
     }
     catch {
         $errorMsg = "ERROR: $($_.Exception.Message)"
         $cache[$cacheKey] = $errorMsg
-        $row.'ID Owner' = $errorMsg
+        $row.'ID Owners' = $errorMsg
     }
 }
 
