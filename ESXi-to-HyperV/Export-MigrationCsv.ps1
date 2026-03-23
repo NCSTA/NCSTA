@@ -23,7 +23,7 @@
 .PARAMETER TargetHost
     FQDN of the destination Hyper-V host. Applied to all exported VMs.
 .PARAMETER StoragePath
-    Cluster storage path on the target host (e.g., C:\ClusterStorage\Volume5).
+    Cluster storage path on the target host (e.g., C:\ClusterStorage\Volume1).
 .PARAMETER Generation
     VM generation for the converted VM. Defaults to 2.
 .PARAMETER DelayedStartSec
@@ -38,27 +38,27 @@
     Append to an existing CSV instead of overwriting.
 .EXAMPLE
     # Basic export — fill in target columns manually after
-    .\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
-        -VMName "edcwwsod011v" `
-        -TargetHost "medwhypp003.gwnsm.guidewell.net" `
-        -StoragePath "C:\ClusterStorage\Volume5"
+    .\Export-MigrationCsv.ps1 -VIServer vcenter.domain.local `
+        -VMName "sample-vm01" `
+        -TargetHost "hyperv-host01.domain.local" `
+        -StoragePath "C:\ClusterStorage\Volume1"
 .EXAMPLE
     # Export with network mapping to auto-populate target columns
     $netMap = @{
-        'VLAN_2071_Production' = @{ Switch = 'Production Switch'; VMNetwork = '172.18.71.x Network' }
-        'VLAN_2746_NSM'        = @{ Switch = 'NSM Switch';        VMNetwork = '172.25.122.x Network' }
+        'VLAN_100_Production'  = @{ Switch = 'Production Switch'; VMNetwork = '10.0.1.x Network' }
+        'VLAN_200_Management'  = @{ Switch = 'Management Switch';  VMNetwork = '10.0.2.x Network' }
     }
-    .\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
-        -VMName "edcwwsod*" `
-        -TargetHost "medwhypp003.gwnsm.guidewell.net" `
-        -StoragePath "C:\ClusterStorage\Volume5" `
+    .\Export-MigrationCsv.ps1 -VIServer vcenter.domain.local `
+        -VMName "sample-vm*" `
+        -TargetHost "hyperv-host01.domain.local" `
+        -StoragePath "C:\ClusterStorage\Volume1" `
         -NetworkMap $netMap
 .EXAMPLE
     # Export multiple specific VMs
-    .\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
+    .\Export-MigrationCsv.ps1 -VIServer vcenter.domain.local `
         -VMName "server01v","server02v","server03v" `
-        -TargetHost "medwhypp003.gwnsm.guidewell.net" `
-        -StoragePath "C:\ClusterStorage\Volume5"
+        -TargetHost "hyperv-host01.domain.local" `
+        -StoragePath "C:\ClusterStorage\Volume1"
 #>
 [CmdletBinding()]
 param(

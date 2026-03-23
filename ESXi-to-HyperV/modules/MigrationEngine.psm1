@@ -33,7 +33,7 @@ function Invoke-V2VConversion {
     .PARAMETER TargetHost
         FQDN of the destination Hyper-V host.
     .PARAMETER StoragePath
-        Cluster storage path for the converted VM (e.g., C:\ClusterStorage\Volume5).
+        Cluster storage path for the converted VM (e.g., C:\ClusterStorage\Volume1).
     .PARAMETER CPUCount
         Number of virtual CPUs.
     .PARAMETER MemoryMB
@@ -215,27 +215,34 @@ function Wait-SCVMMJob {
     # Store the job ID as a single Guid to avoid array conversion errors
     [Guid]$jobId = $Job.ID
 
-    while ($Job.Status -eq 'Running') {
+    # SCVMM jobs pass through intermediate statuses (e.g., 'Running', 'UserCreation')
+    # before reaching a terminal state. Keep polling until we hit a known terminal status.
+    $terminalStatuses = @('Completed', 'Completed Successfully', 'CompletedWithInfo',
+                          'Failed', 'Canceled', 'Cancelled', 'OperationAborted')
+
+    while ($Job.Status -notin $terminalStatuses) {
         if ((Get-Date) -gt $deadline) {
             return [PSCustomObject]@{
                 Success      = $false
                 Status       = 'Timeout'
-                ErrorMessage = "SCVMM job timed out after $JobTimeout minutes."
+                ErrorMessage = "SCVMM job timed out after $JobTimeout minutes. Last status: $($Job.Status)"
             }
         }
 
         $progress = if ($Job.Progress) { $Job.Progress } else { 0 }
-        Write-Host "  V2V job progress: $progress% ..." -ForegroundColor Gray
+        Write-Host "  V2V job status: $($Job.Status), progress: $progress% ..." -ForegroundColor Gray
         Start-Sleep -Seconds $pollInterval
 
         # Refresh job status using the stored Guid
         $Job = Get-SCJob -VMMServer $VMMServer -ID $jobId
     }
 
-    if ($Job.Status -eq 'Completed') {
+    $successStatuses = @('Completed', 'Completed Successfully', 'CompletedWithInfo')
+
+    if ($Job.Status -in $successStatuses) {
         [PSCustomObject]@{
             Success      = $true
-            Status       = 'Completed'
+            Status       = $Job.Status
             ErrorMessage = $null
         }
     }

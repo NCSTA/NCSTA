@@ -24,9 +24,9 @@
 .PARAMETER WhatIf
     Runs pre-flight validation and CSV parsing without executing conversions.
 .EXAMPLE
-    .\Convert-EsxiToHyperV.ps1 -CsvPath .\configs\migration-export.csv -VMMServer medwvmmp001v.gwnsm.guidewell.net
+    .\Convert-EsxiToHyperV.ps1 -CsvPath .\configs\migration-export.csv -VMMServer vmm-server.domain.local
 .EXAMPLE
-    .\Convert-EsxiToHyperV.ps1 -CsvPath .\configs\migration-export.csv -VMMServer medwvmmp001v.gwnsm.guidewell.net -WhatIf
+    .\Convert-EsxiToHyperV.ps1 -CsvPath .\configs\migration-export.csv -VMMServer vmm-server.domain.local -WhatIf
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
