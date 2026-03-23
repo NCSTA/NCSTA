@@ -1,12 +1,12 @@
-# Requires ImportExcel module - install if needed:
+# Requires ImportExcel module for xlsx export:
 # Install-Module -Name ImportExcel -Scope CurrentUser
-param(
-    [string]$ExcelPath = ".\GroupOwners.xlsx"
-)
 
-Write-Host "Loading Excel file: $ExcelPath ..." -ForegroundColor Cyan
-$data = Import-Excel -Path $ExcelPath
-$total = @($data).Count
+$CsvPath = "C:\Temp\GroupOwners.csv"
+$OutPath = "C:\Temp\GroupOwners.xlsx"
+
+Write-Host "Loading CSV: $CsvPath ..." -ForegroundColor Cyan
+$data = @(Import-Csv -Path $CsvPath)
+$total = $data.Count
 Write-Host "Loaded $total rows." -ForegroundColor Cyan
 
 $i = 0
@@ -66,8 +66,8 @@ foreach ($row in $data) {
 
 Write-Progress -Activity "Processing groups" -Completed
 
-# Write back to Excel (overwrites the file)
-$data | Export-Excel -Path $ExcelPath -WorksheetName "Sheet1" -ClearSheet
+# Export results to xlsx
+$data | Export-Excel -Path $OutPath -WorksheetName "GroupOwners" -AutoSize -ClearSheet
 
 Write-Host ""
 Write-Host "===== Complete =====" -ForegroundColor Green
@@ -76,4 +76,4 @@ Write-Host "AD queries:    $adQueries"
 Write-Host "Cache hits:    $cacheHits"
 Write-Host "Skipped:       $skipped"
 Write-Host "Unique groups: $($cache.Count)"
-Write-Host "File updated:  $ExcelPath"
+Write-Host "Output file:   $OutPath"
