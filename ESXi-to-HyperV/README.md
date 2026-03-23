@@ -55,10 +55,10 @@ This approach requires no `Import-Module` gymnastics and makes every call self-d
 Pull VM configuration from vCenter/ESXi using PowerCLI:
 
 ```powershell
-C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
-    -VMName "server01" `
-    -TargetHost "hyperv01.domain.com" `
-    -StoragePath "C:\ClusterStorage\Volume5"
+C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.local `
+    -VMName "sample-vm01" `
+    -TargetHost "hyperv-host01.domain.local" `
+    -StoragePath "C:\ClusterStorage\Volume1"
 ```
 
 This connects to VMware and exports each VM's CPU, memory, NIC port groups, and VLAN IDs into the CSV format. The output CSV defaults to `configs\migration-export.csv` relative to the script directory.
@@ -75,10 +75,10 @@ $netMap = @{
     'VLAN_200_Management'        = @{ Switch = 'Management Switch';        VMNetwork = '10.0.2.x Network' }
 }
 
-C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
-    -VMName "server*" `
-    -TargetHost "hyperv01.domain.com" `
-    -StoragePath "C:\ClusterStorage\Volume5" `
+C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.local `
+    -VMName "sample-vm*" `
+    -TargetHost "hyperv-host01.domain.local" `
+    -StoragePath "C:\ClusterStorage\Volume1" `
     -NetworkMap $netMap
 ```
 
@@ -88,22 +88,22 @@ Without `-NetworkMap`, the TargetSwitch and TargetVMNetwork columns are left bla
 
 ```powershell
 # Wildcard
-C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
-    -VMName "server*" `
-    -TargetHost "hyperv01.domain.com" `
-    -StoragePath "C:\ClusterStorage\Volume5"
+C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.local `
+    -VMName "sample-vm*" `
+    -TargetHost "hyperv-host01.domain.local" `
+    -StoragePath "C:\ClusterStorage\Volume1"
 
 # Specific list
-C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
+C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.local `
     -VMName "server01v","server02v","server03v" `
-    -TargetHost "hyperv01.domain.com" `
-    -StoragePath "C:\ClusterStorage\Volume5"
+    -TargetHost "hyperv-host01.domain.local" `
+    -StoragePath "C:\ClusterStorage\Volume1"
 
 # Append to existing CSV (e.g., different target hosts)
-C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
+C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.local `
     -VMName "server04v" `
-    -TargetHost "hyperv02.domain.com" `
-    -StoragePath "C:\ClusterStorage\Volume5" -Append
+    -TargetHost "hyperv-host02.domain.local" `
+    -StoragePath "C:\ClusterStorage\Volume1" -Append
 ```
 
 #### Export Parameters
@@ -113,7 +113,7 @@ C:\Scripts\ESXi-to-HyperV\Export-MigrationCsv.ps1 -VIServer vcenter.domain.com `
 | `-VIServer` | Yes | vCenter or ESXi host FQDN |
 | `-VMName` | Yes | VM name(s), supports wildcards |
 | `-TargetHost` | Yes | Destination Hyper-V host FQDN |
-| `-StoragePath` | Yes | Cluster storage path on target (e.g., `C:\ClusterStorage\Volume5`) |
+| `-StoragePath` | Yes | Cluster storage path on target (e.g., `C:\ClusterStorage\Volume1`) |
 | `-Credential` | No | PSCredential for vCenter auth (prompts if omitted) |
 | `-Generation` | No | VM generation (default: 2) |
 | `-DelayedStartSec` | No | Auto-start delay in seconds (default: 120) |
@@ -154,12 +154,12 @@ Up to 4 NICs per VM (NIC1 through NIC4). Empty NIC columns are skipped.
 # Dry run - validates CSV, modules, connectivity, and resources without converting
 C:\Scripts\ESXi-to-HyperV\Convert-EsxiToHyperV.ps1 `
     -CsvPath "C:\Scripts\ESXi-to-HyperV\configs\migration-export.csv" `
-    -VMMServer scvmm01.domain.com -WhatIf
+    -VMMServer vmm-server.domain.local -WhatIf
 
 # Execute the migration
 C:\Scripts\ESXi-to-HyperV\Convert-EsxiToHyperV.ps1 `
     -CsvPath "C:\Scripts\ESXi-to-HyperV\configs\migration-export.csv" `
-    -VMMServer scvmm01.domain.com
+    -VMMServer vmm-server.domain.local
 ```
 
 #### Conversion Parameters
