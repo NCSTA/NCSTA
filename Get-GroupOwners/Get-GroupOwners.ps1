@@ -68,7 +68,8 @@ foreach ($row in $data) {
 Write-Progress -Activity "Processing groups" -Completed
 
 # Export results to xlsx
-$data | Export-Excel -Path $OutPath -WorksheetName "GroupOwners" -AutoSize -ClearSheet
+$data | Export-Excel -Path $OutPath -WorksheetName "GroupOwners" -ClearSheet `
+    -AutoSize -TableName "GroupOwners" -FreezeTopRow -BoldTopRow -TableStyle Medium2
 
 Write-Host ""
 Write-Host "===== Complete =====" -ForegroundColor Green
