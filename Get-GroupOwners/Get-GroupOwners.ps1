@@ -50,7 +50,7 @@ foreach ($row in $data) {
             $cache[$cacheKey] = $members[0]
         }
         elseif ($members.Count -eq 0) {
-            $cache[$cacheKey] = "No members found"
+            $cache[$cacheKey] = ""
         }
         else {
             $cache[$cacheKey] = $members -join '; '
@@ -59,9 +59,9 @@ foreach ($row in $data) {
         $row.'ID Owners' = $cache[$cacheKey]
     }
     catch {
-        $errorMsg = "ERROR: $($_.Exception.Message)"
-        $cache[$cacheKey] = $errorMsg
-        $row.'ID Owners' = $errorMsg
+        # Leave cell blank on error, cache blank so we don't retry
+        $cache[$cacheKey] = ""
+        $row.'ID Owners' = ""
     }
 }
 
