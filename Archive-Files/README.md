@@ -36,7 +36,11 @@ G:\public\Nasco\MacroBuild\DLM,BCBSFL\Pub-K-Nasco-MacroBuild5125-M,"Dudley, Ron"
 - A results CSV is always written, even on `-WhatIf` or if the run is
   interrupted.
 
-## Usage
+## Two flavors in this folder
+- **`Move-ToArchive.ps1`** — full advanced function with `param()`, comment-based help, `-WhatIf`, `-Confirm`. Run from a shell where .ps1 execution is allowed.
+- **`Move-ToArchive-Inline.ps1`** — same logic, but with a config block of plain `$Variables` at the top and a `$DryRun` switch. Paste the whole file into the ISE / VS Code **script pane** and press F5. Use this when execution policy blocks running .ps1 files directly.
+
+## Usage (Move-ToArchive.ps1)
 
 Dry run (recommended first):
 ```powershell
@@ -60,6 +64,22 @@ Alternate column name:
 ```powershell
 .\Move-ToArchive.ps1 -CsvPath .\retire-list.csv -PathColumn 'FullName'
 ```
+
+## Usage (Move-ToArchive-Inline.ps1 — script pane)
+1. Open ISE or VS Code on the target server.
+2. Open `Move-ToArchive-Inline.ps1` (or paste its contents into the script pane).
+3. Edit the `CONFIG` block at the top:
+   ```powershell
+   $CsvPath     = 'C:\Temp\retire-list.csv'
+   $ArchiveRoot = 'G:\archives'
+   $LogPath     = "C:\Temp\Move-ToArchive-Log-$(Get-Date -Format 'yyyyMMdd-HHmmss').csv"
+   $PathColumn  = 'Path'
+   $DryRun      = $true   # flip to $false for a real run
+   ```
+4. Press **F5**. Review the log CSV at `$LogPath`.
+5. Flip `$DryRun = $false` and run again.
+
+No external parameters, no execution-policy issues — the code just runs in the current session.
 
 ## Parameters
 | Parameter     | Default                                          | Description                                         |
