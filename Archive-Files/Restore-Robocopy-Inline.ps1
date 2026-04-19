@@ -32,6 +32,7 @@ $robocopyArgs = @(
     '/XC'           # skip changed (existing) files
     '/XN'           # skip newer (existing) files
     '/XO'           # skip older (existing) files
+    '/MT:4'         # multithreaded copy using 4 threads (matches server CPU count)
     '/NP'           # no progress percentage (cleaner log)
     "/LOG:$RobocopyLog"
 )
