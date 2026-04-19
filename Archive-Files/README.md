@@ -36,9 +36,15 @@ G:\public\Nasco\MacroBuild\DLM,BCBSFL\Pub-K-Nasco-MacroBuild5125-M,"Dudley, Ron"
 - A results CSV is always written, even on `-WhatIf` or if the run is
   interrupted.
 
-## Two flavors in this folder
+## Scripts in this folder
+
+### Archive
 - **`Move-ToArchive.ps1`** — full advanced function with `param()`, comment-based help, `-WhatIf`, `-Confirm`. Run from a shell where .ps1 execution is allowed.
 - **`Move-ToArchive-Inline.ps1`** — same logic, but with a config block of plain `$Variables` at the top and a `$DryRun` switch. Paste the whole file into the ISE / VS Code **script pane** and press F5. Use this when execution policy blocks running .ps1 files directly.
+
+### Restore
+- **`Restore-FromArchive-Inline.ps1`** — scans the archive root recursively and moves every file back to its original location by reversing the path transformation. Does not depend on the archive log CSV.
+- **`Restore-Robocopy-Inline.ps1`** — uses Robocopy to copy the entire archive tree back to the original share in one operation. Skips any file that already exists at the destination (nothing is overwritten). Fastest option when the archive and share have the same folder structure.
 
 ## Usage (Move-ToArchive.ps1)
 
@@ -80,6 +86,35 @@ Alternate column name:
 5. Flip `$DryRun = $false` and run again.
 
 No external parameters, no execution-policy issues — the code just runs in the current session.
+
+## Usage (Restore-Robocopy-Inline.ps1 — script pane)
+Copies everything from the archive back to the original share using Robocopy.
+Skips files that already exist at the destination — nothing is overwritten.
+
+1. Paste into the ISE / VS Code script pane.
+2. Edit the `CONFIG` block:
+   ```powershell
+   $ArchiveRoot     = 'G:\archives'
+   $DestinationRoot = 'G:\public'
+   $RobocopyLog     = "C:\Temp\Robocopy-Restore-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+   $DryRun          = $true   # flip to $false for a real run
+   ```
+3. Press **F5**. Review the Robocopy log.
+4. Flip `$DryRun = $false` and run again.
+
+Under the hood, the flags used are:
+
+| Flag  | What it does                                 |
+| ----- | -------------------------------------------- |
+| `/E`  | Copy all subdirectories including empty ones |
+| `/XC` | Skip files that already exist (changed)      |
+| `/XN` | Skip files that already exist (newer)        |
+| `/XO` | Skip files that already exist (older)        |
+| `/NP` | No progress percentage (cleaner log)         |
+| `/L`  | List only / dry run (added when `$DryRun`)   |
+
+`/XC /XN /XO` together means: **only copy files that don't exist at the
+destination**.
 
 ## Parameters
 | Parameter     | Default                                          | Description                                         |
