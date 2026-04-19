@@ -63,14 +63,17 @@ function Add-LogEntry {
         [string]$Reason = '',
         [string]$Destination = ''
     )
-    $script:Log.Add([PSCustomObject]@{
+    $entry = [PSCustomObject]@{
         Timestamp   = (Get-Date).ToString('s')
         Path        = $Path
         Destination = $Destination
         Type        = $Type
         Action      = $Action
         Reason      = $Reason
-    })
+    }
+    # Write to disk immediately so no entries are lost if the run is interrupted.
+    $entry | Export-Csv -LiteralPath $LogPath -Append -NoTypeInformation -Encoding UTF8
+    $script:Log.Add($entry)
 }
 
 function Move-FileIfAbsent {
@@ -148,6 +151,12 @@ if ($columns -notcontains $PathColumn) {
 
 Ensure-Directory -Path $ArchiveRoot
 
+# Ensure the log directory exists before the loop so per-entry appends don't fail.
+$logParent = Split-Path -Path $LogPath -Parent
+if ($logParent -and -not (Test-Path -LiteralPath $logParent)) {
+    New-Item -ItemType Directory -Path $logParent -Force | Out-Null
+}
+
 $script:Log = [System.Collections.Generic.List[object]]::new()
 $i = 0
 
@@ -189,14 +198,6 @@ try {
 }
 finally {
     Write-Progress -Activity 'Archiving paths' -Completed
-
-    if ($script:Log.Count -gt 0) {
-        $logParent = Split-Path -Path $LogPath -Parent
-        if ($logParent -and -not (Test-Path -LiteralPath $logParent)) {
-            New-Item -ItemType Directory -Path $logParent -Force | Out-Null
-        }
-        $script:Log | Export-Csv -LiteralPath $LogPath -NoTypeInformation -Encoding UTF8
-    }
 }
 
 # --- Summary ---------------------------------------------------------------
