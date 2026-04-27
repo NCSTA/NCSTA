@@ -39,6 +39,7 @@ credentials (hence LAPS) because domain auth cannot reach a DC without network.
 ### Management Server
 - `VirtualMachineManager` module — SCVMM console/PowerShell
 - `VMware.PowerCLI` — for the pre-migration collector only
+- `RSAT-AD-PowerShell` — collector queries LAPS here (VMs have network at collection time)
 - PS Remoting enabled to all Hyper-V hosts
 - AD read rights with `ExtendedRight` on `ms-Mcs-AdmPwd` for all target domains
 
@@ -87,11 +88,12 @@ server02.dmz.contoso.com
 
 Run the collector:
 ```powershell
-.\1_Collect-VMwareNetworkConfig.ps1 `
-    -vCenter        "vcenter.corp.contoso.com" `
-    -FrontPGPattern "Front*" `
-    -BackPGPattern  "Back*"
+.\1_Collect-VMwareNetworkConfig.ps1 -vCenter "vcenter.corp.contoso.com"
 ```
+
+No portgroup patterns needed — portgroup names are the subnet address (e.g. `192.168.1.0`).
+The script derives the network address from each guest adapter's IP and matches it against
+the portgroup name automatically. NICs are stored as NIC1/NIC2 in VMware adapter order.
 
 Outputs:
 - `data/migration_servers.csv` — NIC config for each server, Status = `Pending`
@@ -165,7 +167,7 @@ Populate `$customRoutes` as `@{ Destination; PrefixLength; NextHop }[]`
 **2. Route application (post-migration, inside guest)**
 File: `lib/Set-GuestNetworking.ps1`
 Search: `USER-DEFINED ROUTE BLOCK`
-`$Routes` is already available as `hashtable[]`; the Back adapter is already renamed to `'Back'`
+`$Routes` is already available as `hashtable[]`; NIC2 is already renamed to `'NIC2'` at that point
 
 ---
 
@@ -178,10 +180,10 @@ Search: `USER-DEFINED ROUTE BLOCK`
 | Function | File | Purpose |
 |----------|------|---------|
 | `Get-LapsPassword` | `lib/Get-LapsPassword.ps1` | Input: FQDN → Output: PSCredential (local admin). Splits FQDN to target correct domain. Legacy LAPS only (`ms-Mcs-AdmPwd`). |
-| `Set-HyperVVMConfig` | `lib/Set-HyperVVMConfig.ps1` | Runs on Hyper-V host. Removes old NICs, adds Front+Back, sets VLAN, enables Secure Boot + Guest Services. Returns `@{FrontMAC; BackMAC}`. |
-| Guest net script | `lib/Set-GuestNetworking.ps1` | Not a function — loaded as ScriptBlock and injected via PSdirect. Params: `$FrontNIC`, `$BackNIC`, `$Routes` (hashtables). Identifies adapters by MAC. Renames to Front/Back. |
+| `Set-HyperVVMConfig` | `lib/Set-HyperVVMConfig.ps1` | Runs on Hyper-V host. Removes old NICs, adds NIC1+NIC2, sets VLAN, enables Secure Boot + Guest Services. Returns `@{NIC1MAC; NIC2MAC}`. |
+| Guest net script | `lib/Set-GuestNetworking.ps1` | Not a function — loaded as ScriptBlock and injected via PSdirect. Params: `$NIC1`, `$NIC2`, `$Routes` (hashtables). Identifies adapters by MAC. Renames to NIC1/NIC2. |
 | Main orchestrator | `2_Invoke-PostMigration.ps1` | Reads CSVs, loops pending servers. SCVMM → find host. `Invoke-Command` → HV host → `Set-HyperVVMConfig`. `Invoke-Command` → HV host → `Invoke-Command -VMName` (PSdirect) → guest. Writes status per step. |
-| Pre-migration collector | `1_Collect-VMwareNetworkConfig.ps1` | PowerCLI. Matches NICs by portgroup name pattern. Invokes `Invoke-VMScript` for guest IP/DNS. Route stub. Writes both CSVs. |
+| Pre-migration collector | `1_Collect-VMwareNetworkConfig.ps1` | PowerCLI. Portgroup name is the subnet (e.g. `192.168.1.0`); derives network address from guest adapter IP to match. Pulls LAPS per server for `Invoke-VMScript`. Stores NICs as NIC1/NIC2 in VMware adapter order. Route stub. Writes both CSVs. |
 
 ### Data flow
 
