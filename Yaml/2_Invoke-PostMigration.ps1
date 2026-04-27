@@ -109,22 +109,22 @@ foreach ($server in $pending) {
         Update-ServerStatus -TargetFQDN $fqdn -NewStatus 'InProgress'
 
         $macAddresses = Invoke-Command -ComputerName $hvHost -ScriptBlock {
-            param($script, $vmName, $frontSwitch, $frontVLAN, $backSwitch, $backVLAN)
+            param($script, $vmName, $nic1Switch, $nic1VLAN, $nic2Switch, $nic2VLAN)
             . ([ScriptBlock]::Create($script))
             Set-HyperVVMConfig `
-                -VMName      $vmName `
-                -FrontSwitch $frontSwitch `
-                -FrontVLAN   $frontVLAN `
-                -BackSwitch  $backSwitch `
-                -BackVLAN    $backVLAN `
+                -VMName     $vmName `
+                -NIC1Switch $nic1Switch `
+                -NIC1VLAN   $nic1VLAN `
+                -NIC2Switch $nic2Switch `
+                -NIC2VLAN   $nic2VLAN `
                 -Verbose
         } -ArgumentList $hvConfigScript, $serverName, `
-            $server.FrontNIC_vSwitch, [int]$server.FrontNIC_VLAN, `
-            $server.BackNIC_vSwitch,  [int]$server.BackNIC_VLAN
+            $server.NIC1_vSwitch, [int]$server.NIC1_VLAN, `
+            $server.NIC2_vSwitch, [int]$server.NIC2_VLAN
 
-        $frontMAC = $macAddresses.FrontMAC
-        $backMAC  = $macAddresses.BackMAC
-        Write-Host "        Front MAC: $frontMAC  |  Back MAC: $backMAC"
+        $nic1MAC = $macAddresses.NIC1MAC
+        $nic2MAC = $macAddresses.NIC2MAC
+        Write-Host "        NIC1 MAC: $nic1MAC  |  NIC2 MAC: $nic2MAC"
         Update-ServerStatus -TargetFQDN $fqdn -NewStatus 'NICsAdded'
     }
     catch {
@@ -141,19 +141,19 @@ foreach ($server in $pending) {
     Write-Host "  [3/3] Configuring guest networking via PowerShell Direct..."
     try {
         # Build NIC config hashtables — no credentials here, just data
-        $frontNICCfg = @{
-            MAC     = $frontMAC
-            IP      = $server.FrontNIC_IP
-            Prefix  = [int]$server.FrontNIC_Prefix
-            Gateway = $server.FrontNIC_GW
-            DNS     = @($server.FrontNIC_DNS1, $server.FrontNIC_DNS2) | Where-Object { $_ }
+        $nic1Cfg = @{
+            MAC     = $nic1MAC
+            IP      = $server.NIC1_IP
+            Prefix  = [int]$server.NIC1_Prefix
+            Gateway = $server.NIC1_GW
+            DNS     = @($server.NIC1_DNS1, $server.NIC1_DNS2) | Where-Object { $_ }
         }
-        $backNICCfg = @{
-            MAC     = $backMAC
-            IP      = $server.BackNIC_IP
-            Prefix  = [int]$server.BackNIC_Prefix
-            Gateway = $server.BackNIC_GW
-            DNS     = @()
+        $nic2Cfg = @{
+            MAC     = $nic2MAC
+            IP      = $server.NIC2_IP
+            Prefix  = [int]$server.NIC2_Prefix
+            Gateway = $server.NIC2_GW
+            DNS     = @($server.NIC2_DNS1, $server.NIC2_DNS2) | Where-Object { $_ }
         }
 
         # Build routes array for this server
@@ -170,7 +170,7 @@ foreach ($server in $pending) {
         # Remote into the Hyper-V host. The host queries LAPS itself so the
         # PSCredential is created locally — no deserialization issue for PSdirect.
         Invoke-Command -ComputerName $hvHost -ScriptBlock {
-            param($lapsScriptSrc, $guestScriptSrc, $targetFqdn, $vmName, $frontCfg, $backCfg, $routesCfg)
+            param($lapsScriptSrc, $guestScriptSrc, $targetFqdn, $vmName, $nic1Cfg, $nic2Cfg, $routesCfg)
 
             # Load LAPS function into this remote session and query locally
             . ([ScriptBlock]::Create($lapsScriptSrc))
@@ -183,9 +183,9 @@ foreach ($server in $pending) {
             Invoke-Command -VMName      $vmName `
                            -Credential  $credential `
                            -ScriptBlock $guestBlock `
-                           -ArgumentList $frontCfg, $backCfg, $routesCfg
+                           -ArgumentList $nic1Cfg, $nic2Cfg, $routesCfg
 
-        } -ArgumentList $lapsScript, $guestNetScript, $fqdn, $serverName, $frontNICCfg, $backNICCfg, @($serverRoutes)
+        } -ArgumentList $lapsScript, $guestNetScript, $fqdn, $serverName, $nic1Cfg, $nic2Cfg, @($serverRoutes)
 
         Update-ServerStatus -TargetFQDN $fqdn -NewStatus 'Complete'
         Write-Host "  [$serverName] Complete." -ForegroundColor Green
