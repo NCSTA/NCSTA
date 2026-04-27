@@ -1,1 +1,1 @@
-FQDN,HyperVHost,FrontNIC_vSwitch,FrontNIC_VLAN,FrontNIC_IP,FrontNIC_Prefix,FrontNIC_GW,FrontNIC_DNS1,FrontNIC_DNS2,BackNIC_vSwitch,BackNIC_VLAN,BackNIC_IP,BackNIC_Prefix,BackNIC_GW,Status,Notes
+FQDN,HyperVHost,NIC1_vSwitch,NIC1_VLAN,NIC1_IP,NIC1_Prefix,NIC1_GW,NIC1_DNS1,NIC1_DNS2,NIC2_vSwitch,NIC2_VLAN,NIC2_IP,NIC2_Prefix,NIC2_GW,NIC2_DNS1,NIC2_DNS2,Status,Notes

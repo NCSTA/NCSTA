@@ -6,30 +6,30 @@ function Set-HyperVVMConfig {
         Intended to be called via Invoke-Command targeting the Hyper-V host.
         Performs:
           - Removes all existing vNICs (Commvault-created adapters with no correct config)
-          - Adds Front and Back vNICs to the correct vSwitch with VLAN tagging
+          - Adds NIC1 and NIC2 to their respective vSwitches with VLAN tagging
           - Enables Secure Boot (Gen 2 VMs)
           - Enables Guest Services integration component
         Returns a hashtable with the assigned MAC addresses for both NICs.
     .PARAMETER VMName
         Short VM name as it appears on the Hyper-V host.
-    .PARAMETER FrontSwitch
-        Name of the Hyper-V virtual switch for the front (external) interface.
-    .PARAMETER FrontVLAN
-        VLAN ID for the front interface.
-    .PARAMETER BackSwitch
-        Name of the Hyper-V virtual switch for the back (internal) interface.
-    .PARAMETER BackVLAN
-        VLAN ID for the back interface.
+    .PARAMETER NIC1Switch
+        Hyper-V virtual switch name for NIC1 (matches portgroup name from VMware).
+    .PARAMETER NIC1VLAN
+        VLAN ID for NIC1.
+    .PARAMETER NIC2Switch
+        Hyper-V virtual switch name for NIC2 (matches portgroup name from VMware).
+    .PARAMETER NIC2VLAN
+        VLAN ID for NIC2.
     .OUTPUTS
-        [hashtable] @{ FrontMAC = "001122334455"; BackMAC = "001122334466" }
+        [hashtable] @{ NIC1MAC = "001122334455"; NIC2MAC = "001122334466" }
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string] $VMName,
-        [Parameter(Mandatory)] [string] $FrontSwitch,
-        [Parameter(Mandatory)] [int]    $FrontVLAN,
-        [Parameter(Mandatory)] [string] $BackSwitch,
-        [Parameter(Mandatory)] [int]    $BackVLAN
+        [Parameter(Mandatory)] [string] $NIC1Switch,
+        [Parameter(Mandatory)] [int]    $NIC1VLAN,
+        [Parameter(Mandatory)] [string] $NIC2Switch,
+        [Parameter(Mandatory)] [int]    $NIC2VLAN
     )
 
     $ErrorActionPreference = 'Stop'
@@ -40,21 +40,20 @@ function Set-HyperVVMConfig {
     Write-Verbose "[$VMName] Removing existing network adapters..."
     Get-VMNetworkAdapter -VM $vm | Remove-VMNetworkAdapter -Confirm:$false
 
-    # --- Add Front NIC ---
-    Write-Verbose "[$VMName] Adding Front NIC → $FrontSwitch (VLAN $FrontVLAN)..."
-    Add-VMNetworkAdapter -VM $vm -Name 'Front' -SwitchName $FrontSwitch -ErrorAction Stop
-    Set-VMNetworkAdapterVlan -VM $vm -VMNetworkAdapterName 'Front' -Access -VlanId $FrontVLAN
-    $frontMAC = (Get-VMNetworkAdapter -VM $vm -Name 'Front').MacAddress
+    # --- Add NIC1 ---
+    Write-Verbose "[$VMName] Adding NIC1 → $NIC1Switch (VLAN $NIC1VLAN)..."
+    Add-VMNetworkAdapter -VM $vm -Name 'NIC1' -SwitchName $NIC1Switch -ErrorAction Stop
+    Set-VMNetworkAdapterVlan -VM $vm -VMNetworkAdapterName 'NIC1' -Access -VlanId $NIC1VLAN
+    $nic1MAC = (Get-VMNetworkAdapter -VM $vm -Name 'NIC1').MacAddress
 
-    # --- Add Back NIC ---
-    Write-Verbose "[$VMName] Adding Back NIC → $BackSwitch (VLAN $BackVLAN)..."
-    Add-VMNetworkAdapter -VM $vm -Name 'Back' -SwitchName $BackSwitch -ErrorAction Stop
-    Set-VMNetworkAdapterVlan -VM $vm -VMNetworkAdapterName 'Back' -Access -VlanId $BackVLAN
-    $backMAC = (Get-VMNetworkAdapter -VM $vm -Name 'Back').MacAddress
+    # --- Add NIC2 ---
+    Write-Verbose "[$VMName] Adding NIC2 → $NIC2Switch (VLAN $NIC2VLAN)..."
+    Add-VMNetworkAdapter -VM $vm -Name 'NIC2' -SwitchName $NIC2Switch -ErrorAction Stop
+    Set-VMNetworkAdapterVlan -VM $vm -VMNetworkAdapterName 'NIC2' -Access -VlanId $NIC2VLAN
+    $nic2MAC = (Get-VMNetworkAdapter -VM $vm -Name 'NIC2').MacAddress
 
     # --- Enable Secure Boot ---
     Write-Verbose "[$VMName] Enabling Secure Boot..."
-    # Only applies to Gen 2 VMs; Gen 1 will throw — catch and warn
     try {
         Set-VMFirmware -VM $vm -EnableSecureBoot On -SecureBootTemplate 'MicrosoftWindows' -ErrorAction Stop
     }
@@ -69,7 +68,7 @@ function Set-HyperVVMConfig {
     Write-Verbose "[$VMName] Hardware configuration complete."
 
     return @{
-        FrontMAC = $frontMAC
-        BackMAC  = $backMAC
+        NIC1MAC = $nic1MAC
+        NIC2MAC = $nic2MAC
     }
 }
