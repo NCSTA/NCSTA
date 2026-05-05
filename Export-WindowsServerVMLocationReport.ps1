@@ -11,11 +11,12 @@
 
 # --- CONFIGURE THESE VALUES ---
 $outputDir = "C:\Temp"             # where HTML report will be saved
-$scope     = "ClusterWide"         # "ClusterWide" (audit-safe) or "HostOnly"
 $vCenters  = @(                    # one or more vCenter servers
     "your_vcenter_server"
 )
 # --- END CONFIG ---
+
+$reportScope = "ClusterWide"       # fixed behavior: all clusters and all hosts in all configured vCenters
 
 # Optional: ignore self-signed certs
 Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -Scope Session -Confirm:$false | Out-Null
@@ -126,6 +127,58 @@ $($rows -join "`n")
 "@
 }
 
+function New-HostSummaryHtml {
+    param([Parameter(Mandatory)][object[]]$HostRows)
+
+    if (-not $HostRows -or $HostRows.Count -eq 0) {
+        return '<div class="empty-state">No hosts were found in the connected vCenters.</div>'
+    }
+
+    $rows = foreach ($hostRow in ($HostRows | Sort-Object vCenter, Cluster, Hostname)) {
+        $vCenter        = ConvertTo-HtmlEncoded $hostRow.vCenter
+        $cluster        = ConvertTo-HtmlEncoded $hostRow.Cluster
+        $hostname       = ConvertTo-HtmlEncoded $hostRow.Hostname
+        $cpuSockets     = Format-WholeNumber $hostRow.CpuSockets
+        $coresPerSocket = Format-WholeNumber $hostRow.CoresPerSocket
+        $totalCores     = Format-WholeNumber $hostRow.TotalCores
+        $windowsVMs     = Format-WholeNumber $hostRow.WindowsVMs
+        $rowClass       = if ($hostRow.WindowsVMs -gt 0) { 'has-windows' } else { 'no-windows' }
+
+        @"
+                        <tr class="$rowClass">
+                            <td>$vCenter</td>
+                            <td>$cluster</td>
+                            <td>$hostname</td>
+                            <td class="number">$cpuSockets</td>
+                            <td class="number">$coresPerSocket</td>
+                            <td class="number">$totalCores</td>
+                            <td class="number strong">$windowsVMs</td>
+                        </tr>
+"@
+    }
+
+    @"
+            <div class="table-scroll host-summary-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>vCenter</th>
+                            <th>Cluster</th>
+                            <th>Hostname</th>
+                            <th>CPU Sockets</th>
+                            <th>Cores per Socket</th>
+                            <th>Total Cores</th>
+                            <th>Windows VMs</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+$($rows -join "`n")
+                    </tbody>
+                </table>
+            </div>
+"@
+}
+
 function New-HostHtml {
     param(
         [Parameter(Mandatory)][object]$HostRow,
@@ -138,9 +191,10 @@ function New-HostHtml {
     $coresPerSocket = Format-WholeNumber $HostRow.CoresPerSocket
     $vmCount        = Format-WholeNumber $HostRow.WindowsVMs
     $vmRows         = New-VMRowsHtml -VMs $VMs
+    $hostClass      = if ($HostRow.WindowsVMs -gt 0) { 'host-card has-windows' } else { 'host-card no-windows' }
 
     @"
-            <details class="host-card">
+            <details class="$hostClass" open>
                 <summary>
                     <span class="summary-title">$hostName</span>
                     <span class="summary-stats">
@@ -159,25 +213,29 @@ $vmRows
 
 function New-ClusterHtml {
     param(
-        [Parameter(Mandatory)][string]$ClusterName,
-        [Parameter(Mandatory)][string]$VCenterName,
-        [Parameter(Mandatory)][object[]]$HostRows,
-        [Parameter(Mandatory)][object[]]$VMInfo
+        [Parameter(Mandatory)][object]$ClusterRow,
+        [object[]]$HostRows,
+        [object[]]$VMInfo
     )
 
-    $clusterDisplayName = ConvertTo-HtmlEncoded $ClusterName
-    $vCenterDisplayName = ConvertTo-HtmlEncoded $VCenterName
-    $clusterCores       = Format-WholeNumber (($HostRows | Measure-Object -Property TotalCores -Sum).Sum)
-    $hostCount          = Format-WholeNumber $HostRows.Count
-    $vmCount            = Format-WholeNumber (($HostRows | Measure-Object -Property WindowsVMs -Sum).Sum)
+    $clusterDisplayName = ConvertTo-HtmlEncoded $ClusterRow.Cluster
+    $vCenterDisplayName = ConvertTo-HtmlEncoded $ClusterRow.vCenter
+    $clusterCores       = Format-WholeNumber $ClusterRow.TotalCores
+    $hostCount          = Format-WholeNumber $ClusterRow.Hosts
+    $vmCount            = Format-WholeNumber $ClusterRow.WindowsVMs
+    $clusterClass       = if ($ClusterRow.WindowsVMs -gt 0) { 'cluster-card has-windows' } else { 'cluster-card no-windows' }
 
     $hostHtml = foreach ($hostRow in ($HostRows | Sort-Object Hostname)) {
         $hostVMs = @($VMInfo | Where-Object { $_.vCenter -eq $hostRow.vCenter -and $_.HostName -eq $hostRow.Hostname })
         New-HostHtml -HostRow $hostRow -VMs $hostVMs
     }
 
+    if (-not $hostHtml) {
+        $hostHtml = '<div class="empty-state">No hosts were found in this cluster.</div>'
+    }
+
     @"
-        <details class="cluster-card">
+        <details class="$clusterClass" open>
             <summary>
                 <span class="summary-title">$clusterDisplayName</span>
                 <span class="summary-stats">
@@ -196,6 +254,7 @@ $($hostHtml -join "`n")
 
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 
+$clusterRows = @()
 $hostRows = @()
 $winVMInfo = @()
 
@@ -203,8 +262,9 @@ $winVMInfo = @()
 foreach ($serverConnection in $serverConnections) {
     $currentVCenter = $serverConnection.Name
 
-    $allHosts = @(Get-VMHost -Server $serverConnection)
-    $allVMs   = @(Get-VM -Server $serverConnection)
+    $allClusters = @(Get-Cluster -Server $serverConnection)
+    $allHosts    = @(Get-VMHost -Server $serverConnection)
+    $allVMs      = @(Get-VM -Server $serverConnection)
 
     # Find Windows Server VMs.
     $winVMs = @($allVMs | Where-Object { Test-IsWindowsServerVM -VM $_ })
@@ -239,36 +299,8 @@ foreach ($serverConnection in $serverConnections) {
         }
     }
 
-    # Which hosts should be shown in the report?
-    if ($scope -eq "HostOnly") {
-        $hostNamesToReport = @($currentWinVMInfo.HostName | Where-Object { $_ } | Sort-Object -Unique)
-        $hostsToReport = @($allHosts | Where-Object { $hostNamesToReport -contains $_.Name })
-    } else {
-        $clustersWithWindows = @($currentWinVMInfo.Cluster | Where-Object { $_ } | Sort-Object -Unique)
-        $standaloneHostsWithWindows = @(
-            $currentWinVMInfo |
-                Where-Object { -not $_.Cluster } |
-                Select-Object -ExpandProperty HostName -Unique
-        )
-
-        $clusterHosts = foreach ($clusterName in $clustersWithWindows) {
-            Get-Cluster -Name $clusterName -Server $serverConnection | Get-VMHost
-        }
-
-        $standaloneHosts = @($allHosts | Where-Object { $standaloneHostsWithWindows -contains $_.Name })
-        $hostsToReport = @($clusterHosts + $standaloneHosts)
-    }
-
-    $hostsToReport = @(
-        $hostsToReport |
-            Where-Object { $_ } |
-            Group-Object Name |
-            ForEach-Object { $_.Group[0] } |
-            Sort-Object Name
-    )
-
-    # Host report data.
-    $currentHostRows = foreach ($h in $hostsToReport) {
+    # Host report data. ClusterWide means every host, regardless of Windows VM count.
+    $currentHostRows = foreach ($h in ($allHosts | Sort-Object Name)) {
         $clusterName = (Get-Cluster -VMHost $h -ErrorAction SilentlyContinue).Name
         if (-not $clusterName) {
             $clusterName = '(No Cluster)'
@@ -278,7 +310,7 @@ foreach ($serverConnection in $serverConnections) {
 
         [pscustomobject]@{
             vCenter        = $currentVCenter
-            Scope          = $scope
+            Scope          = $reportScope
             Cluster        = $clusterName
             Hostname       = $h.Name
             CpuSockets     = $cpu.Sockets
@@ -288,29 +320,54 @@ foreach ($serverConnection in $serverConnections) {
         }
     }
 
-    $winVMInfo += @($currentWinVMInfo)
+    $clusterNames = @($allClusters | Select-Object -ExpandProperty Name)
+    $standaloneClusterNeeded = @($currentHostRows | Where-Object { $_.Cluster -eq '(No Cluster)' }).Count -gt 0
+    if ($standaloneClusterNeeded) {
+        $clusterNames += '(No Cluster)'
+    }
+
+    $currentClusterRows = foreach ($clusterName in ($clusterNames | Sort-Object -Unique)) {
+        $clusterHostRows = @($currentHostRows | Where-Object { $_.Cluster -eq $clusterName })
+
+        [pscustomobject]@{
+            vCenter    = $currentVCenter
+            Scope      = $reportScope
+            Cluster    = $clusterName
+            Hosts      = $clusterHostRows.Count
+            TotalCores = ($clusterHostRows | Measure-Object -Property TotalCores -Sum).Sum
+            WindowsVMs = ($clusterHostRows | Measure-Object -Property WindowsVMs -Sum).Sum
+        }
+    }
+
+    $clusterRows += @($currentClusterRows)
     $hostRows += @($currentHostRows)
+    $winVMInfo += @($currentWinVMInfo)
 }
 
-$clusterHtml = foreach ($clusterGroup in ($hostRows | Sort-Object vCenter, Cluster | Group-Object vCenter, Cluster)) {
-    $firstHostRow = $clusterGroup.Group[0]
-    New-ClusterHtml -ClusterName $firstHostRow.Cluster -VCenterName $firstHostRow.vCenter -HostRows @($clusterGroup.Group) -VMInfo $winVMInfo
+$hostSummaryHtml = New-HostSummaryHtml -HostRows $hostRows
+
+$clusterHtml = foreach ($clusterRow in ($clusterRows | Sort-Object vCenter, Cluster)) {
+    $clusterHostRows = @(
+        $hostRows |
+            Where-Object { $_.vCenter -eq $clusterRow.vCenter -and $_.Cluster -eq $clusterRow.Cluster }
+    )
+    New-ClusterHtml -ClusterRow $clusterRow -HostRows $clusterHostRows -VMInfo $winVMInfo
 }
 
 $reportGenerated = Get-Date
 $ts              = $reportGenerated.ToString('yyyyMMdd-HHmmss')
 $htmlPath        = Join-Path $outputDir ("Windows_Server_VM_Location_Report_$ts.html")
+$totalVCenters   = Format-WholeNumber $serverConnections.Count
+$totalClusters   = Format-WholeNumber $clusterRows.Count
 $totalHosts      = Format-WholeNumber $hostRows.Count
-$totalClusters   = Format-WholeNumber (($hostRows | Group-Object vCenter, Cluster).Count)
 $totalCores      = Format-WholeNumber (($hostRows | Measure-Object -Property TotalCores -Sum).Sum)
 $totalVMs        = Format-WholeNumber $winVMInfo.Count
-$totalVCenters   = Format-WholeNumber $serverConnections.Count
 $encodedVCenters = ConvertTo-HtmlEncoded (($serverConnections | Select-Object -ExpandProperty Name) -join ', ')
-$encodedScope    = ConvertTo-HtmlEncoded $scope
+$encodedScope    = ConvertTo-HtmlEncoded $reportScope
 $encodedDate     = ConvertTo-HtmlEncoded ($reportGenerated.ToString('yyyy-MM-dd HH:mm:ss zzz'))
 
 if (-not $clusterHtml) {
-    $clusterHtml = '<div class="empty-state page-empty">No Windows Server VMs were found for the selected scope.</div>'
+    $clusterHtml = '<div class="empty-state page-empty">No clusters or hosts were found in the connected vCenters.</div>'
 }
 
 $html = @"
@@ -322,15 +379,22 @@ $html = @"
     <title>Windows Server VM Location Report</title>
     <style>
         :root {
-            --bg: #f6f7f9;
-            --panel: #ffffff;
-            --ink: #172033;
-            --muted: #5f6b7a;
-            --line: #d8dee8;
-            --line-strong: #b9c4d2;
-            --accent: #245f73;
-            --accent-soft: #e5f2f5;
-            --warn-soft: #fff4d6;
+            --bg: #090d14;
+            --panel: #101722;
+            --panel-soft: #151f2c;
+            --panel-raised: #182435;
+            --ink: #eef4fb;
+            --muted: #9daabc;
+            --line: #293648;
+            --line-strong: #3d4f66;
+            --accent: #66d9e8;
+            --accent-soft: #133440;
+            --good: #67e8a5;
+            --good-soft: #102b23;
+            --warn: #f7c948;
+            --warn-soft: #31270f;
+            --risk: #ff8f70;
+            --risk-soft: #351c18;
         }
 
         * {
@@ -339,7 +403,9 @@ $html = @"
 
         body {
             margin: 0;
-            background: var(--bg);
+            background:
+                radial-gradient(circle at 20% 0%, rgba(102, 217, 232, .12), transparent 28rem),
+                linear-gradient(180deg, #0d1420 0%, var(--bg) 34rem);
             color: var(--ink);
             font-family: "Segoe UI", Arial, sans-serif;
             font-size: 14px;
@@ -347,14 +413,20 @@ $html = @"
         }
 
         header {
-            background: #ffffff;
             border-bottom: 1px solid var(--line);
-            padding: 24px 32px 18px;
+            padding: 28px 32px 20px;
         }
 
         h1 {
             margin: 0 0 8px;
-            font-size: 28px;
+            font-size: 30px;
+            font-weight: 650;
+            letter-spacing: 0;
+        }
+
+        h2 {
+            margin: 0 0 12px;
+            font-size: 18px;
             font-weight: 650;
             letter-spacing: 0;
         }
@@ -365,28 +437,35 @@ $html = @"
         }
 
         main {
-            max-width: 1500px;
+            max-width: 1600px;
             margin: 0 auto;
-            padding: 24px 32px 40px;
+            padding: 24px 32px 44px;
         }
 
         .toolbar,
         .metric-grid,
-        .note {
+        .note,
+        .panel-section {
             margin-bottom: 18px;
         }
 
         .metric-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
             gap: 12px;
         }
 
-        .metric {
-            background: var(--panel);
+        .metric,
+        .panel-section,
+        details {
+            background: rgba(16, 23, 34, .94);
             border: 1px solid var(--line);
+            box-shadow: 0 18px 40px rgba(0, 0, 0, .22);
+        }
+
+        .metric {
             border-radius: 8px;
-            padding: 14px 16px;
+            padding: 15px 16px;
         }
 
         .metric .label {
@@ -399,8 +478,13 @@ $html = @"
         .metric .value {
             display: block;
             margin-top: 4px;
-            font-size: 24px;
-            font-weight: 650;
+            font-size: 26px;
+            font-weight: 700;
+        }
+
+        .panel-section {
+            border-radius: 8px;
+            padding: 16px;
         }
 
         .toolbar {
@@ -414,10 +498,10 @@ $html = @"
         input {
             border: 1px solid var(--line-strong);
             border-radius: 6px;
-            background: #ffffff;
+            background: #0f1722;
             color: var(--ink);
             font: inherit;
-            min-height: 36px;
+            min-height: 38px;
         }
 
         button {
@@ -431,21 +515,23 @@ $html = @"
         }
 
         input {
-            flex: 1 1 320px;
+            flex: 1 1 360px;
             padding: 0 12px;
         }
 
+        input::placeholder {
+            color: #78869a;
+        }
+
         .note {
-            background: var(--warn-soft);
-            border: 1px solid #ead596;
+            background: rgba(19, 52, 64, .74);
+            border: 1px solid #285568;
             border-radius: 8px;
             padding: 12px 14px;
-            color: #5a4a1f;
+            color: #c8edf4;
         }
 
         details {
-            background: var(--panel);
-            border: 1px solid var(--line);
             border-radius: 8px;
         }
 
@@ -482,45 +568,62 @@ $html = @"
         }
 
         .summary-stats span {
-            background: #f1f4f7;
+            background: #0d1420;
             border: 1px solid var(--line);
             border-radius: 999px;
             padding: 2px 8px;
             white-space: nowrap;
         }
 
-        .cluster-card[open] > summary {
+        .has-windows > summary .summary-stats span:last-child,
+        tr.has-windows .strong {
+            color: var(--warn);
+        }
+
+        .no-windows > summary .summary-stats span:last-child,
+        tr.no-windows .strong {
+            color: var(--good);
+        }
+
+        .cluster-card[open] > summary,
+        .host-card[open] > summary {
             border-bottom: 1px solid var(--line);
         }
 
         .host-list {
             padding: 12px;
-            background: #fbfcfd;
+            background: rgba(7, 11, 17, .32);
         }
 
         .host-card {
             border-radius: 6px;
-        }
-
-        .host-card[open] > summary {
-            border-bottom: 1px solid var(--line);
+            box-shadow: none;
         }
 
         .vm-panel {
             padding: 12px;
         }
 
+        .table-scroll,
         .vm-scroll {
-            max-height: 360px;
             overflow: auto;
             border: 1px solid var(--line);
             border-radius: 6px;
+            background: #0b1119;
+        }
+
+        .host-summary-scroll {
+            max-height: 460px;
+        }
+
+        .vm-scroll {
+            max-height: 320px;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 760px;
+            min-width: 860px;
         }
 
         th,
@@ -534,12 +637,24 @@ $html = @"
         th {
             position: sticky;
             top: 0;
-            background: #eef3f6;
-            color: #243241;
+            background: #142030;
+            color: #dbe7f3;
             font-size: 12px;
             text-transform: uppercase;
             letter-spacing: .04em;
             z-index: 1;
+        }
+
+        td {
+            color: #d5deea;
+        }
+
+        tr:nth-child(even) td {
+            background: rgba(255, 255, 255, .018);
+        }
+
+        tr:hover td {
+            background: rgba(102, 217, 232, .07);
         }
 
         tr:last-child td {
@@ -551,16 +666,20 @@ $html = @"
             white-space: nowrap;
         }
 
+        .strong {
+            font-weight: 700;
+        }
+
         .empty-state {
             color: var(--muted);
-            background: #f7f9fb;
+            background: #0b1119;
             border: 1px dashed var(--line-strong);
             border-radius: 6px;
             padding: 14px;
         }
 
         .page-empty {
-            background: #ffffff;
+            background: var(--panel);
         }
 
         .is-hidden {
@@ -599,7 +718,7 @@ $html = @"
             <div class="metric"><span class="label">vCenters</span><span class="value">$totalVCenters</span></div>
             <div class="metric"><span class="label">Clusters</span><span class="value">$totalClusters</span></div>
             <div class="metric"><span class="label">Hosts</span><span class="value">$totalHosts</span></div>
-            <div class="metric"><span class="label">CPU Cores In Scope</span><span class="value">$totalCores</span></div>
+            <div class="metric"><span class="label">CPU Cores</span><span class="value">$totalCores</span></div>
             <div class="metric"><span class="label">Windows Server VMs</span><span class="value">$totalVMs</span></div>
         </section>
 
@@ -611,16 +730,22 @@ $html = @"
         </section>
 
         <section class="note">
-            Scope=ClusterWide includes every host in clusters that contain Windows Server VMs, plus standalone hosts running Windows Server VMs. Scope=HostOnly includes only hosts currently running Windows Server VMs. Each cluster row includes its vCenter, and CPU cores shown beside clusters are the sum of the visible hosts in that scope.
+            This ClusterWide report includes every cluster and every host in each configured vCenter. Windows Server VM counts show where Microsoft Datacenter licensing exposure exists and where follow-up placement review may be needed.
         </section>
 
-        <section id="reportTree">
+        <section class="panel-section" id="hostSummary" aria-label="Host summary">
+            <h2>Host Summary</h2>
+$hostSummaryHtml
+        </section>
+
+        <section id="reportTree" aria-label="Cluster and host detail">
 $($clusterHtml -join "`n")
         </section>
     </main>
 
     <script>
         const reportTree = document.getElementById('reportTree');
+        const hostSummary = document.getElementById('hostSummary');
         const filterBox = document.getElementById('filterBox');
 
         document.getElementById('expandAll').addEventListener('click', () => {
@@ -642,6 +767,12 @@ $($clusterHtml -join "`n")
         function applyFilter(value) {
             const term = value.trim().toLowerCase();
             const clusters = [...reportTree.querySelectorAll('.cluster-card')];
+            const hostSummaryRows = [...hostSummary.querySelectorAll('tbody tr')];
+
+            hostSummaryRows.forEach((row) => {
+                const matched = !term || row.textContent.toLowerCase().includes(term);
+                row.classList.toggle('is-hidden', !matched);
+            });
 
             clusters.forEach((cluster) => {
                 let clusterMatched = !term || cluster.textContent.toLowerCase().includes(term);
@@ -673,7 +804,6 @@ Write-Host " Windows Server VM location report: $htmlPath"
 Write-Host ""
 Write-Host "Notes:"
 Write-Host " - This script performs read-only inventory queries only."
-Write-Host " - Scope=ClusterWide includes all hosts in clusters containing Windows Server VMs, plus standalone hosts running Windows Server VMs."
-Write-Host " - Scope=HostOnly includes only hosts currently running Windows Server VMs."
+Write-Host " - Scope=ClusterWide includes every cluster and every host in all configured vCenters."
 Write-Host " - Each cluster row includes the vCenter where that cluster was found."
-Write-Host " - Cluster and host CPU counts show physical CPU cores for the hosts included in the selected scope."
+Write-Host " - Host Summary mirrors the monthly review data: vCenter, cluster, host CPU, total cores, and Windows VM count."
