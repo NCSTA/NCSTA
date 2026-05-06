@@ -7,7 +7,7 @@
     Supports creating, modifying, deleting records and deploying them independently
     of the normal scheduled deployment batch.
 .NOTES
-    Requires: BAM 9.5.0+, System.Data.SQLite.dll in .\lib\ folder
+    Requires: BAM 9.5.0+
 #>
 
 param(
@@ -33,103 +33,11 @@ if ($PSScriptRoot) {
 }
 $modulesPath = Join-Path $scriptRoot 'modules'
 $dataPath = Join-Path $scriptRoot 'data'
-$libPath = Join-Path $scriptRoot 'lib'
-
-# Load SQLite assembly
-$sqliteDll = Join-Path $libPath 'System.Data.SQLite.dll'
-if (Test-Path $sqliteDll) {
-    function Get-DllMachineType {
-        param([string]$Path)
-        $fs = [System.IO.File]::OpenRead($Path)
-        $br = New-Object System.IO.BinaryReader($fs)
-        try {
-            $fs.Seek(0x3C, [System.IO.SeekOrigin]::Begin) | Out-Null
-            $peOffset = $br.ReadInt32()
-            $fs.Seek($peOffset + 4, [System.IO.SeekOrigin]::Begin) | Out-Null
-            $machine = $br.ReadUInt16()
-            return $machine
-        }
-        finally {
-            $br.Close()
-            $fs.Close()
-        }
-    }
-
-    try {
-        $machine = Get-DllMachineType -Path $sqliteDll
-        switch ($machine) {
-            332 { $dllArch = 'x86' }         # 0x014C
-            34404 { $dllArch = 'x64' }       # 0x8664
-            default { $dllArch = 'unknown' }
-        }
-        $procArch = if ([IntPtr]::Size -eq 8) { 'x64' } else { 'x86' }
-        if ($dllArch -ne 'unknown' -and $dllArch -ne $procArch) {
-            [System.Windows.MessageBox]::Show(
-                "Mismatch between System.Data.SQLite.dll architecture ($dllArch) and PowerShell process ($procArch).`n`nPlease place the matching SQLite build in the .\lib\ folder.",
-                "SQLite Architecture Mismatch", "OK", "Error"
-            )
-            exit 1
-        }
-    }
-    catch {
-        # If we can't determine architecture, continue but wrap initialization later
-    }
-
-    try {
-        Add-Type -Path $sqliteDll
-    }
-    catch [System.IO.FileLoadException] {
-        $err = $_.Exception
-        if ($err.HResult -eq 0x80131515 -or $err.Message -match 'Operation is not supported') {
-            try {
-                if (Get-Command Unblock-File -ErrorAction SilentlyContinue) {
-                    Unblock-File -Path $sqliteDll -ErrorAction Stop
-                }
-                else {
-                    if (Get-Item -Path $sqliteDll -Stream Zone.Identifier -ErrorAction SilentlyContinue) {
-                        Remove-Item -Path $sqliteDll -Stream Zone.Identifier -ErrorAction Stop
-                    }
-                }
-                Add-Type -Path $sqliteDll
-            }
-            catch {
-                [System.Windows.MessageBox]::Show("Failed to load SQLite after unblocking: $($_.Exception.Message)", "SQLite Load Error", "OK", "Error")
-                exit 1
-            }
-        }
-        else {
-            throw
-        }
-    }
-} else {
-    [System.Windows.MessageBox]::Show(
-        "SQLite library not found at:`n$sqliteDll`n`nPlease place System.Data.SQLite.dll in the .\lib\ folder.",
-        "Missing Dependency", "OK", "Error"
-    )
-    exit 1
-}
+$logPath = Join-Path $scriptRoot 'logs'
+if (-not (Test-Path $dataPath)) { New-Item -Path $dataPath -ItemType Directory -Force | Out-Null }
+if (-not (Test-Path $logPath)) { New-Item -Path $logPath -ItemType Directory -Force | Out-Null }
 
 Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
-Import-Module (Join-Path $modulesPath 'StagingDb.psm1') -Force
-
-# Initialize staging database
-$dbFile = Join-Path $dataPath 'staging.db'
-try {
-    Initialize-StagingDb -Path $dbFile
-}
-catch [System.AccessViolationException] {
-    $msg = "The embedded SQLite native library raised an AccessViolationException when opening the database.`n`n" +
-           "This usually indicates a mismatch between the System.Data.SQLite.dll architecture (x86 vs x64) and the running PowerShell process." +
-           "`n`nPlease ensure you have the correct System.Data.SQLite build for your PowerShell (use 64-bit DLL for 64-bit PowerShell)." +
-           "`n`nPath: $sqliteDll`n`nError: $($_.Exception.Message)"
-    [System.Windows.MessageBox]::Show($msg, "SQLite native load error", "OK", "Error")
-    exit 1
-}
-catch {
-    $err = $_.Exception.Message
-    [System.Windows.MessageBox]::Show("Failed to initialize staging DB: $err", "DB Initialization Error", "OK", "Error")
-    exit 1
-}
 
 # ---------------------------------------------------------------------------
 # XAML UI Definition
@@ -356,11 +264,11 @@ catch {
 
                         <GroupBox Header="Schedule (optional)">
                             <StackPanel Orientation="Horizontal">
-                                <CheckBox x:Name="chkSchedule" Content="Schedule deployment for:"
-                                          Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                <DatePicker x:Name="dpScheduleDate" Width="120" Margin="0,0,6,0" SelectedDateFormat="Short"/>
-                                <ComboBox x:Name="cboScheduleTime" Width="80" IsEditable="True"/>
-                                <ComboBox x:Name="cboScheduleAmpm" Width="60" Margin="6,0,0,0">
+                                <CheckBox x:Name="chkSchedule" Content="Scheduled deploy disabled"
+                                          IsEnabled="False" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                <DatePicker x:Name="dpScheduleDate" Width="120" Margin="0,0,6,0" SelectedDateFormat="Short" IsEnabled="False"/>
+                                <ComboBox x:Name="cboScheduleTime" Width="80" IsEditable="True" IsEnabled="False"/>
+                                <ComboBox x:Name="cboScheduleAmpm" Width="60" Margin="6,0,0,0" IsEnabled="False">
                                     <ComboBoxItem>AM</ComboBoxItem>
                                     <ComboBoxItem>PM</ComboBoxItem>
                                 </ComboBox>
@@ -439,22 +347,22 @@ catch {
                 </StackPanel>
             </TabItem>
 
-            <!-- TAB: Staged Items -->
-            <TabItem Header="Staged Items">
+            <!-- TAB: Logs -->
+            <TabItem Header="Logs">
                 <StackPanel Margin="16">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                         <Label Content="Filter:"/>
                         <ComboBox x:Name="cboStagedFilter" Width="150" Margin="0,0,10,0" SelectedIndex="0">
                             <ComboBoxItem Content="All"/>
-                            <ComboBoxItem Content="Pending"/>
-                            <ComboBoxItem Content="Deployed"/>
-                            <ComboBoxItem Content="Failed"/>
-                            <ComboBoxItem Content="Scheduled"/>
+                            <ComboBoxItem Content="Info"/>
+                            <ComboBoxItem Content="Success"/>
+                            <ComboBoxItem Content="Warning"/>
+                            <ComboBoxItem Content="Error"/>
                         </ComboBox>
-                        <Button x:Name="btnRefreshStaged" Content="Refresh"/>
-                        <Button x:Name="btnCancelStaged" Content="Cancel Selected"
+                        <Button x:Name="btnRefreshStaged" Content="Refresh Logs"/>
+                        <Button x:Name="btnCancelStaged" Content="Clear View"
                                 Style="{StaticResource DangerButton}" Margin="10,0,0,0"/>
-                        <Button x:Name="btnDeployStaged" Content="Deploy Selected Now"
+                        <Button x:Name="btnDeployStaged" Content="Open Log Folder"
                                 Style="{StaticResource SuccessButton}" Margin="10,0,0,0"/>
                     </StackPanel>
 
@@ -463,19 +371,13 @@ catch {
                               SelectionMode="Single"
                               CanUserSortColumns="True">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="ID" Binding="{Binding id}" Width="50"/>
-                            <DataGridTextColumn Header="Action" Binding="{Binding action}" Width="70"/>
-                            <DataGridTextColumn Header="Type" Binding="{Binding record_type}" Width="80"/>
-                            <DataGridTextColumn Header="Name" Binding="{Binding record_name}" Width="180"/>
-                            <DataGridTextColumn Header="Zone" Binding="{Binding zone_name}" Width="150"/>
-                            <DataGridTextColumn Header="Value" Binding="{Binding record_value}" Width="140"/>
-                            <DataGridTextColumn Header="Deploy" Binding="{Binding deploy_mode}" Width="75"/>
-                            <DataGridTextColumn Header="Scheduled" Binding="{Binding scheduled_time}" Width="130"/>
-                            <DataGridTextColumn Header="Status" Binding="{Binding status}" Width="75"/>
-                            <DataGridTextColumn Header="Created By" Binding="{Binding created_by}" Width="100"/>
-                            <DataGridTextColumn Header="Created" Binding="{Binding created_at}" Width="130"/>
-                            <DataGridTextColumn Header="Deployed" Binding="{Binding deployed_at}" Width="130"/>
-                            <DataGridTextColumn Header="Error" Binding="{Binding error_message}" Width="150"/>
+                            <DataGridTextColumn Header="Time" Binding="{Binding timestamp}" Width="145"/>
+                            <DataGridTextColumn Header="Level" Binding="{Binding level}" Width="75"/>
+                            <DataGridTextColumn Header="Action" Binding="{Binding action}" Width="115"/>
+                            <DataGridTextColumn Header="Entity" Binding="{Binding entityId}" Width="75"/>
+                            <DataGridTextColumn Header="Record" Binding="{Binding record}" Width="220"/>
+                            <DataGridTextColumn Header="Zone" Binding="{Binding zone}" Width="160"/>
+                            <DataGridTextColumn Header="Message" Binding="{Binding message}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </StackPanel>
@@ -635,6 +537,7 @@ if ($BamServer) { $txtServer.Text = $BamServer }
 
 $script:IsConnected = $false
 $script:ZoneCache = @()
+$script:ActivityLogFile = Join-Path $logPath "bluecat-dns-manager-$(Get-Date -Format 'yyyyMMdd').jsonl"
 
 function Set-Status {
     param([string]$Message, [string]$Color = '#a6adc8')
@@ -650,6 +553,88 @@ function Show-Error {
 function Show-Info {
     param([string]$Title, [string]$Message)
     [System.Windows.MessageBox]::Show($Message, $Title, 'OK', 'Information')
+}
+
+function Get-ExceptionMessage {
+    param($ErrorRecord)
+
+    $messages = New-Object System.Collections.ArrayList
+    if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) {
+        [void]$messages.Add($ErrorRecord.ErrorDetails.Message)
+    }
+    if ($ErrorRecord.Exception -and $ErrorRecord.Exception.Message) {
+        [void]$messages.Add($ErrorRecord.Exception.Message)
+    }
+
+    $webException = $ErrorRecord.Exception
+    if ($webException -and $webException.Response) {
+        try {
+            $stream = $webException.Response.GetResponseStream()
+            if ($stream) {
+                $reader = New-Object System.IO.StreamReader($stream)
+                $responseBody = $reader.ReadToEnd()
+                $reader.Dispose()
+                if ($responseBody) { [void]$messages.Add($responseBody) }
+            }
+        }
+        catch {}
+    }
+
+    if ($messages.Count -eq 0) { return 'Unknown error' }
+    return (($messages | Select-Object -Unique) -join "`n")
+}
+
+function Write-AppLog {
+    param(
+        [ValidateSet('INFO','SUCCESS','WARNING','ERROR')][string]$Level = 'INFO',
+        [Parameter(Mandatory)][string]$Action,
+        [Parameter(Mandatory)][string]$Message,
+        [hashtable]$Details = @{}
+    )
+
+    $entry = [ordered]@{
+        timestamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+        level     = $Level
+        action    = $Action
+        message   = $Message
+        user      = if ($script:IsConnected) { Get-BlueCatCurrentUser } else { [Environment]::UserName }
+        server    = $txtServer.Text.Trim()
+        entityId  = if ($Details.ContainsKey('EntityId')) { $Details['EntityId'] } else { '' }
+        record    = if ($Details.ContainsKey('Record')) { $Details['Record'] } else { '' }
+        zone      = if ($Details.ContainsKey('Zone')) { $Details['Zone'] } else { '' }
+        value     = if ($Details.ContainsKey('Value')) { $Details['Value'] } else { '' }
+        details   = $Details
+    }
+
+    try {
+        ($entry | ConvertTo-Json -Depth 8 -Compress) | Add-Content -Path $script:ActivityLogFile -Encoding UTF8
+    }
+    catch {
+        Write-Warning "Failed to write activity log: $($_.Exception.Message)"
+    }
+}
+
+function Refresh-LogGrid {
+    $filterText = ($cboStagedFilter.SelectedItem.Content).ToString().ToUpper()
+    $rows = New-Object System.Collections.ArrayList
+    $files = Get-ChildItem -Path $logPath -Filter 'bluecat-dns-manager-*.jsonl' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 10
+
+    foreach ($file in $files) {
+        $lines = Get-Content -Path $file.FullName -ErrorAction SilentlyContinue | Select-Object -Last 300
+        foreach ($line in $lines) {
+            if (-not $line) { continue }
+            try {
+                $entry = $line | ConvertFrom-Json
+                if ($filterText -ne 'ALL' -and $entry.level -ne $filterText) { continue }
+                [void]$rows.Add($entry)
+            }
+            catch {}
+        }
+    }
+
+    $dgStaged.ItemsSource = @($rows | Sort-Object timestamp -Descending)
 }
 
 function Populate-ZoneCombos {
@@ -695,12 +680,6 @@ function Add-ZonesRecursive {
             Write-Verbose "Failed to load child zones for zone ID $zoneId`: $($_.Exception.Message)"
         }
     }
-}
-
-function Refresh-StagedGrid {
-    $filterText = ($cboStagedFilter.SelectedItem.Content).ToString().ToLower()
-    $data = Get-StagedChanges -Filter $filterText
-    $dgStaged.ItemsSource = $data.DefaultView
 }
 
 function Get-SelectedZone {
@@ -915,24 +894,8 @@ $btnCreateRecord.Add_Click({
     $scheduledTime = $null
 
     if ($chkSchedule.IsChecked) {
-        $deployMode = 'scheduled'
-        try {
-            if (-not $dpScheduleDate.SelectedDate) {
-                Show-Error 'Validation' 'Please select a schedule date.'
-                return
-            }
-            $datePart = $dpScheduleDate.SelectedDate.Value.ToString('yyyy-MM-dd')
-            $timePart = $cboScheduleTime.Text
-            $ampm = $cboScheduleAmpm.Text
-            $scheduledTime = [datetime]::ParseExact(
-                "$datePart $timePart $ampm",
-                'yyyy-MM-dd hh:mm tt', $null
-            )
-        }
-        catch {
-            Show-Error 'Validation' 'Invalid schedule date/time format. Use yyyy-MM-dd HH:mm.'
-            return
-        }
+        Show-Error 'Scheduling Disabled' 'Scheduled deployments were disabled when SQLite staging was removed. Create the record without scheduling, then deploy from the Deploy Tools tab when ready.'
+        return
     }
     elseif ($chkDeployNow.IsChecked) {
         $deployMode = 'immediate'
@@ -955,37 +918,38 @@ $btnCreateRecord.Add_Click({
         $newRecord = New-BlueCatResourceRecord @params
         $entityId = $newRecord.id
 
-        # Log to staging DB
-        $stageParams = @{
-            RecordType  = $recType
-            RecordName  = $recName
-            ZoneName    = $zoneName
-            RecordValue = $recValue
-            TTL         = $ttl
-            Action      = 'create'
-            DeployMode  = $deployMode
-            CreatedBy   = Get-BlueCatCurrentUser
-            BamEntityId = $entityId
-            Comment     = $comment
+        Write-AppLog -Level SUCCESS -Action 'CreateRecord' -Message "Created $recType '$recName' in $zoneName" -Details @{
+            EntityId = $entityId
+            Record   = $recName
+            Zone     = $zoneName
+            Value    = $recValue
+            Type     = $recType
+            TTL      = $ttl
+            Comment  = $comment
         }
-        if ($scheduledTime) { $stageParams['ScheduledTime'] = $scheduledTime }
-        $stageId = Add-StagedChange @stageParams
 
         if ($deployMode -eq 'immediate') {
             Set-Status 'Deploying record...' '#f9e2af'
             try {
                 $deployment = Invoke-BlueCatSelectiveDeploy -EntityId $entityId
-                Update-StagedChangeStatus -Id $stageId -Status 'deployed' -DeploymentId $deployment.id
+                Write-AppLog -Level SUCCESS -Action 'SelectiveDeploy' -Message "Selective deploy submitted for entity $entityId" -Details @{
+                    EntityId   = $entityId
+                    Record     = $recName
+                    Zone       = $zoneName
+                    Deployment = $deployment
+                }
                 Set-Status "Record created and deployed (Entity: $entityId)" '#a6e3a1'
             }
             catch {
-                Update-StagedChangeStatus -Id $stageId -Status 'failed' -ErrorMessage $_.Exception.Message
-                Show-Error 'Deploy Failed' "Record was created (ID: $entityId) but deployment failed:`n$($_.Exception.Message)"
+                $errMsg = Get-ExceptionMessage $_
+                Write-AppLog -Level ERROR -Action 'SelectiveDeploy' -Message $errMsg -Details @{
+                    EntityId = $entityId
+                    Record   = $recName
+                    Zone     = $zoneName
+                }
+                Show-Error 'Deploy Failed' "Record was created (ID: $entityId) but deployment failed:`n$errMsg"
                 Set-Status 'Record created but deploy failed' '#f38ba8'
             }
-        }
-        elseif ($deployMode -eq 'scheduled') {
-            Set-Status "Record created, deployment scheduled for $($scheduledTime.ToString('yyyy-MM-dd HH:mm'))" '#f9e2af'
         }
         else {
             Set-Status "Record created (Entity: $entityId) - not deployed" '#f9e2af'
@@ -997,7 +961,14 @@ $btnCreateRecord.Add_Click({
         $txtComment.Text = ''
     }
     catch {
-        Show-Error 'Create Failed' $_.Exception.Message
+        $errMsg = Get-ExceptionMessage $_
+        Write-AppLog -Level ERROR -Action 'CreateRecord' -Message $errMsg -Details @{
+            Record = $recName
+            Zone   = $zoneName
+            Value  = $recValue
+            Type   = $recType
+        }
+        Show-Error 'Create Failed' $errMsg
         Set-Status 'Create failed' '#f38ba8'
     }
 })
@@ -1046,21 +1017,36 @@ $btnModifyRecord.Add_Click({
         }
         Update-BlueCatResourceRecord @params
 
-        $stageId = Add-StagedChange -RecordType $selected.type -RecordName $selected.absoluteName `
-            -ZoneName $zoneName -RecordValue $recValue -TTL $ttl -Action 'modify' `
-            -DeployMode $deployMode -CreatedBy (Get-BlueCatCurrentUser) `
-            -BamEntityId ([int]$selected.id) -Comment $comment
+        Write-AppLog -Level SUCCESS -Action 'ModifyRecord' -Message "Modified '$($selected.absoluteName)'" -Details @{
+            EntityId = [int]$selected.id
+            Record   = $selected.absoluteName
+            Zone     = $zoneName
+            Value    = $recValue
+            Type     = $selected.type
+            TTL      = $ttl
+            Comment  = $comment
+        }
 
         if ($deployMode -eq 'immediate') {
             Set-Status 'Deploying modified record...' '#f9e2af'
             try {
                 $deployment = Invoke-BlueCatSelectiveDeploy -EntityId ([int]$selected.id)
-                Update-StagedChangeStatus -Id $stageId -Status 'deployed' -DeploymentId $deployment.id
+                Write-AppLog -Level SUCCESS -Action 'SelectiveDeploy' -Message "Selective deploy submitted for entity $($selected.id)" -Details @{
+                    EntityId   = [int]$selected.id
+                    Record     = $selected.absoluteName
+                    Zone       = $zoneName
+                    Deployment = $deployment
+                }
                 Set-Status "Record modified and deployed" '#a6e3a1'
             }
             catch {
-                Update-StagedChangeStatus -Id $stageId -Status 'failed' -ErrorMessage $_.Exception.Message
-                Show-Error 'Deploy Failed' "Record modified but deployment failed:`n$($_.Exception.Message)"
+                $errMsg = Get-ExceptionMessage $_
+                Write-AppLog -Level ERROR -Action 'SelectiveDeploy' -Message $errMsg -Details @{
+                    EntityId = [int]$selected.id
+                    Record   = $selected.absoluteName
+                    Zone     = $zoneName
+                }
+                Show-Error 'Deploy Failed' "Record modified but deployment failed:`n$errMsg"
                 Set-Status 'Record modified but deploy failed' '#f38ba8'
             }
         }
@@ -1069,7 +1055,14 @@ $btnModifyRecord.Add_Click({
         }
     }
     catch {
-        Show-Error 'Modify Failed' $_.Exception.Message
+        $errMsg = Get-ExceptionMessage $_
+        Write-AppLog -Level ERROR -Action 'ModifyRecord' -Message $errMsg -Details @{
+            EntityId = [int]$selected.id
+            Record   = $selected.absoluteName
+            Zone     = $zoneName
+            Value    = $recValue
+        }
+        Show-Error 'Modify Failed' $errMsg
         Set-Status 'Modify failed' '#f38ba8'
     }
 })
@@ -1138,10 +1131,14 @@ $btnDeleteRecord.Add_Click({
     try {
         Remove-BlueCatResourceRecord -Id $entityId -Comment $comment
 
-        $stageId = Add-StagedChange -RecordType $selected.type -RecordName $selected.absoluteName `
-            -ZoneName $zoneName -RecordValue $selected.rdata -Action 'delete' `
-            -DeployMode $(if ($deployNow) {'immediate'} else {'manual'}) `
-            -CreatedBy (Get-BlueCatCurrentUser) -BamEntityId $entityId -Comment $comment
+        Write-AppLog -Level SUCCESS -Action 'DeleteRecord' -Message "Deleted '$($selected.absoluteName)'" -Details @{
+            EntityId = $entityId
+            Record   = $selected.absoluteName
+            Zone     = $zoneName
+            Value    = $selected.rdata
+            Type     = $selected.type
+            Comment  = $comment
+        }
 
         if ($deployNow) {
             Set-Status 'Deploying deletion...' '#f9e2af'
@@ -1149,19 +1146,34 @@ $btnDeleteRecord.Add_Click({
                 # After delete, deploy via quick deploy on the zone since entity no longer exists
                 $zoneId = Get-SelectedZoneId $cboDeleteZone
                 $deployment = Invoke-BlueCatQuickDeploy -ZoneId $zoneId
-                Update-StagedChangeStatus -Id $stageId -Status 'deployed' -DeploymentId $deployment.id
+                Write-AppLog -Level SUCCESS -Action 'QuickDeploy' -Message "Quick deploy submitted for zone $zoneName" -Details @{
+                    EntityId   = $entityId
+                    Record     = $selected.absoluteName
+                    Zone       = $zoneName
+                    Deployment = $deployment
+                }
                 Set-Status "Record deleted and zone deployed" '#a6e3a1'
             }
             catch {
                 # Try selective deploy as fallback
                 try {
                     $deployment = Invoke-BlueCatSelectiveDeploy -EntityId $entityId
-                    Update-StagedChangeStatus -Id $stageId -Status 'deployed' -DeploymentId $deployment.id
+                    Write-AppLog -Level SUCCESS -Action 'SelectiveDeploy' -Message "Selective deploy submitted for deleted entity $entityId" -Details @{
+                        EntityId   = $entityId
+                        Record     = $selected.absoluteName
+                        Zone       = $zoneName
+                        Deployment = $deployment
+                    }
                     Set-Status "Record deleted and deployed" '#a6e3a1'
                 }
                 catch {
-                    Update-StagedChangeStatus -Id $stageId -Status 'failed' -ErrorMessage $_.Exception.Message
-                    Show-Error 'Deploy Failed' "Record deleted but deployment failed:`n$($_.Exception.Message)"
+                    $errMsg = Get-ExceptionMessage $_
+                    Write-AppLog -Level ERROR -Action 'DeployDeletedRecord' -Message $errMsg -Details @{
+                        EntityId = $entityId
+                        Record   = $selected.absoluteName
+                        Zone     = $zoneName
+                    }
+                    Show-Error 'Deploy Failed' "Record deleted but deployment failed:`n$errMsg"
                     Set-Status 'Deleted but deploy failed' '#f38ba8'
                 }
             }
@@ -1174,74 +1186,39 @@ $btnDeleteRecord.Add_Click({
         $btnDeleteSearch.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent)))
     }
     catch {
-        Show-Error 'Delete Failed' $_.Exception.Message
+        $errMsg = Get-ExceptionMessage $_
+        Write-AppLog -Level ERROR -Action 'DeleteRecord' -Message $errMsg -Details @{
+            EntityId = $entityId
+            Record   = $selected.absoluteName
+            Zone     = $zoneName
+        }
+        Show-Error 'Delete Failed' $errMsg
         Set-Status 'Delete failed' '#f38ba8'
     }
 })
 
 # ---------------------------------------------------------------------------
-# Event: Staged Items tab
+# Event: Logs tab
 # ---------------------------------------------------------------------------
 
 $btnRefreshStaged.Add_Click({
-    Refresh-StagedGrid
-    Set-Status 'Staged items refreshed'
+    Refresh-LogGrid
+    Set-Status 'Logs refreshed'
 })
 
 $btnCancelStaged.Add_Click({
-    $selected = $dgStaged.SelectedItem
-    if (-not $selected) {
-        Show-Error 'Error' 'Select a staged item to cancel.'
-        return
-    }
-
-    $row = $selected.Row
-    $id = [int]$row['id']
-    $status = $row['status'].ToString()
-
-    if ($status -notin @('pending','failed')) {
-        Show-Error 'Error' "Cannot cancel an item with status '$status'."
-        return
-    }
-
-    Update-StagedChangeStatus -Id $id -Status 'cancelled'
-    Refresh-StagedGrid
-    Set-Status "Staged item $id cancelled"
+    $dgStaged.ItemsSource = @()
+    Set-Status 'Log view cleared'
 })
 
 $btnDeployStaged.Add_Click({
-    if (-not $script:IsConnected) { Show-Error 'Error' 'Not connected.'; return }
-
-    $selected = $dgStaged.SelectedItem
-    if (-not $selected) {
-        Show-Error 'Error' 'Select a staged item to deploy.'
-        return
-    }
-
-    $row = $selected.Row
-    $id = [int]$row['id']
-    $entityId = if ($row['bam_entity_id'] -is [DBNull]) { 0 } else { [int]$row['bam_entity_id'] }
-
-    if ($entityId -le 0) {
-        Show-Error 'Error' 'No BAM entity ID associated with this staged item. Cannot deploy.'
-        return
-    }
-
-    Set-Status 'Deploying staged item...' '#f9e2af'
-    Update-StagedChangeStatus -Id $id -Status 'deploying'
-
     try {
-        $deployment = Invoke-BlueCatSelectiveDeploy -EntityId $entityId
-        Update-StagedChangeStatus -Id $id -Status 'deployed' -DeploymentId $deployment.id
-        Set-Status "Staged item $id deployed successfully" '#a6e3a1'
+        [System.Diagnostics.Process]::Start('explorer.exe', $logPath) | Out-Null
+        Set-Status "Opened log folder: $logPath"
     }
     catch {
-        Update-StagedChangeStatus -Id $id -Status 'failed' -ErrorMessage $_.Exception.Message
-        Show-Error 'Deploy Failed' $_.Exception.Message
-        Set-Status 'Deploy failed' '#f38ba8'
+        Show-Error 'Open Log Folder Failed' $_.Exception.Message
     }
-
-    Refresh-StagedGrid
 })
 
 # ---------------------------------------------------------------------------
@@ -1261,10 +1238,18 @@ $btnSelectiveDeploy.Add_Click({
     try {
         $result = Invoke-BlueCatSelectiveDeploy -EntityId ([int]$entityId)
         $txtDeployResult.Text = ($result | ConvertTo-Json -Depth 5)
+        Write-AppLog -Level SUCCESS -Action 'SelectiveDeploy' -Message "Selective deploy submitted for entity $entityId" -Details @{
+            EntityId   = [int]$entityId
+            Deployment = $result
+        }
         Set-Status "Selective deploy initiated for entity $entityId" '#a6e3a1'
     }
     catch {
-        $txtDeployResult.Text = "ERROR: $($_.Exception.Message)"
+        $errMsg = Get-ExceptionMessage $_
+        $txtDeployResult.Text = "ERROR: $errMsg"
+        Write-AppLog -Level ERROR -Action 'SelectiveDeploy' -Message $errMsg -Details @{
+            EntityId = [int]$entityId
+        }
         Set-Status 'Selective deploy failed' '#f38ba8'
     }
 })
@@ -1285,10 +1270,19 @@ $btnQuickDeploy.Add_Click({
     try {
         $result = Invoke-BlueCatQuickDeploy -ZoneId $zoneId
         $txtDeployResult.Text = ($result | ConvertTo-Json -Depth 5)
+        $selectedZone = Get-SelectedZone $cboQuickDeployZone
+        Write-AppLog -Level SUCCESS -Action 'QuickDeploy' -Message "Quick deploy submitted for zone $($selectedZone.absoluteName)" -Details @{
+            Zone       = $selectedZone.absoluteName
+            Deployment = $result
+        }
         Set-Status "Quick deploy initiated for zone" '#a6e3a1'
     }
     catch {
-        $txtDeployResult.Text = "ERROR: $($_.Exception.Message)"
+        $errMsg = Get-ExceptionMessage $_
+        $txtDeployResult.Text = "ERROR: $errMsg"
+        Write-AppLog -Level ERROR -Action 'QuickDeploy' -Message $errMsg -Details @{
+            ZoneId = $zoneId
+        }
         Set-Status 'Quick deploy failed' '#f38ba8'
     }
 })
@@ -1305,22 +1299,30 @@ $btnCheckDeploy.Add_Click({
     try {
         $result = Get-BlueCatDeploymentStatus -DeploymentId ([int]$deployId)
         $txtDeployResult.Text = ($result | ConvertTo-Json -Depth 5)
+        Write-AppLog -Level INFO -Action 'DeploymentStatus' -Message "Retrieved status for deployment $deployId" -Details @{
+            EntityId = [int]$deployId
+            Response = $result
+        }
         Set-Status "Deployment $deployId status retrieved"
     }
     catch {
-        $txtDeployResult.Text = "ERROR: $($_.Exception.Message)"
+        $errMsg = Get-ExceptionMessage $_
+        $txtDeployResult.Text = "ERROR: $errMsg"
+        Write-AppLog -Level ERROR -Action 'DeploymentStatus' -Message $errMsg -Details @{
+            EntityId = [int]$deployId
+        }
         Set-Status 'Status check failed' '#f38ba8'
     }
 })
 
 # ---------------------------------------------------------------------------
-# Tab changed -> auto-refresh staged items
+# Tab changed -> auto-refresh logs
 # ---------------------------------------------------------------------------
 
 $controls['mainTabs'].Add_SelectionChanged({
     $tab = $controls['mainTabs'].SelectedItem
-    if ($tab -and $tab.Header -eq 'Staged Items') {
-        Refresh-StagedGrid
+    if ($tab -and $tab.Header -eq 'Logs') {
+        Refresh-LogGrid
     }
 })
 
@@ -1330,7 +1332,6 @@ $controls['mainTabs'].Add_SelectionChanged({
 
 $window.Add_Closing({
     try { Disconnect-BlueCat } catch {}
-    try { Close-StagingDb } catch {}
 })
 
 # ---------------------------------------------------------------------------
@@ -1358,7 +1359,7 @@ $window.Add_Closing({
     $ampm = if ($now.Hour -ge 12) { 'PM' } else { 'AM' }
     $cboScheduleAmpm.Text = $ampm
 
-    Refresh-StagedGrid
+    Refresh-LogGrid
 
 # ---------------------------------------------------------------------------
 # Show window
