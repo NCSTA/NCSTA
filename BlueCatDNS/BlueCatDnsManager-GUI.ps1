@@ -653,7 +653,13 @@ function Show-Info {
 }
 
 function Populate-ZoneCombos {
-    $script:ZoneCache = Get-BlueCatZones
+    $topZones = Get-BlueCatZones
+    $allZones = New-Object System.Collections.ArrayList
+    $seenZoneIds = @{}
+
+    Add-ZonesRecursive -Zones $topZones -Accumulator $allZones -SeenIds $seenZoneIds
+    $script:ZoneCache = @($allZones | Sort-Object absoluteName)
+
     $cboZone.ItemsSource = $script:ZoneCache
     $cboDeleteZone.ItemsSource = $script:ZoneCache
     $cboQuickDeployZone.ItemsSource = $script:ZoneCache
@@ -664,17 +670,74 @@ function Populate-ZoneCombos {
     }
 }
 
+function Add-ZonesRecursive {
+    param(
+        [object[]]$Zones,
+        [System.Collections.ArrayList]$Accumulator,
+        [hashtable]$SeenIds
+    )
+
+    foreach ($zone in @($Zones)) {
+        if (-not $zone -or -not $zone.id) { continue }
+
+        $zoneId = [int]$zone.id
+        if ($SeenIds.ContainsKey($zoneId)) { continue }
+        $SeenIds[$zoneId] = $true
+        [void]$Accumulator.Add($zone)
+
+        try {
+            $childZones = Get-BlueCatSubZones -ZoneId $zoneId
+            if ($childZones -and $childZones.Count -gt 0) {
+                Add-ZonesRecursive -Zones $childZones -Accumulator $Accumulator -SeenIds $SeenIds
+            }
+        }
+        catch {
+            Write-Verbose "Failed to load child zones for zone ID $zoneId`: $($_.Exception.Message)"
+        }
+    }
+}
+
 function Refresh-StagedGrid {
     $filterText = ($cboStagedFilter.SelectedItem.Content).ToString().ToLower()
     $data = Get-StagedChanges -Filter $filterText
     $dgStaged.ItemsSource = $data.DefaultView
 }
 
+function Get-SelectedZone {
+    param($combo)
+
+    if ($combo.SelectedItem -and $combo.SelectedItem.id) {
+        return $combo.SelectedItem
+    }
+
+    $zoneText = $combo.Text.Trim()
+    if (-not $zoneText) { return $null }
+
+    $match = $script:ZoneCache | Where-Object { $_.absoluteName -eq $zoneText } | Select-Object -First 1
+    if ($match) { return $match }
+
+    return $script:ZoneCache | Where-Object { $_.name -eq $zoneText } | Select-Object -First 1
+}
+
 function Get-SelectedZoneId {
     param($combo)
-    $sel = $combo.SelectedItem
+    $sel = Get-SelectedZone $combo
     if ($sel -and $sel.id) { return [int]$sel.id }
     return $null
+}
+
+function New-RecordSearchFilter {
+    param([string]$SearchText)
+
+    $search = $SearchText.Trim()
+    if (-not $search) { return $null }
+
+    $escapedSearch = $search.Replace("'", "''")
+    if ($search -match '\.') {
+        return "absoluteName:contains('$escapedSearch')"
+    }
+
+    return "name:contains('$escapedSearch')"
 }
 
 function Get-RecordDisplayValue {
@@ -787,11 +850,7 @@ $btnSearchRecords.Add_Click({
 
     Set-Status 'Searching records...' '#f9e2af'
     try {
-        $filter = $null
-        $search = $txtSearchRecords.Text.Trim()
-        if ($search) {
-            $filter = "name:contains('$search')"
-        }
+        $filter = New-RecordSearchFilter -SearchText $txtSearchRecords.Text
         $records = Get-BlueCatResourceRecords -ZoneId $zoneId -Filter $filter
 
         $display = $records | ForEach-Object {
@@ -828,7 +887,8 @@ $btnCreateRecord.Add_Click({
     $recType  = Get-BlueCatRecordTypeApiName ($cboRecordType.SelectedItem.Content.ToString())
     $ttl      = [int]$txtTTL.Text
     $comment  = $txtComment.Text.Trim()
-    $zoneName = $cboZone.SelectedItem.absoluteName
+    $selectedZone = Get-SelectedZone $cboZone
+    $zoneName = $selectedZone.absoluteName
 
     if (-not $recName -or -not $recValue) {
         Show-Error 'Validation' 'Record name and value are required.'
@@ -941,7 +1001,8 @@ $btnModifyRecord.Add_Click({
     $recValue = $txtRecordValue.Text.Trim()
     $ttl      = [int]$txtTTL.Text
     $comment  = $txtComment.Text.Trim()
-    $zoneName = $cboZone.SelectedItem.absoluteName
+    $selectedZone = Get-SelectedZone $cboZone
+    $zoneName = $selectedZone.absoluteName
 
     if (-not $recValue) {
         Show-Error 'Validation' 'Enter the new value for the record.'
@@ -1008,11 +1069,7 @@ $btnDeleteSearch.Add_Click({
 
     Set-Status 'Searching records...' '#f9e2af'
     try {
-        $filter = $null
-        $search = $txtDeleteSearch.Text.Trim()
-        if ($search) {
-            $filter = "name:contains('$search')"
-        }
+        $filter = New-RecordSearchFilter -SearchText $txtDeleteSearch.Text
         $records = Get-BlueCatResourceRecords -ZoneId $zoneId -Filter $filter
 
         $display = $records | ForEach-Object {
@@ -1054,7 +1111,8 @@ $btnDeleteRecord.Add_Click({
     if ($confirmResult -ne 'Yes') { return }
 
     $comment  = $txtDeleteComment.Text.Trim()
-    $zoneName = $cboDeleteZone.SelectedItem.absoluteName
+    $selectedZone = Get-SelectedZone $cboDeleteZone
+    $zoneName = $selectedZone.absoluteName
     $deployNow = $chkDeleteDeploy.IsChecked
     $entityId = [int]$selected.id
 
