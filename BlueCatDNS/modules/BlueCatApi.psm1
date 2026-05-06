@@ -38,19 +38,18 @@ function Connect-BlueCat {
         [switch]$SkipCertCheck
     )
 
-    $script:BamUrl = "https://$Server"
+    $script:BamUrl = if ($Server -match '^https?://') {
+        $Server.TrimEnd('/')
+    } else {
+        "https://$Server"
+    }
     $script:CurrentUser = $Credential.UserName
 
     $uri = "$($script:BamUrl)/api/v2/sessions"
-    $plainUser = $Credential.UserName
-    $plainPass = $Credential.GetNetworkCredential().Password
-
-    $basicBytes = [System.Text.Encoding]::ASCII.GetBytes("${plainUser}:${plainPass}")
-    $basicAuth  = [Convert]::ToBase64String($basicBytes)
-
-    # Build JSON body with credentials (required by BAM 9.6+)
-    $bodyObj = @{ username = $plainUser; password = $plainPass }
-    $bodyJson = $bodyObj | ConvertTo-Json -Compress
+    $body = @{
+        username = $Credential.UserName
+        password = $Credential.GetNetworkCredential().Password
+    } | ConvertTo-Json -Compress
 
     if ($SkipCertCheck) {
         $script:SkipCert = $true
@@ -61,27 +60,29 @@ function Connect-BlueCat {
     $params = @{
         Uri         = $uri
         Method      = 'POST'
-        Headers     = @{ Authorization = "Basic $basicAuth" }
         ContentType = 'application/json'
-        Body        = $bodyJson
+        Body        = $body
     }
 
     try {
         $response = Invoke-RestMethod @params
-        # Extract token - try multiple response formats (BAM versions vary)
+        # RESTful v2 returns pre-encoded Basic credentials for subsequent calls.
         $script:Token = $null
         if ($response.basicAuthenticationCredentials) {
             $script:Token = $response.basicAuthenticationCredentials
         } elseif ($response.apiToken) {
-            $script:Token = $response.apiToken
-        } elseif ($response.token) {
-            $script:Token = $response.token
-        } elseif ($response.data -and $response.data.apiToken) {
-            $script:Token = $response.data.apiToken
+            $tokenBytes = [System.Text.Encoding]::ASCII.GetBytes(
+                "$($Credential.UserName):$($response.apiToken)"
+            )
+            $script:Token = [Convert]::ToBase64String($tokenBytes)
+        }
+
+        if (-not $script:Token) {
+            throw 'Login succeeded but no API session credentials were returned.'
         }
 
         $script:Headers = @{
-            Authorization  = "Bearer $($script:Token)"
+            Authorization  = "Basic $($script:Token)"
             'Content-Type' = 'application/json'
             Accept         = 'application/hal+json'
         }
