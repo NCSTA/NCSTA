@@ -443,12 +443,16 @@ function Invoke-BlueCatSelectiveDeploy {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][int]$EntityId,
-        [ValidateSet('related','scope')][string]$DeployProperty = 'related'
+        [ValidateSet('related','specific')][string]$Scope = 'related',
+        [ValidateSet('disabled','batch_by_server')][string]$BatchMode = 'disabled'
     )
 
     $body = @{
-        entityId = $EntityId
-        property = $DeployProperty
+        entityIds  = @($EntityId)
+        properties = @{
+            scope     = $Scope
+            batchMode = $BatchMode
+        }
     }
 
     $result = Invoke-BlueCatApi -Endpoint 'deployments' -Method POST -Body $body
