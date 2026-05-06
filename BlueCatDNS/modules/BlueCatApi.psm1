@@ -158,9 +158,36 @@ function Invoke-BlueCatApi {
         }
     }
 
-    # Cert bypass is handled globally via Set-CertBypass in Connect-BlueCat
-    $response = Invoke-RestMethod @params
-    return $response
+    try {
+        # Cert bypass is handled globally via Set-CertBypass in Connect-BlueCat
+        $response = Invoke-RestMethod @params
+        return $response
+    }
+    catch {
+        $messages = New-Object System.Collections.ArrayList
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+            [void]$messages.Add($_.ErrorDetails.Message)
+        }
+        if ($_.Exception -and $_.Exception.Message) {
+            [void]$messages.Add($_.Exception.Message)
+        }
+        if ($_.Exception -and $_.Exception.Response) {
+            try {
+                $stream = $_.Exception.Response.GetResponseStream()
+                if ($stream) {
+                    $reader = New-Object System.IO.StreamReader($stream)
+                    $responseBody = $reader.ReadToEnd()
+                    $reader.Dispose()
+                    if ($responseBody) { [void]$messages.Add($responseBody) }
+                }
+            }
+            catch {}
+        }
+
+        $errMsg = (($messages | Select-Object -Unique) -join "`n")
+        if (-not $errMsg) { $errMsg = 'Unknown API error' }
+        throw "BlueCat API $Method $uri failed: $errMsg"
+    }
 }
 
 function Get-BlueCatResponseData {

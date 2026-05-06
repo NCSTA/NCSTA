@@ -1,23 +1,26 @@
 # BlueCat DNS Manager
 
-A PowerShell WPF GUI for managing DNS records via the BlueCat Address Manager RESTful v2 API. Enables ad-hoc DNS record deployment without interfering with scheduled batch deployments.
+A lightweight PowerShell WPF GUI for managing DNS records via the BlueCat Address Manager RESTful v2 API.
+
+The GUI supports record create/modify/delete operations, optional immediate deployment, and local JSONL logging for troubleshooting. It does not require SQLite or native database DLLs.
 
 ## Requirements
 
-- Windows 10/11 with PowerShell 5.1+
-- BlueCat Address Manager 9.5.0+ with the RESTful v2 API enabled
-- Network access to BAM from your management jumpbox
+- Windows 10/11 or Windows Server with Desktop Experience
+- PowerShell 5.1+
+- BlueCat Address Manager 9.5.0+ with RESTful v2 API enabled
+- Network access to BAM from the management workstation
 
 ## Quick Start
 
 ```powershell
-# 1. Run setup (downloads SQLite dependency)
+# Create data\ and logs\ folders
 .\scripts\Setup.ps1
 
-# 2. Launch the GUI
+# Launch the GUI
 .\Launch-BlueCatDnsManager.bat
 
-# If your BAM uses a self-signed certificate:
+# If BAM uses a self-signed certificate:
 .\Launch-BlueCatDnsManager-SkipCert.bat
 ```
 
@@ -27,58 +30,37 @@ A PowerShell WPF GUI for managing DNS records via the BlueCat Address Manager RE
 - Create A, CNAME, MX, TXT, SRV, and Generic records
 - Modify existing records by selecting from the zone record grid
 - Optional automatic reverse (PTR) record creation
-- Deploy immediately via selective deploy or stage for later
+- Optional immediate selective deploy
 
 ### Delete Records
-- Search and browse records in any zone
-- Delete with optional immediate deployment
+- Search and browse records in any selectable zone
+- Delete with optional immediate zone quick deploy
 - Confirmation dialog prevents accidental deletions
 
-### Staged Items Viewer
-- See all changes made through the tool (pending, deployed, failed)
-- Track who made each change and when
-- Cancel pending changes or deploy them on demand
-- Filter by status (All, Pending, Deployed, Failed, Scheduled)
+### Logs
+- View recent GUI actions and API errors in the **Logs** tab
+- Log files are written as JSON lines to `.\logs\bluecat-dns-manager-YYYYMMDD.jsonl`
+- Error logging includes richer REST failure details when BlueCat returns them
 
 ### Deploy Tools
-- **Selective Deploy**: Push a single entity by ID without affecting other staged changes
+- **Selective Deploy**: Push a single entity ID via `POST /api/v2/deployments`
 - **Quick Deploy**: Deploy all pending changes in a specific zone
-- **Deployment Status**: Check the status of any deployment by ID
-
-### Scheduled Deployments
-- Queue a record creation for a future date/time
-- A background scheduled task processes the queue automatically
+- **Deployment Status**: Check the status of a deployment by ID
 
 ## Project Structure
 
-```
+```text
 BlueCat-DNS-Manager/
-├── BlueCatDnsManager-GUI.ps1      # Main WPF GUI application
-├── Launch-BlueCatDnsManager.bat   # Double-click launcher
+├── BlueCatDnsManager-GUI.ps1
+├── Launch-BlueCatDnsManager.bat
 ├── Launch-BlueCatDnsManager-SkipCert.bat
 ├── modules/
-│   ├── BlueCatApi.psm1            # BlueCat v2 API wrapper
-│   └── StagingDb.psm1            # SQLite staging database
+│   └── BlueCatApi.psm1
 ├── scripts/
-│   ├── Setup.ps1                  # Dependency installer
-│   ├── ScheduledDeploy.ps1       # Task Scheduler processor
-│   └── Register-ScheduledTask.ps1 # Task Scheduler registration
-├── data/                          # SQLite DB and credentials (gitignored)
-├── lib/                           # System.Data.SQLite.dll (gitignored)
-└── logs/                          # Scheduled deploy logs (gitignored)
+│   └── Setup.ps1
+├── data/
+└── logs/
 ```
-
-## Setting Up Scheduled Deployments
-
-```powershell
-# 1. Create encrypted credential file (run once as your user)
-Get-Credential | Export-Clixml .\data\cred.xml
-
-# 2. Register the scheduled task (runs every 5 minutes)
-.\scripts\Register-ScheduledTask.ps1 -BamServer bam.corp.local -IntervalMinutes 5
-```
-
-The scheduled task runs as your user account and checks the staging database for any jobs whose scheduled time has arrived. Logs are written to `.\logs\`.
 
 ## API Endpoints Used
 
@@ -101,10 +83,10 @@ The scheduled task runs as your user account and checks the staging database for
 
 ## Troubleshooting
 
-**"SQLite library not found"**: Run `.\scripts\Setup.ps1` first, or manually place `System.Data.SQLite.dll` in `.\lib\`.
+**TLS/Certificate errors**: Use `Launch-BlueCatDnsManager-SkipCert.bat`, or add BAM's issuing CA certificate to Windows trust.
 
-**TLS/Certificate errors**: Use the `-SkipCertCheck` launcher or add your BAM's CA cert to the Windows trust store.
+**401 Unauthorized**: Verify the BAM username/password and that the account has API permissions.
 
-**"401 Unauthorized"**: Verify your BAM credentials and that the account has API access.
+**400 on deploy in dev**: Record changes can work while deployment fails if the dev BAM environment has no deployable DNS servers/roles. Check the **Logs** tab for the detailed BlueCat response.
 
-**Selective deploy fails**: Ensure a full deployment has been performed at least once on the target DNS server before using selective deploy.
+**Selective deploy fails**: Ensure the target DNS server is configured for deployment and has had a full deployment at least once.
