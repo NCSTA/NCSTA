@@ -299,7 +299,7 @@ function New-BlueCatResourceRecord {
         [int]$TTL = 300,
         [string]$Comment,
         [switch]$CreateReverseRecord,
-        [string]$LinkedRecord
+        [object]$LinkedRecord
     )
 
     $body = @{
@@ -324,7 +324,11 @@ function New-BlueCatResourceRecord {
             }
         }
         'AliasRecord' {
-            $body['linkedRecord'] = @{ absoluteName = $RData }
+            if ($LinkedRecord) {
+                $body['linkedRecord'] = $LinkedRecord
+            } else {
+                $body['linkedRecord'] = @{ type = 'HostRecord'; absoluteName = $RData }
+            }
         }
         'MXRecord' {
             $parts = $RData -split '\s+', 2

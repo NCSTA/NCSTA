@@ -895,6 +895,22 @@ $btnCreateRecord.Add_Click({
         return
     }
 
+    $linkedRecord = $null
+    if ($recType -eq 'AliasRecord') {
+        $targetRecord = $dgRecords.SelectedItem
+        $targetName = $recValue.TrimEnd('.')
+
+        if (-not $targetRecord -or $targetRecord.absoluteName -ne $targetName) {
+            Show-Error 'Validation' "For CNAME records, search for and select the target record in Existing Records in Zone, then set Value / Target to that selected record's FQDN."
+            return
+        }
+
+        $linkedRecord = @{
+            id   = [int]$targetRecord.id
+            type = $targetRecord.type
+        }
+    }
+
     $deployMode = 'manual'
     $scheduledTime = $null
 
@@ -934,6 +950,7 @@ $btnCreateRecord.Add_Click({
             Comment = $comment
         }
         if ($chkReverse.IsChecked) { $params['CreateReverseRecord'] = $true }
+        if ($linkedRecord) { $params['LinkedRecord'] = $linkedRecord }
 
         $newRecord = New-BlueCatResourceRecord @params
         $entityId = $newRecord.id
