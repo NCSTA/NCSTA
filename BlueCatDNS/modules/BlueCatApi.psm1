@@ -163,6 +163,24 @@ function Invoke-BlueCatApi {
     return $response
 }
 
+function Get-BlueCatResponseData {
+    param([object]$Response)
+
+    if ($null -eq $Response) {
+        return ,@()
+    }
+
+    $dataProperty = $Response.PSObject.Properties['data']
+    if ($dataProperty) {
+        if ($null -eq [object]$dataProperty.Value) {
+            return ,@()
+        }
+        return ,@($dataProperty.Value)
+    }
+
+    return ,@($Response)
+}
+
 # ---------------------------------------------------------------------------
 # Configuration & View lookup
 # ---------------------------------------------------------------------------
@@ -171,7 +189,7 @@ function Get-BlueCatConfigurations {
     [CmdletBinding()]
     param()
     $result = Invoke-BlueCatApi -Endpoint 'configurations'
-    return $result.data
+    return Get-BlueCatResponseData $result
 }
 
 function Set-BlueCatContext {
@@ -193,7 +211,7 @@ function Get-BlueCatViews {
         [int]$ConfigurationId = $script:ConfigId
     )
     $result = Invoke-BlueCatApi -Endpoint "configurations/$ConfigurationId/views"
-    return $result.data
+    return Get-BlueCatResponseData $result
 }
 
 # ---------------------------------------------------------------------------
@@ -212,7 +230,7 @@ function Get-BlueCatZones {
         $endpoint += "?filter=$([uri]::EscapeDataString($Filter))"
     }
     $result = Invoke-BlueCatApi -Endpoint $endpoint
-    return $result.data
+    return Get-BlueCatResponseData $result
 }
 
 function Find-BlueCatZone {
@@ -223,9 +241,10 @@ function Find-BlueCatZone {
 
     $encoded = [uri]::EscapeDataString("absoluteName:eq('$AbsoluteName')")
     $result = Invoke-BlueCatApi -Endpoint "zones?filter=$encoded"
+    $zones = Get-BlueCatResponseData $result
 
-    if ($result.data -and $result.data.Count -gt 0) {
-        return $result.data[0]
+    if ($zones.Count -gt 0) {
+        return $zones[0]
     }
     return $null
 }
@@ -236,7 +255,7 @@ function Get-BlueCatSubZones {
         [Parameter(Mandatory)][int]$ZoneId
     )
     $result = Invoke-BlueCatApi -Endpoint "zones/$ZoneId/zones"
-    return $result.data
+    return Get-BlueCatResponseData $result
 }
 
 # ---------------------------------------------------------------------------
@@ -256,7 +275,7 @@ function Get-BlueCatResourceRecords {
         $endpoint += "&filter=$([uri]::EscapeDataString($Filter))"
     }
     $result = Invoke-BlueCatApi -Endpoint $endpoint
-    return $result.data
+    return Get-BlueCatResponseData $result
 }
 
 function Get-BlueCatResourceRecord {
@@ -474,7 +493,7 @@ function Get-BlueCatServers {
         [int]$ConfigurationId = $script:ConfigId
     )
     $result = Invoke-BlueCatApi -Endpoint "configurations/$ConfigurationId/servers"
-    return $result.data
+    return Get-BlueCatResponseData $result
 }
 
 # ---------------------------------------------------------------------------
