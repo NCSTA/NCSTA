@@ -285,7 +285,7 @@ $htmlTemplate = @'
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AD Windows Server Report</title>
+  <title>Windows Server Report</title>
   <style>
     :root {
       color-scheme: dark;
@@ -429,6 +429,11 @@ $htmlTemplate = @'
       border-radius: 8px;
     }
 
+    .server-details-wrap {
+      height: 170px;
+      overflow: auto;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -503,7 +508,7 @@ $htmlTemplate = @'
 </head>
 <body>
   <header>
-    <h1>AD Windows Server Report</h1>
+    <h1>Windows Server Report</h1>
     <div class="subhead" id="generatedAt"></div>
   </header>
 
@@ -547,7 +552,7 @@ $htmlTemplate = @'
 
     <section class="section">
       <h2>Server Details</h2>
-      <div class="table-wrap" id="serverDetails"></div>
+      <div class="table-wrap server-details-wrap" id="serverDetails"></div>
     </section>
 
   </main>
