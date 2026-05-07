@@ -100,7 +100,6 @@ function Get-SafeExcelTableName {
 
 function New-CountRows {
     param(
-        [Parameter(Mandatory)]
         [object[]]$InputObjects,
 
         [Parameter(Mandatory)]
@@ -109,6 +108,10 @@ function New-CountRows {
         [Parameter(Mandatory)]
         [string]$OutputName
     )
+
+    if ($null -eq $InputObjects) {
+        $InputObjects = @()
+    }
 
     @($InputObjects |
         Group-Object -Property $PropertyName |
@@ -127,7 +130,9 @@ function ConvertTo-EmbeddedJson {
         [object]$InputObject
     )
 
-    ($InputObject | ConvertTo-Json -Depth 8) `
+    $json = [string]($InputObject | ConvertTo-Json -Depth 8 -Compress)
+
+    $json `
         -replace '<', '\u003c' `
         -replace '>', '\u003e' `
         -replace '&', '\u0026'
@@ -795,7 +800,7 @@ $htmlTemplate = @'
 </html>
 '@
 
-$htmlTemplate.Replace('__REPORT_JSON__', $json) | Set-Content -Path $htmlFile -Encoding UTF8
+$htmlTemplate.Replace('__REPORT_JSON__', [string]$json) | Set-Content -Path $htmlFile -Encoding UTF8
 
 Write-Host "`nExport complete!" -ForegroundColor Cyan
 Write-Host "Excel file saved to: $outputFile" -ForegroundColor Cyan
