@@ -55,11 +55,11 @@ function Get-SafeWorksheetName {
         [Parameter(Mandatory)]
         [string]$Name,
 
-        [System.Collections.Generic.HashSet[string]]$UsedNames
+        [hashtable]$UsedNames
     )
 
     if ($null -eq $UsedNames) {
-        $UsedNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $UsedNames = @{}
     }
 
     $baseName = $Name -replace '[:\\\/\?\*\[\]]', '_'
@@ -73,14 +73,14 @@ function Get-SafeWorksheetName {
 
     $candidate = $baseName
     $suffix = 2
-    while ($UsedNames.Contains($candidate)) {
+    while ($UsedNames.ContainsKey($candidate.ToLowerInvariant())) {
         $suffixText = "_$suffix"
         $maxBaseLength = 31 - $suffixText.Length
         $candidate = $baseName.Substring(0, [Math]::Min($baseName.Length, $maxBaseLength)) + $suffixText
         $suffix++
     }
 
-    [void]$UsedNames.Add($candidate)
+    $UsedNames[$candidate.ToLowerInvariant()] = $true
     return $candidate
 }
 
@@ -144,9 +144,9 @@ $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $outputFile = Join-Path $OutputDirectory "AD_Servers_Export_$timestamp.xlsx"
 $htmlFile = Join-Path $OutputDirectory "AD_Servers_Report_$timestamp.html"
 
-$allServers = New-Object System.Collections.Generic.List[object]
-$queryResults = New-Object System.Collections.Generic.List[object]
-$usedSheetNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$allServers = @()
+$queryResults = @()
+$usedSheetNames = @{}
 
 Write-Host "Starting server export from $($Domains.Count) domains..." -ForegroundColor Cyan
 
@@ -182,7 +182,7 @@ foreach ($domain in $Domains) {
         })
 
         foreach ($server in $exportData) {
-            $allServers.Add($server)
+            $allServers += $server
         }
 
         if ($exportData.Count -gt 0) {
@@ -201,24 +201,27 @@ foreach ($domain in $Domains) {
             Write-Host '  No servers found in this domain' -ForegroundColor Yellow
         }
 
-        $queryResults.Add([PSCustomObject]@{
+        $queryResults += [PSCustomObject]@{
             Domain = $domain
             Status = 'Success'
             MatchedBeforeFinalFilter = @($servers).Count
             ExportedServers = $exportData.Count
             Error = ''
-        })
+        }
     }
     catch {
         Write-Host "  ERROR accessing domain: $($_.Exception.Message)" -ForegroundColor Red
+        if ($_.InvocationInfo.ScriptLineNumber) {
+            Write-Host "  Failed at line $($_.InvocationInfo.ScriptLineNumber): $($_.InvocationInfo.Line.Trim())" -ForegroundColor DarkYellow
+        }
 
-        $queryResults.Add([PSCustomObject]@{
+        $queryResults += [PSCustomObject]@{
             Domain = $domain
             Status = 'Error'
             MatchedBeforeFinalFilter = 0
             ExportedServers = 0
             Error = $_.Exception.Message
-        })
+        }
     }
 }
 
@@ -241,11 +244,11 @@ $domainOsBreakdown = @($allServerRows |
 
 $overviewRows = @(
     [PSCustomObject]@{ Metric = 'Generated At'; Value = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss zzz') }
-    [PSCustomObject]@{ Metric = 'Domains Queried'; Value = $Domains.Count }
-    [PSCustomObject]@{ Metric = 'Domains With Servers'; Value = @($domainTotals).Count }
-    [PSCustomObject]@{ Metric = 'Total Servers'; Value = $allServerRows.Count }
-    [PSCustomObject]@{ Metric = 'Servers Missing IP'; Value = @($allServerRows | Where-Object { $_.IP -eq 'N/A' }).Count }
-    [PSCustomObject]@{ Metric = 'Query Errors'; Value = @($queryResultRows | Where-Object { $_.Status -eq 'Error' }).Count }
+    [PSCustomObject]@{ Metric = 'Domains Queried'; Value = [string]$Domains.Count }
+    [PSCustomObject]@{ Metric = 'Domains With Servers'; Value = [string]@($domainTotals).Count }
+    [PSCustomObject]@{ Metric = 'Total Servers'; Value = [string]$allServerRows.Count }
+    [PSCustomObject]@{ Metric = 'Servers Missing IP'; Value = [string]@($allServerRows | Where-Object { $_.IP -eq 'N/A' }).Count }
+    [PSCustomObject]@{ Metric = 'Query Errors'; Value = [string]@($queryResultRows | Where-Object { $_.Status -eq 'Error' }).Count }
 )
 
 $overviewRows | Export-Excel -Path $outputFile -WorksheetName 'Overview' -AutoSize -TableName 'Overview' -FreezeTopRow -BoldTopRow -TableStyle Medium2
