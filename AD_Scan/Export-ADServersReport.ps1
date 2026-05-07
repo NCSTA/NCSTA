@@ -430,7 +430,7 @@ $htmlTemplate = @'
     }
 
     .server-details-wrap {
-      height: 170px;
+      height: 1120px;
       overflow: auto;
     }
 
