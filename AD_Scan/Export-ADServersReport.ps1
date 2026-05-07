@@ -55,9 +55,12 @@ function Get-SafeWorksheetName {
         [Parameter(Mandatory)]
         [string]$Name,
 
-        [Parameter(Mandatory)]
         [System.Collections.Generic.HashSet[string]]$UsedNames
     )
+
+    if ($null -eq $UsedNames) {
+        $UsedNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    }
 
     $baseName = $Name -replace '[:\\\/\?\*\[\]]', '_'
     if ([string]::IsNullOrWhiteSpace($baseName)) {
