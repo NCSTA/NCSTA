@@ -157,10 +157,10 @@ foreach ($domain in $Domains) {
         $servers = Get-ADComputer -Server $domain -Filter * -Properties Name, DNSHostName, IPv4Address, OperatingSystem, Enabled -ErrorAction Stop |
             Where-Object {
                 ($_.OperatingSystem -like 'Windows*server*') -and
-                ($_.Name -like '*v') -and
                 ($_.Name -notlike '*z') -and
                 ($_.Name -notlike '*l') -and
-                ($_.Enabled -eq $true)
+                ($_.Enabled -eq $true) -and
+                (-not [string]::IsNullOrWhiteSpace($_.IPv4Address))
             }
 
         $filteredServers = @($servers | Where-Object {
@@ -247,7 +247,6 @@ $overviewRows = @(
     [PSCustomObject]@{ Metric = 'Domains Queried'; Value = [string]$Domains.Count }
     [PSCustomObject]@{ Metric = 'Domains With Servers'; Value = [string]@($domainTotals).Count }
     [PSCustomObject]@{ Metric = 'Total Servers'; Value = [string]$allServerRows.Count }
-    [PSCustomObject]@{ Metric = 'Servers Missing IP'; Value = [string]@($allServerRows | Where-Object { $_.IP -eq 'N/A' }).Count }
     [PSCustomObject]@{ Metric = 'Query Errors'; Value = [string]@($queryResultRows | Where-Object { $_.Status -eq 'Error' }).Count }
 )
 
@@ -269,19 +268,13 @@ if ($domainOsBreakdown.Count -gt 0) {
     $domainOsBreakdown | Export-Excel -Path $outputFile -WorksheetName 'Domain OS Breakdown' -AutoSize -TableName 'DomainOSBreakdown' -FreezeTopRow -BoldTopRow -TableStyle Medium2
 }
 
-if ($queryResultRows.Count -gt 0) {
-    $queryResultRows | Export-Excel -Path $outputFile -WorksheetName 'Query Results' -AutoSize -TableName 'QueryResults' -FreezeTopRow -BoldTopRow -TableStyle Medium2
-}
-
 $reportData = [ordered]@{
     generatedAt = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss zzz')
     totalServers = $allServerRows.Count
     domainsQueried = $Domains.Count
     domainsWithServers = @($domainTotals).Count
-    serversMissingIp = @($allServerRows | Where-Object { $_.IP -eq 'N/A' }).Count
     queryErrors = @($queryResultRows | Where-Object { $_.Status -eq 'Error' }).Count
     servers = @($allServerRows | Sort-Object Domain, OSFamily, Hostname)
-    queryResults = @($queryResultRows)
 }
 
 $json = ConvertTo-EmbeddedJson -InputObject $reportData
@@ -557,17 +550,12 @@ $htmlTemplate = @'
       <div class="table-wrap" id="serverDetails"></div>
     </section>
 
-    <section class="section">
-      <h2>Query Results</h2>
-      <div class="table-wrap" id="queryResults"></div>
-    </section>
   </main>
 
   <script id="report-data" type="application/json">__REPORT_JSON__</script>
   <script>
     const report = JSON.parse(document.getElementById('report-data').textContent);
     const servers = report.servers || [];
-    const queryResults = report.queryResults || [];
 
     const domainFilter = document.getElementById('domainFilter');
     const osFilter = document.getElementById('osFilter');
@@ -636,16 +624,14 @@ $htmlTemplate = @'
     function renderMetrics(items) {
       const domains = uniqueValues(items, 'Domain').length;
       const osFamilies = uniqueValues(items, 'OSFamily').length;
-      const missingIp = items.filter(item => item.IP === 'N/A').length;
-      const errorCount = queryResults.filter(item => item.Status === 'Error').length;
 
       const metrics = [
         ['Visible Servers', items.length],
         ['Total Servers', report.totalServers],
+        ['Domains Queried', report.domainsQueried],
         ['Domains In View', domains],
         ['OS Types In View', osFamilies],
-        ['Missing IP In View', missingIp],
-        ['Query Errors', errorCount]
+        ['Query Errors', report.queryErrors]
       ];
 
       document.getElementById('metricGrid').innerHTML = metrics.map(([label, value]) => `
@@ -742,38 +728,6 @@ $htmlTemplate = @'
       `;
     }
 
-    function renderQueryResults() {
-      const body = queryResults.length
-        ? queryResults.map(result => {
-            const statusClass = result.Status === 'Error' ? 'status-error' : 'status-success';
-            return `
-              <tr>
-                <td>${escapeHtml(result.Domain)}</td>
-                <td class="${statusClass}">${escapeHtml(result.Status)}</td>
-                <td>${escapeHtml(result.MatchedBeforeFinalFilter)}</td>
-                <td>${escapeHtml(result.ExportedServers)}</td>
-                <td>${escapeHtml(result.Error)}</td>
-              </tr>
-            `;
-          }).join('')
-        : '<tr><td colspan="5" class="muted">No domains were queried</td></tr>';
-
-      document.getElementById('queryResults').innerHTML = `
-        <table>
-          <thead>
-            <tr>
-              <th>Domain</th>
-              <th>Status</th>
-              <th>Matched Before Final Filter</th>
-              <th>Exported Servers</th>
-              <th>Error</th>
-            </tr>
-          </thead>
-          <tbody>${body}</tbody>
-        </table>
-      `;
-    }
-
     function render() {
       const items = filteredServers();
       renderMetrics(items);
@@ -796,7 +750,6 @@ $htmlTemplate = @'
       render();
     });
 
-    renderQueryResults();
     render();
   </script>
 </body>
