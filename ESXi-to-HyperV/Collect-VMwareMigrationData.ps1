@@ -524,6 +524,23 @@ function Get-FirstNonBackSideIPv4Entry {
     return $null
 }
 
+function Get-FirstBackSideIPv4Entry {
+    param(
+        [Parameter(Mandatory = $true)]
+        $GuestNic
+    )
+
+    $entries = @($GuestNic.IPv4Addresses)
+    foreach ($entry in $entries) {
+        $ip = $entry.IPAddress
+        if (-not [string]::IsNullOrWhiteSpace($ip) -and (Test-BackSideIPv4Address -IPAddress $ip)) {
+            return $entry
+        }
+    }
+
+    return $null
+}
+
 function Test-GuestNicIsFrontSide {
     param(
         [Parameter(Mandatory = $true)]
@@ -531,6 +548,108 @@ function Test-GuestNicIsFrontSide {
     )
 
     return ($null -ne (Get-FirstNonBackSideIPv4Entry -GuestNic $GuestNic))
+}
+
+function Test-GuestNicIsBackSide {
+    param(
+        [Parameter(Mandatory = $true)]
+        $GuestNic
+    )
+
+    return ($null -ne (Get-FirstBackSideIPv4Entry -GuestNic $GuestNic))
+}
+
+function Resolve-GuestNetworkAdapterMatch {
+    param(
+        [Parameter(Mandatory = $true)]
+        $GuestNic,
+
+        [Parameter(Mandatory = $true)]
+        [object[]]$VMAdapters
+    )
+
+    $guestMac = ConvertTo-NormalizedMacAddress -MacAddress $GuestNic.MacAddress
+    $matchingAdapter = $null
+    if ($guestMac) {
+        $matchingAdapter = @($VMAdapters | Where-Object {
+            (ConvertTo-NormalizedMacAddress -MacAddress $_.MacAddress) -eq $guestMac
+        } | Select-Object -First 1)
+        if ($matchingAdapter.Count -gt 0) {
+            return $matchingAdapter[0]
+        }
+    }
+
+    if ($GuestNic.AdapterName) {
+        $matchingAdapter = @($VMAdapters | Where-Object { $_.NetworkName -eq $GuestNic.AdapterName } | Select-Object -First 1)
+        if ($matchingAdapter.Count -gt 0) {
+            return $matchingAdapter[0]
+        }
+    }
+
+    return $null
+}
+
+function ConvertTo-NicRecord {
+    param(
+        [Parameter(Mandatory = $true)]
+        $GuestNic,
+
+        [Parameter()]
+        $NetworkAdapter,
+
+        [Parameter(Mandatory = $true)]
+        $VMHost,
+
+        [Parameter(Mandatory = $true)]
+        $AddressEntry,
+
+        [Parameter(Mandatory = $true)]
+        [string]$InterfaceRole
+    )
+
+    if ($null -eq $AddressEntry) {
+        return $null
+    }
+
+    $prefixLength = $null
+    if ($null -ne $AddressEntry.PrefixLength -and $AddressEntry.PrefixLength -ne '') {
+        $prefixLength = [int]$AddressEntry.PrefixLength
+    }
+
+    $subnetMask = ConvertTo-SubnetMask -PrefixLength $prefixLength
+    $portGroupInfo = $null
+    if ($NetworkAdapter) {
+        $portGroupInfo = Get-PortGroupVlanId -NetworkAdapter $NetworkAdapter -VMHost $VMHost
+    }
+
+    $macAddress = if ($NetworkAdapter) { $NetworkAdapter.MacAddress } else { $GuestNic.MacAddress }
+    $portGroupName = if ($portGroupInfo) { $portGroupInfo.PortGroupName } else { $GuestNic.AdapterName }
+    $vlanId = if ($portGroupInfo) { $portGroupInfo.VLANID } else { $null }
+    $portGroupType = if ($portGroupInfo) { $portGroupInfo.PortGroupType } else { $null }
+    $vlanDescription = if ($portGroupInfo) { $portGroupInfo.VlanDescription } else { $null }
+    $virtualAdapterName = if ($NetworkAdapter) { $NetworkAdapter.Name } else { $null }
+
+    return [ordered]@{
+        InterfaceRole        = $InterfaceRole
+        AdapterName          = $GuestNic.AdapterName
+        InterfaceAlias       = $GuestNic.InterfaceAlias
+        InterfaceIndex       = $GuestNic.InterfaceIndex
+        InterfaceGuid        = $GuestNic.InterfaceGuid
+        InterfaceDescription = $GuestNic.InterfaceDescription
+        VirtualAdapterName   = $virtualAdapterName
+        MacAddress           = $macAddress
+        IPAddress            = $AddressEntry.IPAddress
+        IPv4Addresses        = @($GuestNic.IPv4Addresses)
+        PrefixLength         = $prefixLength
+        SubnetMask           = $subnetMask
+        DefaultGateway       = $GuestNic.DefaultGateway
+        DNSServers           = @($GuestNic.DNSServers)
+        RegisterDnsClient    = $GuestNic.RegisterDnsClient
+        PortGroupName        = $portGroupName
+        PortGroupType        = $portGroupType
+        VLANID               = $vlanId
+        VlanDescription      = $vlanDescription
+    }
 }
 
 function ConvertTo-FrontSideNicRecord {
@@ -550,44 +669,27 @@ function ConvertTo-FrontSideNicRecord {
         return $null
     }
 
-    $prefixLength = $null
-    if ($null -ne $primary.PrefixLength -and $primary.PrefixLength -ne '') {
-        $prefixLength = [int]$primary.PrefixLength
+    return ConvertTo-NicRecord -GuestNic $GuestNic -NetworkAdapter $NetworkAdapter -VMHost $VMHost -AddressEntry $primary -InterfaceRole 'FrontSide'
+}
+
+function ConvertTo-BackSideNicRecord {
+    param(
+        [Parameter(Mandatory = $true)]
+        $GuestNic,
+
+        [Parameter()]
+        $NetworkAdapter,
+
+        [Parameter(Mandatory = $true)]
+        $VMHost
+    )
+
+    $primary = Get-FirstBackSideIPv4Entry -GuestNic $GuestNic
+    if ($null -eq $primary) {
+        return $null
     }
 
-    $subnetMask = ConvertTo-SubnetMask -PrefixLength $prefixLength
-    $portGroupInfo = $null
-    if ($NetworkAdapter) {
-        $portGroupInfo = Get-PortGroupVlanId -NetworkAdapter $NetworkAdapter -VMHost $VMHost
-    }
-
-    $macAddress = if ($NetworkAdapter) { $NetworkAdapter.MacAddress } else { $GuestNic.MacAddress }
-    $portGroupName = if ($portGroupInfo) { $portGroupInfo.PortGroupName } else { $GuestNic.AdapterName }
-    $vlanId = if ($portGroupInfo) { $portGroupInfo.VLANID } else { $null }
-    $portGroupType = if ($portGroupInfo) { $portGroupInfo.PortGroupType } else { $null }
-    $vlanDescription = if ($portGroupInfo) { $portGroupInfo.VlanDescription } else { $null }
-    $virtualAdapterName = if ($NetworkAdapter) { $NetworkAdapter.Name } else { $null }
-
-    return [ordered]@{
-        AdapterName          = $GuestNic.AdapterName
-        InterfaceAlias       = $GuestNic.InterfaceAlias
-        InterfaceIndex       = $GuestNic.InterfaceIndex
-        InterfaceGuid        = $GuestNic.InterfaceGuid
-        InterfaceDescription = $GuestNic.InterfaceDescription
-        VirtualAdapterName   = $virtualAdapterName
-        MacAddress           = $macAddress
-        IPAddress            = $primary.IPAddress
-        IPv4Addresses        = @($GuestNic.IPv4Addresses)
-        PrefixLength         = $prefixLength
-        SubnetMask           = $subnetMask
-        DefaultGateway       = $GuestNic.DefaultGateway
-        DNSServers           = @($GuestNic.DNSServers)
-        RegisterDnsClient    = $GuestNic.RegisterDnsClient
-        PortGroupName        = $portGroupName
-        PortGroupType        = $portGroupType
-        VLANID               = $vlanId
-        VlanDescription      = $vlanDescription
-    }
+    return ConvertTo-NicRecord -GuestNic $GuestNic -NetworkAdapter $NetworkAdapter -VMHost $VMHost -AddressEntry $primary -InterfaceRole 'BackSide'
 }
 
 function Get-FrontSideNicRecord {
@@ -609,31 +711,35 @@ function Get-FrontSideNicRecord {
             continue
         }
 
-        $guestMac = ConvertTo-NormalizedMacAddress -MacAddress $guestNic.MacAddress
-        $matchingAdapter = $null
-        if ($guestMac) {
-            $matchingAdapter = @($vmAdapters | Where-Object {
-                (ConvertTo-NormalizedMacAddress -MacAddress $_.MacAddress) -eq $guestMac
-            } | Select-Object -First 1)
-            if ($matchingAdapter.Count -gt 0) {
-                $matchingAdapter = $matchingAdapter[0]
-            }
-            else {
-                $matchingAdapter = $null
-            }
-        }
-
-        if (-not $matchingAdapter -and $guestNic.AdapterName) {
-            $matchingAdapter = @($vmAdapters | Where-Object { $_.NetworkName -eq $guestNic.AdapterName } | Select-Object -First 1)
-            if ($matchingAdapter.Count -gt 0) {
-                $matchingAdapter = $matchingAdapter[0]
-            }
-            else {
-                $matchingAdapter = $null
-            }
-        }
-
+        $matchingAdapter = Resolve-GuestNetworkAdapterMatch -GuestNic $guestNic -VMAdapters $vmAdapters
         $record = ConvertTo-FrontSideNicRecord -GuestNic $guestNic -NetworkAdapter $matchingAdapter -VMHost $VM.VMHost
+        if ($record) {
+            $records += $record
+        }
+    }
+
+    return @($records)
+}
+
+function Get-BackSideNicRecord {
+    param(
+        [Parameter(Mandatory = $true)]
+        $VM,
+
+        [Parameter(Mandatory = $true)]
+        [object[]]$GuestNics
+    )
+
+    $vmAdapters = @(Get-NetworkAdapter -VM $VM -ErrorAction Stop)
+    $records = @()
+
+    foreach ($guestNic in $GuestNics) {
+        if (-not (Test-GuestNicIsBackSide -GuestNic $guestNic)) {
+            continue
+        }
+
+        $matchingAdapter = Resolve-GuestNetworkAdapterMatch -GuestNic $guestNic -VMAdapters $vmAdapters
+        $record = ConvertTo-BackSideNicRecord -GuestNic $guestNic -NetworkAdapter $matchingAdapter -VMHost $VM.VMHost
         if ($record) {
             $records += $record
         }
@@ -789,6 +895,7 @@ try {
         $jsonPath = $null
         $accountCreated = $false
         $nicCount = 0
+        $backSideNics = @()
         $status = 'Success'
 
         Write-Log -Message ("Processing import entry '{0}' as vCenter VM '{1}' and guest computer '{2}'." -f $vmImport.ImportName, $name, $guestComputerName)
@@ -817,11 +924,14 @@ try {
             }
 
             $frontSideNics = @(Get-FrontSideNicRecord -VM $vm -GuestNics $guestNics)
+            $backSideNics = @(Get-BackSideNicRecord -VM $vm -GuestNics $guestNics)
             $nicCount = $frontSideNics.Count
 
             if ($nicCount -eq 0) {
                 Write-Log -Level WARN -Message ("No front-side NICs were detected for '{0}' after excluding 172.25.*.* and 169.*.*.* addresses." -f $vm.Name)
             }
+
+            Write-Log -Message ("Detected {0} front-side NIC record(s) and {1} back-side NIC record(s) for '{2}'." -f $frontSideNics.Count, $backSideNics.Count, $vm.Name)
 
             if (-not $SkipMigrationAccountCreation) {
                 Write-Log -Message ("Creating or updating local migration account '{0}' on '{1}'." -f $MigrationAccountUserName, $guestComputerName)
@@ -850,6 +960,9 @@ try {
                     UserName = $MigrationAccountUserName
                     CreatedOrUpdated = [bool]$accountCreated
                 }
+                FrontInterface   = @($frontSideNics)
+                BackSideInterface = @($backSideNics)
+                BackSideNics     = @($backSideNics)
                 FrontSideNics    = @($frontSideNics)
             }
 
@@ -865,6 +978,7 @@ try {
             VMName                 = $name
             GuestComputerName      = $guestComputerName
             FrontSideNicCount      = $nicCount
+            BackSideNicCount       = if ($null -ne $backSideNics) { $backSideNics.Count } else { 0 }
             MigrationAccountReady  = $accountCreated
             JsonPath               = $jsonPath
             Status                 = $status
