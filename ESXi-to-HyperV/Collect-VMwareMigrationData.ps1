@@ -676,7 +676,7 @@ if (Get-Command -Name Get-LocalUser -ErrorAction SilentlyContinue) {
         Enable-LocalUser -Name $userName -ErrorAction SilentlyContinue
     }
     else {
-        New-LocalUser -Name $userName -Password $securePassword -FullName 'Hyper-V Migration Account' -Description 'Temporary account used for VMware to Hyper-V migration' -PasswordNeverExpires -UserMayNotChangePassword -ErrorAction Stop | Out-Null
+        New-LocalUser -Name $userName -Password $securePassword -FullName 'Hyper-V Migration Account' -Description 'VMware to Hyper-V migration' -PasswordNeverExpires -UserMayNotChangePassword -ErrorAction Stop | Out-Null
     }
 
     $member = Get-LocalGroupMember -Group 'Administrators' -Member $userName -ErrorAction SilentlyContinue
