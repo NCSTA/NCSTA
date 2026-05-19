@@ -99,7 +99,7 @@ function Write-Log {
     )
 
     $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
-    Write-Host $line
+    Write-Information -MessageData $line -InformationAction Continue
     if ($script:LogPath) {
         Add-Content -Path $script:LogPath -Value $line
     }
@@ -322,7 +322,7 @@ function Get-GuestNetworkInfo {
     return @(ConvertFrom-GuestJson -Text $result.ScriptOutput)
 }
 
-function Get-GuestNetworkInfoFromVmTools {
+function Get-GuestNetworkInfoFromVmInventory {
     param(
         [Parameter(Mandatory = $true)]
         $VM
@@ -494,7 +494,7 @@ function Test-GuestNicIsFrontSide {
     return $true
 }
 
-function New-FrontSideNicRecord {
+function ConvertTo-FrontSideNicRecord {
     param(
         [Parameter(Mandatory = $true)]
         $GuestNic,
@@ -551,7 +551,7 @@ function New-FrontSideNicRecord {
     }
 }
 
-function Get-FrontSideNicRecords {
+function Get-FrontSideNicRecord {
     param(
         [Parameter(Mandatory = $true)]
         $VM,
@@ -592,7 +592,7 @@ function Get-FrontSideNicRecords {
             }
         }
 
-        $record = New-FrontSideNicRecord -GuestNic $guestNic -NetworkAdapter $matchingAdapter -VMHost $VM.VMHost
+        $record = ConvertTo-FrontSideNicRecord -GuestNic $guestNic -NetworkAdapter $matchingAdapter -VMHost $VM.VMHost
         if ($record) {
             $records += $record
         }
@@ -601,7 +601,7 @@ function Get-FrontSideNicRecords {
     return @($records)
 }
 
-function New-MigrationLocalAccountScript {
+function Get-MigrationLocalAccountScriptText {
     param(
         [Parameter(Mandatory = $true)]
         [string]$UserName
@@ -610,8 +610,12 @@ function New-MigrationLocalAccountScript {
     $template = @'
 $ErrorActionPreference = 'Stop'
 $userName = __USER_NAME__
-$passwordPlain = -join ([char[]](__PASSWORD_CHAR_CODES__))
-$securePassword = ConvertTo-SecureString $passwordPlain -AsPlainText -Force
+$passwordCharCodes = @(__PASSWORD_CHAR_CODES__)
+$securePassword = New-Object System.Security.SecureString
+foreach ($passwordCharCode in $passwordCharCodes) {
+    $securePassword.AppendChar([char]$passwordCharCode)
+}
+$securePassword.MakeReadOnly()
 
 if (Get-Command -Name Get-LocalUser -ErrorAction SilentlyContinue) {
     $existingUser = Get-LocalUser -Name $userName -ErrorAction SilentlyContinue
@@ -629,6 +633,7 @@ if (Get-Command -Name Get-LocalUser -ErrorAction SilentlyContinue) {
     }
 }
 else {
+    $passwordPlain = -join ([char[]]$passwordCharCodes)
     $computer = [ADSI]("WinNT://{0},computer" -f $env:COMPUTERNAME)
     $userPath = "WinNT://{0}/{1},user" -f $env:COMPUTERNAME, $userName
     $memberPath = "WinNT://{0}/{1}" -f $env:COMPUTERNAME, $userName
@@ -673,7 +678,7 @@ else {
         Replace('__PASSWORD_CHAR_CODES__', (Get-MigrationPasswordCodeLiteral))
 }
 
-function Ensure-MigrationLocalAccount {
+function Invoke-MigrationLocalAccountSetup {
     param(
         [Parameter(Mandatory = $true)]
         $VM,
@@ -685,7 +690,7 @@ function Ensure-MigrationLocalAccount {
         [string]$UserName
     )
 
-    $scriptText = New-MigrationLocalAccountScript -UserName $UserName
+    $scriptText = Get-MigrationLocalAccountScriptText -UserName $UserName
     $result = Invoke-VMScript -VM $VM -GuestCredential $Credential -ScriptType PowerShell -ScriptText $scriptText -ErrorAction Stop
     return $result.ScriptOutput.Trim()
 }
@@ -769,10 +774,10 @@ try {
             catch {
                 Write-Log -Level WARN -Message ("Guest NIC discovery through Invoke-VMScript failed for '{0}': {1}" -f $vm.Name, $_.Exception.Message)
                 Write-Log -Level WARN -Message ("Falling back to VMware Tools inventory data for '{0}'. Gateway, DNS, subnet mask, and RegisterDnsClient may be incomplete." -f $vm.Name)
-                $guestNics = @(Get-GuestNetworkInfoFromVmTools -VM $vm)
+                $guestNics = @(Get-GuestNetworkInfoFromVmInventory -VM $vm)
             }
 
-            $frontSideNics = @(Get-FrontSideNicRecords -VM $vm -GuestNics $guestNics)
+            $frontSideNics = @(Get-FrontSideNicRecord -VM $vm -GuestNics $guestNics)
             $nicCount = $frontSideNics.Count
 
             if ($nicCount -eq 0) {
@@ -781,7 +786,7 @@ try {
 
             if (-not $SkipMigrationAccountCreation) {
                 Write-Log -Message ("Creating or updating local migration account '{0}' on '{1}'." -f $MigrationAccountUserName, $vm.Name)
-                $accountResult = Ensure-MigrationLocalAccount -VM $vm -Credential $GuestCredential -UserName $MigrationAccountUserName
+                $accountResult = Invoke-MigrationLocalAccountSetup -VM $vm -Credential $GuestCredential -UserName $MigrationAccountUserName
                 Write-Log -Message ("Guest account result for '{0}': {1}" -f $vm.Name, $accountResult)
                 $accountCreated = $true
             }
@@ -832,7 +837,7 @@ finally {
 }
 
 $summaryText = $summary | Format-Table -AutoSize | Out-String
-Write-Host $summaryText
+Write-Information -MessageData $summaryText -InformationAction Continue
 Add-Content -Path $script:LogPath -Value ''
 Add-Content -Path $script:LogPath -Value 'Summary'
 Add-Content -Path $script:LogPath -Value $summaryText
