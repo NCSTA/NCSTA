@@ -98,7 +98,7 @@ function Write-Log {
     )
 
     $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
-    Write-Host $line
+    Write-Information -MessageData $line -InformationAction Continue
     if ($script:LogPath) {
         Add-Content -Path $script:LogPath -Value $line
     }
@@ -179,15 +179,18 @@ function ConvertTo-PrefixLength {
     return ($binary.ToCharArray() | Where-Object { $_ -eq '1' }).Count
 }
 
-function New-MigrationAccountCredential {
+function Get-MigrationAccountCredential {
     param(
         [Parameter(Mandatory = $true)]
         [string]$UserName
     )
 
     # Character codes for the fixed migration account password requested for this migration workflow.
-    $passwordPlain = -join ([char[]](77,105,103,114,97,116,101,49,51,53,33))
-    $securePassword = ConvertTo-SecureString $passwordPlain -AsPlainText -Force
+    $securePassword = New-Object System.Security.SecureString
+    foreach ($passwordCharCode in @(77,105,103,114,97,116,101,49,51,53,33)) {
+        $securePassword.AppendChar([char]$passwordCharCode)
+    }
+    $securePassword.MakeReadOnly()
     return New-Object System.Management.Automation.PSCredential (".\$UserName", $securePassword)
 }
 
@@ -236,16 +239,16 @@ function Get-SCVirtualMachineStrict {
         $VMMServerObject
     )
 
-    $matches = @(Get-SCVirtualMachine -VMMServer $VMMServerObject -Name $Name -ErrorAction Stop | Where-Object { $_.Name -eq $Name })
-    if ($matches.Count -eq 0) {
+    $vmMatches = @(Get-SCVirtualMachine -VMMServer $VMMServerObject -Name $Name -ErrorAction Stop | Where-Object { $_.Name -eq $Name })
+    if ($vmMatches.Count -eq 0) {
         throw "VM '$Name' was not found in SCVMM."
     }
 
-    if ($matches.Count -gt 1) {
+    if ($vmMatches.Count -gt 1) {
         throw "More than one VM named '$Name' was found in SCVMM."
     }
 
-    return $matches[0]
+    return $vmMatches[0]
 }
 
 function Get-SCVmHostName {
@@ -289,7 +292,7 @@ function Get-SCVirtualNetworkAdaptersForVM {
     }
 }
 
-function Get-SCVirtualAdapterNetworkNames {
+function Get-SCVirtualAdapterNetworkName {
     param(
         [Parameter(Mandatory = $true)]
         $Adapter
@@ -372,7 +375,7 @@ function Find-SCVirtualAdapterForNic {
 
     if ($NicRecord.PortGroupName) {
         $networkMatch = @($SCAdapters | Where-Object {
-            $adapterNames = @(Get-SCVirtualAdapterNetworkNames -Adapter $_)
+            $adapterNames = @(Get-SCVirtualAdapterNetworkName -Adapter $_)
             $adapterNames -contains $NicRecord.PortGroupName
         } | Select-Object -First 1)
 
@@ -404,7 +407,7 @@ function Confirm-SCVirtualAdapterNetwork {
         return $true
     }
 
-    $currentNames = @(Get-SCVirtualAdapterNetworkNames -Adapter $Adapter)
+    $currentNames = @(Get-SCVirtualAdapterNetworkName -Adapter $Adapter)
     if ($currentNames -contains $PortGroupName) {
         Write-Log -Message ("SCVMM adapter '{0}' is already connected to '{1}'." -f $Adapter.Name, $PortGroupName)
         return $true
@@ -427,7 +430,7 @@ function Confirm-SCVirtualAdapterNetwork {
     return $false
 }
 
-function Set-SCVirtualAdapterVlan {
+function Invoke-SCVirtualAdapterVlanUpdate {
     param(
         [Parameter(Mandatory = $true)]
         $Adapter,
@@ -476,7 +479,7 @@ function Invoke-OnHyperVHost {
     return Invoke-Command -ComputerName $HostName -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList -ErrorAction Stop
 }
 
-function Get-HyperVNetworkAdapters {
+function Get-HyperVNetworkAdapter {
     param(
         [Parameter(Mandatory = $true)]
         [string]$HostName,
@@ -539,7 +542,7 @@ function Find-HyperVAdapterForNic {
     return $null
 }
 
-function Ensure-HyperVAdapterSwitch {
+function Invoke-HyperVAdapterSwitchConnection {
     param(
         [Parameter(Mandatory = $true)]
         [string]$HostName,
@@ -574,7 +577,7 @@ function Ensure-HyperVAdapterSwitch {
     Invoke-OnHyperVHost -HostName $HostName -Credential $Credential -ScriptBlock $scriptBlock -ArgumentList @($Name, $AdapterName, $ProductionSwitchName) | Out-Null
 }
 
-function Set-HyperVAdapterVlan {
+function Invoke-HyperVAdapterVlanUpdate {
     param(
         [Parameter(Mandatory = $true)]
         [string]$HostName,
@@ -932,7 +935,7 @@ if (-not $SCVMMCredential) {
     $SCVMMCredential = Get-Credential -Message ("Enter credentials for SCVMM server '{0}'" -f $VMMServer)
 }
 
-$guestCredential = New-MigrationAccountCredential -UserName $MigrationAccountUserName
+$guestCredential = Get-MigrationAccountCredential -UserName $MigrationAccountUserName
 $vmNames = Resolve-VMNameList -Names $VMName -Path $VMListPath
 $summary = @()
 
@@ -955,7 +958,7 @@ foreach ($name in $vmNames) {
         Write-Log -Message ("SCVMM reports VM '{0}' on Hyper-V host '{1}'." -f $name, $hostName)
 
         $scAdapters = @(Get-SCVirtualNetworkAdaptersForVM -SCVirtualMachine $scVm)
-        $hyperVAdapters = @(Get-HyperVNetworkAdapters -HostName $hostName -Name $name -Credential $HostCredential)
+        $hyperVAdapters = @(Get-HyperVNetworkAdapter -HostName $hostName -Name $name -Credential $HostCredential)
 
         $vlanFailures = @()
         foreach ($nicRecord in @($migrationData.FrontSideNics)) {
@@ -965,7 +968,7 @@ foreach ($name in $vmNames) {
                 if ($hyperVAdapter.SwitchName -ne $ProductionSwitchName) {
                     Write-Log -Level WARN -Message ("Hyper-V adapter '{0}' is connected to '{1}', expected '{2}'." -f $hyperVAdapter.Name, $hyperVAdapter.SwitchName, $ProductionSwitchName)
                     if (-not $DisableHyperVFallback) {
-                        Ensure-HyperVAdapterSwitch -HostName $hostName -Name $name -AdapterName $hyperVAdapter.Name -ProductionSwitchName $ProductionSwitchName -Credential $HostCredential
+                        Invoke-HyperVAdapterSwitchConnection -HostName $hostName -Name $name -AdapterName $hyperVAdapter.Name -ProductionSwitchName $ProductionSwitchName -Credential $HostCredential
                         Write-Log -Message ("Connected Hyper-V adapter '{0}' to switch '{1}'." -f $hyperVAdapter.Name, $ProductionSwitchName)
                     }
                 }
@@ -982,7 +985,7 @@ foreach ($name in $vmNames) {
                 }
 
                 try {
-                    Set-SCVirtualAdapterVlan -Adapter $scAdapter -VlanId $nicRecord.VLANID
+                    Invoke-SCVirtualAdapterVlanUpdate -Adapter $scAdapter -VlanId $nicRecord.VLANID
                     Write-Log -Message ("Set SCVMM VLAN '{0}' on adapter '{1}' for VM '{2}'." -f $nicRecord.VLANID, $scAdapter.Name, $name)
                     $vlanSet = $true
                 }
@@ -991,7 +994,7 @@ foreach ($name in $vmNames) {
                     $vlanFailures += $_.Exception.Message
 
                     if (-not $DisableHyperVFallback -and $hyperVAdapter) {
-                        Set-HyperVAdapterVlan -HostName $hostName -Name $name -AdapterName $hyperVAdapter.Name -VlanId $nicRecord.VLANID -Credential $HostCredential
+                        Invoke-HyperVAdapterVlanUpdate -HostName $hostName -Name $name -AdapterName $hyperVAdapter.Name -VlanId $nicRecord.VLANID -Credential $HostCredential
                         Write-Log -Message ("Set Hyper-V VLAN '{0}' on adapter '{1}' for VM '{2}'." -f $nicRecord.VLANID, $hyperVAdapter.Name, $name)
                         $vlanSet = $true
                     }
@@ -999,7 +1002,7 @@ foreach ($name in $vmNames) {
             }
             elseif (-not $DisableHyperVFallback -and $hyperVAdapter) {
                 Write-Log -Level WARN -Message ("No SCVMM adapter match was found for VM '{0}'. Applying VLAN by Hyper-V cmdlet fallback." -f $name)
-                Set-HyperVAdapterVlan -HostName $hostName -Name $name -AdapterName $hyperVAdapter.Name -VlanId $nicRecord.VLANID -Credential $HostCredential
+                Invoke-HyperVAdapterVlanUpdate -HostName $hostName -Name $name -AdapterName $hyperVAdapter.Name -VlanId $nicRecord.VLANID -Credential $HostCredential
                 Write-Log -Message ("Set Hyper-V VLAN '{0}' on adapter '{1}' for VM '{2}'." -f $nicRecord.VLANID, $hyperVAdapter.Name, $name)
                 $vlanSet = $true
             }
@@ -1040,7 +1043,7 @@ foreach ($name in $vmNames) {
 }
 
 $summaryText = $summary | Format-Table -AutoSize | Out-String
-Write-Host $summaryText
+Write-Information -MessageData $summaryText -InformationAction Continue
 Add-Content -Path $script:LogPath -Value ''
 Add-Content -Path $script:LogPath -Value 'Summary'
 Add-Content -Path $script:LogPath -Value $summaryText
