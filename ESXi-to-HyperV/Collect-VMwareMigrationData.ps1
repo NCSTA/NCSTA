@@ -170,7 +170,7 @@ function ConvertTo-PowerShellLiteral {
 
 function Get-MigrationPasswordCodeLiteral {
     # Character codes for the fixed migration account password requested for this migration workflow.
-    return '77,105,103,114,97,116,101,49,51,53,33'
+    return '65,35,50,63,52,97,99,101,65,35,50,63,52,97,99,101'
 }
 
 function ConvertTo-NormalizedMacAddress {
