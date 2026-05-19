@@ -11,23 +11,25 @@
     Back-side management NICs are excluded when any IPv4 address on the adapter
     matches 172.25.*.* or 169.*.*.*.
 
-    Windows guest operations are pushed over PowerShell remoting to the VM name.
-    The current console user is used by default; provide -GuestCredential only
-    when you want Invoke-Command to use a different Windows administrator
-    account for guest NIC discovery and local account creation.
+    Windows guest operations are pushed over PowerShell remoting to the FQDN
+    supplied in the VM import list. The short host name before the first dot is
+    used for PowerCLI lookups. The current console user is used by default;
+    provide -GuestCredential only when you want Invoke-Command to use a
+    different Windows administrator account for guest NIC discovery and local
+    account creation.
 
 .NOTES
     PowerShell 5.1 compatible.
     Requires VMware.PowerCLI.
 #>
 
-[CmdletBinding(DefaultParameterSetName = 'ByName')]
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true, ParameterSetName = 'ByName')]
+    [Parameter()]
     [ValidateNotNullOrEmpty()]
     [string[]]$VMName,
 
-    [Parameter(Mandatory = $true, ParameterSetName = 'ByPath')]
+    [Parameter()]
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
     [string]$VMListPath,
 
@@ -105,24 +107,52 @@ function Write-Log {
     }
 }
 
-function Resolve-VMNameList {
+function Resolve-VMImportEntry {
     param(
         [string[]]$Names,
         [string]$Path
     )
 
+    if ($Names -and $Path) {
+        throw 'Use either -VMName or -VMListPath, not both.'
+    }
+
+    if (-not $Names -and -not $Path) {
+        $Path = Read-Host -Prompt 'Enter path to VM import file with one VM FQDN per line'
+        if ([string]::IsNullOrWhiteSpace($Path)) {
+            throw 'No VM import file path was supplied.'
+        }
+    }
+
     if ($Path) {
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            throw "VM import file was not found: $Path"
+        }
+
         $Names = Get-Content -LiteralPath $Path | Where-Object {
             -not [string]::IsNullOrWhiteSpace($_) -and $_.TrimStart() -notlike '#*'
         } | ForEach-Object { $_.Trim() }
     }
 
-    $resolved = @($Names | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() } | Select-Object -Unique)
-    if ($resolved.Count -eq 0) {
-        throw 'No VM names were supplied.'
+    $resolved = @()
+    foreach ($entry in @($Names | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() } | Select-Object -Unique)) {
+        $shortName = ($entry -split '\.')[0]
+        if ([string]::IsNullOrWhiteSpace($shortName)) {
+            continue
+        }
+
+        $resolved += [pscustomobject]@{
+            ImportName         = $entry
+            VMName             = $shortName
+            GuestComputerName  = $entry
+        }
     }
 
-    return $resolved
+    if ($resolved.Count -eq 0) {
+        throw 'No VM import entries were supplied.'
+    }
+
+    return @($resolved)
 }
 
 function ConvertTo-PowerShellLiteral {
@@ -332,14 +362,14 @@ ConvertTo-Json -InputObject @($items) -Depth 6 -Compress
 function Get-GuestNetworkInfo {
     param(
         [Parameter(Mandatory = $true)]
-        $VM,
+        [string]$ComputerName,
 
         [Parameter()]
         [System.Management.Automation.PSCredential]$Credential
     )
 
     $scriptText = Get-GuestNetworkDiscoveryScript
-    $result = Invoke-GuestPowerShellRemoting -ComputerName $VM.Name -Credential $Credential -ScriptText $scriptText
+    $result = Invoke-GuestPowerShellRemoting -ComputerName $ComputerName -Credential $Credential -ScriptText $scriptText
     $outputText = (@($result) | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
     return @(ConvertFrom-GuestJson -Text $outputText)
 }
@@ -703,7 +733,7 @@ else {
 function Invoke-MigrationLocalAccountSetup {
     param(
         [Parameter(Mandatory = $true)]
-        $VM,
+        [string]$ComputerName,
 
         [Parameter()]
         [System.Management.Automation.PSCredential]$Credential,
@@ -713,7 +743,7 @@ function Invoke-MigrationLocalAccountSetup {
     )
 
     $scriptText = Get-MigrationLocalAccountScriptText -UserName $UserName
-    $result = Invoke-GuestPowerShellRemoting -ComputerName $VM.Name -Credential $Credential -ScriptText $scriptText
+    $result = Invoke-GuestPowerShellRemoting -ComputerName $ComputerName -Credential $Credential -ScriptText $scriptText
     return ((@($result) | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
 }
 
@@ -756,7 +786,7 @@ if (-not $vCenterCredential) {
     $vCenterCredential = Get-Credential -Message ("Enter credentials for vCenter '{0}'" -f $vCenterServer)
 }
 
-$vmNames = Resolve-VMNameList -Names $VMName -Path $VMListPath
+$vmImports = Resolve-VMImportEntry -Names $VMName -Path $VMListPath
 $summary = @()
 $viServerConnection = $null
 
@@ -764,33 +794,35 @@ try {
     Write-Log -Message ("Connecting to vCenter server {0}." -f $vCenterServer)
     $viServerConnection = Connect-VIServer -Server $vCenterServer -Credential $vCenterCredential -ErrorAction Stop
 
-    foreach ($name in $vmNames) {
+    foreach ($vmImport in $vmImports) {
+        $name = $vmImport.VMName
+        $guestComputerName = $vmImport.GuestComputerName
         $jsonPath = $null
         $accountCreated = $false
         $nicCount = 0
         $status = 'Success'
 
-        Write-Log -Message ("Processing VM '{0}'." -f $name)
+        Write-Log -Message ("Processing import entry '{0}' as vCenter VM '{1}' and guest computer '{2}'." -f $vmImport.ImportName, $name, $guestComputerName)
 
         try {
             $vmMatches = @(Get-VM -Name $name -ErrorAction Stop | Where-Object { $_.Name -eq $name })
             if ($vmMatches.Count -eq 0) {
-                throw "VM '$name' was not found in vCenter."
+                throw "VM '$name' was not found in vCenter for import entry '$($vmImport.ImportName)'."
             }
 
             if ($vmMatches.Count -gt 1) {
-                throw "More than one VM named '$name' was found in vCenter."
+                throw "More than one VM named '$name' was found in vCenter for import entry '$($vmImport.ImportName)'."
             }
 
             $vm = $vmMatches[0]
 
             $guestNics = @()
             try {
-                Write-Log -Message ("Collecting guest NIC details from '{0}' through PowerShell remoting." -f $vm.Name)
-                $guestNics = @(Get-GuestNetworkInfo -VM $vm -Credential $GuestCredential)
+                Write-Log -Message ("Collecting guest NIC details from '{0}' through PowerShell remoting." -f $guestComputerName)
+                $guestNics = @(Get-GuestNetworkInfo -ComputerName $guestComputerName -Credential $GuestCredential)
             }
             catch {
-                Write-Log -Level WARN -Message ("Guest NIC discovery through PowerShell remoting failed for '{0}': {1}" -f $vm.Name, $_.Exception.Message)
+                Write-Log -Level WARN -Message ("Guest NIC discovery through PowerShell remoting failed for '{0}': {1}" -f $guestComputerName, $_.Exception.Message)
                 Write-Log -Level WARN -Message ("Falling back to VMware Tools inventory data for '{0}'. Gateway, DNS, subnet mask, and RegisterDnsClient may be incomplete." -f $vm.Name)
                 $guestNics = @(Get-GuestNetworkInfoFromVmInventory -VM $vm)
             }
@@ -803,13 +835,13 @@ try {
             }
 
             if (-not $SkipMigrationAccountCreation) {
-                Write-Log -Message ("Creating or updating local migration account '{0}' on '{1}'." -f $MigrationAccountUserName, $vm.Name)
-                $accountResult = Invoke-MigrationLocalAccountSetup -VM $vm -Credential $GuestCredential -UserName $MigrationAccountUserName
-                Write-Log -Message ("Guest account result for '{0}': {1}" -f $vm.Name, $accountResult)
+                Write-Log -Message ("Creating or updating local migration account '{0}' on '{1}'." -f $MigrationAccountUserName, $guestComputerName)
+                $accountResult = Invoke-MigrationLocalAccountSetup -ComputerName $guestComputerName -Credential $GuestCredential -UserName $MigrationAccountUserName
+                Write-Log -Message ("Guest account result for '{0}': {1}" -f $guestComputerName, $accountResult)
                 $accountCreated = $true
             }
             else {
-                Write-Log -Level WARN -Message ("Skipping migration account creation on '{0}' because -SkipMigrationAccountCreation was specified." -f $vm.Name)
+                Write-Log -Level WARN -Message ("Skipping migration account creation on '{0}' because -SkipMigrationAccountCreation was specified." -f $guestComputerName)
             }
 
             $migrationData = [ordered]@{
@@ -822,6 +854,8 @@ try {
                     vCenterServer = $vCenterServer
                     VMHost        = $vm.VMHost.Name
                     PowerState    = [string]$vm.PowerState
+                    ImportName    = $vmImport.ImportName
+                    GuestComputerName = $guestComputerName
                 }
                 MigrationAccount = [ordered]@{
                     UserName = $MigrationAccountUserName
@@ -840,6 +874,7 @@ try {
 
         $summary += [pscustomobject]@{
             VMName                 = $name
+            GuestComputerName      = $guestComputerName
             FrontSideNicCount      = $nicCount
             MigrationAccountReady  = $accountCreated
             JsonPath               = $jsonPath
