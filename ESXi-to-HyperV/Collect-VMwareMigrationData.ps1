@@ -252,6 +252,29 @@ function ConvertFrom-GuestJson {
     return $json | ConvertFrom-Json
 }
 
+function Expand-ObjectArray {
+    param(
+        [AllowNull()]
+        $InputObject
+    )
+
+    $items = @()
+    foreach ($item in @($InputObject)) {
+        if ($null -eq $item) {
+            continue
+        }
+
+        if ($item -is [System.Array]) {
+            $items += @(Expand-ObjectArray -InputObject $item)
+            continue
+        }
+
+        $items += $item
+    }
+
+    return @($items)
+}
+
 function Invoke-GuestPowerShellRemoting {
     param(
         [Parameter(Mandatory = $true)]
@@ -371,7 +394,7 @@ function Get-GuestNetworkInfo {
     $scriptText = Get-GuestNetworkDiscoveryScript
     $result = Invoke-GuestPowerShellRemoting -ComputerName $ComputerName -Credential $Credential -ScriptText $scriptText
     $outputText = (@($result) | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
-    return @(ConvertFrom-GuestJson -Text $outputText)
+    return @(Expand-ObjectArray -InputObject (ConvertFrom-GuestJson -Text $outputText))
 }
 
 function Get-GuestNetworkInfoFromVmInventory {
@@ -704,7 +727,7 @@ function Get-FrontSideNicRecord {
     $vmAdapters = @(Get-NetworkAdapter -VM $VM -ErrorAction Stop)
     $records = @()
 
-    foreach ($guestNic in $GuestNics) {
+    foreach ($guestNic in @(Expand-ObjectArray -InputObject $GuestNics)) {
         if (-not (Test-GuestNicIsFrontSide -GuestNic $guestNic)) {
             $skippedAddresses = @($guestNic.IPv4Addresses | ForEach-Object { $_.IPAddress } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ','
             Write-Log -Message ("Skipping guest NIC '{0}' MAC '{1}' because no usable front-side IPv4 address was found. IPv4='{2}'." -f $guestNic.AdapterName, $guestNic.MacAddress, $skippedAddresses)
@@ -733,7 +756,7 @@ function Get-BackSideNicRecord {
     $vmAdapters = @(Get-NetworkAdapter -VM $VM -ErrorAction Stop)
     $records = @()
 
-    foreach ($guestNic in $GuestNics) {
+    foreach ($guestNic in @(Expand-ObjectArray -InputObject $GuestNics)) {
         if (-not (Test-GuestNicIsBackSide -GuestNic $guestNic)) {
             continue
         }
