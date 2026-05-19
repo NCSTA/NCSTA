@@ -187,7 +187,7 @@ function Get-MigrationAccountCredential {
 
     # Character codes for the fixed migration account password requested for this migration workflow.
     $securePassword = New-Object System.Security.SecureString
-    foreach ($passwordCharCode in @(77,105,103,114,97,116,101,49,51,53,33)) {
+    foreach ($passwordCharCode in @(65,35,50,63,52,97,99,101,65,35,50,63,52,97,99,101)) {
         $securePassword.AppendChar([char]$passwordCharCode)
     }
     $securePassword.MakeReadOnly()
