@@ -530,20 +530,7 @@ function Test-GuestNicIsFrontSide {
         $GuestNic
     )
 
-    $entries = @($GuestNic.IPv4Addresses)
-    $ipv4Addresses = @($entries | ForEach-Object { $_.IPAddress } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-
-    if ($ipv4Addresses.Count -eq 0) {
-        return $false
-    }
-
-    foreach ($ip in $ipv4Addresses) {
-        if (Test-BackSideIPv4Address -IPAddress $ip) {
-            return $false
-        }
-    }
-
-    return $true
+    return ($null -ne (Get-FirstNonBackSideIPv4Entry -GuestNic $GuestNic))
 }
 
 function ConvertTo-FrontSideNicRecord {
@@ -617,6 +604,8 @@ function Get-FrontSideNicRecord {
 
     foreach ($guestNic in $GuestNics) {
         if (-not (Test-GuestNicIsFrontSide -GuestNic $guestNic)) {
+            $skippedAddresses = @($guestNic.IPv4Addresses | ForEach-Object { $_.IPAddress } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ','
+            Write-Log -Message ("Skipping guest NIC '{0}' MAC '{1}' because no usable front-side IPv4 address was found. IPv4='{2}'." -f $guestNic.AdapterName, $guestNic.MacAddress, $skippedAddresses)
             continue
         }
 
