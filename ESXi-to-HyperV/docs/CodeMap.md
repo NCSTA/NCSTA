@@ -29,6 +29,9 @@ when debugging or extending the toolkit.
 
 - `Test-BackSideIPv4Address`
   - Identifies `172.25.*.*` and `169.*.*.*`.
+- `Get-NetworkMatchKey`
+  - Derives a shared key such as `10.1.1.x` from network names with different
+    suffixes.
 - `Get-FirstNonBackSideIPv4Entry`
 - `Get-FirstBackSideIPv4Entry`
 - `Test-GuestNicIsFrontSide`
@@ -69,6 +72,8 @@ when debugging or extending the toolkit.
 
 ### SCVMM
 
+- `Get-NetworkMatchKey`
+- `Get-NicRecordNetworkMatchKey`
 - `Get-SCVirtualMachineStrict`
 - `Get-SCVmHostName`
 - `Get-SCVirtualNetworkAdaptersForVM`
@@ -80,6 +85,9 @@ when debugging or extending the toolkit.
 ### Hyper-V Host
 
 - `Invoke-OnHyperVHost`
+- `Invoke-HyperVGuestPreparation`
+  - Enables Secure Boot when possible, enables Guest Service Interface, and
+    powers on the VM.
 - `Get-HyperVNetworkAdapter`
 - `Find-HyperVAdapterForNic`
 - `Invoke-HyperVAdapterSwitchConnection`

@@ -28,13 +28,31 @@ from `-DataDirectory`.
 1. Connect to SCVMM with `Get-SCVMMServer`.
 2. Locate the restored VM by name with `Get-SCVirtualMachine`.
 3. Determine the Hyper-V host from the SCVMM VM object.
-4. Read SCVMM virtual adapters.
-5. Read Hyper-V VM network adapters from the host.
-6. Match the target production NIC by MAC, adapter name, or network/port group
+4. On the Hyper-V host, attempt to enable Secure Boot.
+5. On the Hyper-V host, enable the Guest Service Interface integration service.
+6. Power on the VM if it is not already running.
+7. Read SCVMM virtual adapters.
+8. Read Hyper-V VM network adapters from the host.
+9. Match the target production NIC by MAC, adapter name, or network/port group
    where possible.
-7. Confirm or update VM network/port group by name.
-8. Set VLAN through SCVMM.
-9. Fall back to Hyper-V VLAN cmdlets only when needed and not disabled.
+10. Confirm or update VM network by normalized network key.
+11. Set VLAN through SCVMM.
+12. Fall back to Hyper-V VLAN cmdlets only when needed and not disabled.
+
+## VM Network Matching
+
+VMware and SCVMM network names can use different suffixes:
+
+```text
+VMware: 10.1.1.x dvswitch
+SCVMM:  10.1.1.x Network
+```
+
+Script 1 stores `NetworkMatchKey`, such as `10.1.1.x`. Script 2 uses that key
+to match and select the SCVMM VM network.
+
+If the JSON does not contain `NetworkMatchKey`, Script 2 derives it from
+`PortGroupName`.
 
 ## Guest Configuration Flow
 
@@ -73,7 +91,19 @@ Important fields:
 - `AdapterName`
 - `InterfaceAlias`
 - `PortGroupName`
+- `NetworkMatchKey`
 - `VLANID`
+
+## Boot Wait
+
+After SCVMM/Hyper-V-side NIC work, the script waits before running PowerShell
+Direct guest configuration. The default is:
+
+```powershell
+-GuestBootWaitSeconds 120
+```
+
+Set it to `0` to skip the wait.
 
 ## Logging
 
