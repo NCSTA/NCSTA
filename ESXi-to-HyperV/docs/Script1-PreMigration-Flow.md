@@ -47,6 +47,22 @@ The script connects to vCenter with PowerCLI and retrieves:
 The guest NIC data and VMware NIC data are matched by MAC address where
 possible.
 
+The script also derives `NetworkMatchKey` from the VMware port group name. For
+example:
+
+```text
+10.1.1.x dvswitch
+```
+
+becomes:
+
+```text
+10.1.1.x
+```
+
+Script 2 uses this key to match SCVMM VM networks with different suffixes, such
+as `10.1.1.x Network`.
+
 ## Guest Collection
 
 Guest data is collected over PowerShell remoting:
@@ -122,6 +138,7 @@ Each NIC record includes fields such as:
 - `DNSServers`
 - `RegisterDnsClient`
 - `PortGroupName`
+- `NetworkMatchKey`
 - `PortGroupType`
 - `VLANID`
 - `VlanDescription`

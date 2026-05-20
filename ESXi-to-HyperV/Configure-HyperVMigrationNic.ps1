@@ -56,6 +56,10 @@ param(
     [System.Management.Automation.PSCredential]$HostCredential,
 
     [Parameter()]
+    [ValidateRange(0, 3600)]
+    [int]$GuestBootWaitSeconds = 120,
+
+    [Parameter()]
     [switch]$DisableHyperVFallback
 )
 
@@ -135,6 +139,54 @@ function ConvertTo-NormalizedMacAddress {
     }
 
     return (($MacAddress -replace '[^0-9A-Fa-f]', '').ToUpperInvariant())
+}
+
+function Get-NetworkMatchKey {
+    param(
+        [AllowNull()]
+        [string]$NetworkName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($NetworkName)) {
+        return $null
+    }
+
+    $match = [regex]::Match($NetworkName, '\b\d{1,3}(?:\.\d{1,3}){2}\.(?:\d{1,3}|x)\b', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($match.Success) {
+        return $match.Value.ToLowerInvariant()
+    }
+
+    return $NetworkName.Trim().ToLowerInvariant()
+}
+
+function Get-NicRecordNetworkMatchKey {
+    param(
+        [Parameter(Mandatory = $true)]
+        $NicRecord
+    )
+
+    if (($NicRecord.PSObject.Properties.Name -contains 'NetworkMatchKey') -and -not [string]::IsNullOrWhiteSpace([string]$NicRecord.NetworkMatchKey)) {
+        return [string]$NicRecord.NetworkMatchKey
+    }
+
+    if (($NicRecord.PSObject.Properties.Name -contains 'PortGroupName') -and -not [string]::IsNullOrWhiteSpace([string]$NicRecord.PortGroupName)) {
+        return Get-NetworkMatchKey -NetworkName $NicRecord.PortGroupName
+    }
+
+    return $null
+}
+
+function Get-NicRecordPortGroupName {
+    param(
+        [Parameter(Mandatory = $true)]
+        $NicRecord
+    )
+
+    if (($NicRecord.PSObject.Properties.Name -contains 'PortGroupName') -and -not [string]::IsNullOrWhiteSpace([string]$NicRecord.PortGroupName)) {
+        return [string]$NicRecord.PortGroupName
+    }
+
+    return $null
 }
 
 function Test-IsLocalComputerName {
@@ -373,10 +425,13 @@ function Find-SCVirtualAdapterForNic {
         }
     }
 
-    if ($NicRecord.PortGroupName) {
+    $targetPortGroupName = Get-NicRecordPortGroupName -NicRecord $NicRecord
+    $targetNetworkMatchKey = Get-NicRecordNetworkMatchKey -NicRecord $NicRecord
+    if ($targetPortGroupName -or $targetNetworkMatchKey) {
         $networkMatch = @($SCAdapters | Where-Object {
             $adapterNames = @(Get-SCVirtualAdapterNetworkName -Adapter $_)
-            $adapterNames -contains $NicRecord.PortGroupName
+            ($adapterNames -contains $targetPortGroupName) -or
+                (-not [string]::IsNullOrWhiteSpace($targetNetworkMatchKey) -and (@($adapterNames | ForEach-Object { Get-NetworkMatchKey -NetworkName $_ }) -contains $targetNetworkMatchKey))
         } | Select-Object -First 1)
 
         if ($networkMatch.Count -gt 0) {
@@ -399,32 +454,46 @@ function Confirm-SCVirtualAdapterNetwork {
         [AllowNull()]
         [string]$PortGroupName,
 
+        [Parameter()]
+        [AllowNull()]
+        [string]$NetworkMatchKey,
+
         [Parameter(Mandatory = $true)]
         $VMMServerObject
     )
 
-    if ([string]::IsNullOrWhiteSpace($PortGroupName)) {
+    if ([string]::IsNullOrWhiteSpace($PortGroupName) -and [string]::IsNullOrWhiteSpace($NetworkMatchKey)) {
         return $true
+    }
+
+    if ([string]::IsNullOrWhiteSpace($NetworkMatchKey)) {
+        $NetworkMatchKey = Get-NetworkMatchKey -NetworkName $PortGroupName
     }
 
     $currentNames = @(Get-SCVirtualAdapterNetworkName -Adapter $Adapter)
-    if ($currentNames -contains $PortGroupName) {
-        Write-Log -Message ("SCVMM adapter '{0}' is already connected to '{1}'." -f $Adapter.Name, $PortGroupName)
+    $currentMatchKeys = @($currentNames | ForEach-Object { Get-NetworkMatchKey -NetworkName $_ })
+    if (($currentNames -contains $PortGroupName) -or (-not [string]::IsNullOrWhiteSpace($NetworkMatchKey) -and ($currentMatchKeys -contains $NetworkMatchKey))) {
+        Write-Log -Message ("SCVMM adapter '{0}' is already connected to matching network '{1}'." -f $Adapter.Name, ($currentNames -join ', '))
         return $true
     }
 
-    Write-Log -Level WARN -Message ("SCVMM adapter '{0}' current networks are '{1}', expected '{2}'." -f $Adapter.Name, ($currentNames -join ', '), $PortGroupName)
+    Write-Log -Level WARN -Message ("SCVMM adapter '{0}' current networks are '{1}', expected port group '{2}' or match key '{3}'." -f $Adapter.Name, ($currentNames -join ', '), $PortGroupName, $NetworkMatchKey)
 
     try {
-        $vmNetwork = @(Get-SCVMNetwork -VMMServer $VMMServerObject -ErrorAction Stop | Where-Object { $_.Name -eq $PortGroupName } | Select-Object -First 1)
+        $vmNetwork = @(Get-SCVMNetwork -VMMServer $VMMServerObject -ErrorAction Stop | Where-Object {
+            ($_.Name -eq $PortGroupName) -or
+                (-not [string]::IsNullOrWhiteSpace($NetworkMatchKey) -and (Get-NetworkMatchKey -NetworkName $_.Name) -eq $NetworkMatchKey)
+        } | Select-Object -First 1)
         if ($vmNetwork.Count -gt 0) {
-            Write-Log -Message ("Setting SCVMM adapter '{0}' VM network to '{1}'." -f $Adapter.Name, $PortGroupName)
+            Write-Log -Message ("Setting SCVMM adapter '{0}' VM network to '{1}' using match key '{2}'." -f $Adapter.Name, $vmNetwork[0].Name, $NetworkMatchKey)
             Set-SCVirtualNetworkAdapter -VirtualNetworkAdapter $Adapter -VMNetwork $vmNetwork[0] -ErrorAction Stop | Out-Null
             return $true
         }
+
+        Write-Log -Level WARN -Message ("No SCVMM VM network matched port group '{0}' or match key '{1}'." -f $PortGroupName, $NetworkMatchKey)
     }
     catch {
-        Write-Log -Level WARN -Message ("Unable to set SCVMM VM network '{0}' on adapter '{1}': {2}" -f $PortGroupName, $Adapter.Name, $_.Exception.Message)
+        Write-Log -Level WARN -Message ("Unable to set SCVMM VM network for port group '{0}' and match key '{1}' on adapter '{2}': {3}" -f $PortGroupName, $NetworkMatchKey, $Adapter.Name, $_.Exception.Message)
     }
 
     return $false
@@ -617,6 +686,88 @@ function Invoke-HyperVAdapterVlanUpdate {
     }
 
     Invoke-OnHyperVHost -HostName $HostName -Credential $Credential -ScriptBlock $scriptBlock -ArgumentList @($Name, $AdapterName, [int]$VlanId) | Out-Null
+}
+
+function Invoke-HyperVGuestPreparation {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$HostName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter()]
+        [System.Management.Automation.PSCredential]$Credential
+    )
+
+    $scriptBlock = {
+        param(
+            [string]$VmName
+        )
+
+        Import-Module Hyper-V -ErrorAction Stop
+        $results = @()
+
+        try {
+            Set-VMFirmware -VMName $VmName -EnableSecureBoot On -ErrorAction Stop
+            $results += [pscustomobject]@{
+                Action  = 'SecureBoot'
+                Success = $true
+                Message = 'Enabled'
+            }
+        }
+        catch {
+            $results += [pscustomobject]@{
+                Action  = 'SecureBoot'
+                Success = $false
+                Message = $_.Exception.Message
+            }
+        }
+
+        try {
+            Enable-VMIntegrationService -VMName $VmName -Name 'Guest Service Interface' -ErrorAction Stop
+            $results += [pscustomobject]@{
+                Action  = 'GuestServiceInterface'
+                Success = $true
+                Message = 'Enabled'
+            }
+        }
+        catch {
+            $results += [pscustomobject]@{
+                Action  = 'GuestServiceInterface'
+                Success = $false
+                Message = $_.Exception.Message
+            }
+        }
+
+        try {
+            $vm = Get-VM -Name $VmName -ErrorAction Stop
+            if ($vm.State -ne 'Running') {
+                Start-VM -Name $VmName -ErrorAction Stop | Out-Null
+                $message = 'Started'
+            }
+            else {
+                $message = 'Already running'
+            }
+
+            $results += [pscustomobject]@{
+                Action  = 'PowerOn'
+                Success = $true
+                Message = $message
+            }
+        }
+        catch {
+            $results += [pscustomobject]@{
+                Action  = 'PowerOn'
+                Success = $false
+                Message = $_.Exception.Message
+            }
+        }
+
+        return $results
+    }
+
+    return @(Invoke-OnHyperVHost -HostName $HostName -Credential $Credential -ScriptBlock $scriptBlock -ArgumentList @($Name))
 }
 
 function Get-GuestNicConfigurationScriptText {
@@ -957,6 +1108,17 @@ foreach ($name in $vmNames) {
         $hostName = Get-SCVmHostName -SCVirtualMachine $scVm
         Write-Log -Message ("SCVMM reports VM '{0}' on Hyper-V host '{1}'." -f $name, $hostName)
 
+        Write-Log -Message ("Preparing Hyper-V guest settings for VM '{0}' on host '{1}'." -f $name, $hostName)
+        $prepResults = @(Invoke-HyperVGuestPreparation -HostName $hostName -Name $name -Credential $HostCredential)
+        foreach ($prepResult in $prepResults) {
+            $level = if ($prepResult.Success) { 'INFO' } else { 'WARN' }
+            Write-Log -Level $level -Message ("Hyper-V prep result for VM '{0}': Action='{1}' Success='{2}' Message='{3}'" -f $name, $prepResult.Action, $prepResult.Success, $prepResult.Message)
+        }
+        $powerOnFailure = @($prepResults | Where-Object { $_.Action -eq 'PowerOn' -and -not $_.Success })
+        if ($powerOnFailure.Count -gt 0) {
+            throw ("Unable to power on VM '{0}' before NIC configuration: {1}" -f $name, $powerOnFailure[0].Message)
+        }
+
         $scAdapters = @(Get-SCVirtualNetworkAdaptersForVM -SCVirtualMachine $scVm)
         $hyperVAdapters = @(Get-HyperVNetworkAdapter -HostName $hostName -Name $name -Credential $HostCredential)
 
@@ -979,9 +1141,11 @@ foreach ($name in $vmNames) {
 
             $scAdapter = Find-SCVirtualAdapterForNic -SCAdapters $scAdapters -NicRecord $nicRecord -HyperVAdapter $hyperVAdapter -FrontSideNicCount $migrationData.FrontSideNics.Count
             if ($scAdapter) {
-                $networkConfirmed = Confirm-SCVirtualAdapterNetwork -Adapter $scAdapter -PortGroupName $nicRecord.PortGroupName -VMMServerObject $vmmServerObject
+                $networkMatchKey = Get-NicRecordNetworkMatchKey -NicRecord $nicRecord
+                $portGroupName = Get-NicRecordPortGroupName -NicRecord $nicRecord
+                $networkConfirmed = Confirm-SCVirtualAdapterNetwork -Adapter $scAdapter -PortGroupName $portGroupName -NetworkMatchKey $networkMatchKey -VMMServerObject $vmmServerObject
                 if (-not $networkConfirmed) {
-                    Write-Log -Level WARN -Message ("Could not confirm or set SCVMM network '{0}' on adapter '{1}'." -f $nicRecord.PortGroupName, $scAdapter.Name)
+                    Write-Log -Level WARN -Message ("Could not confirm or set SCVMM network '{0}' with match key '{1}' on adapter '{2}'." -f $portGroupName, $networkMatchKey, $scAdapter.Name)
                 }
 
                 try {
@@ -1009,6 +1173,11 @@ foreach ($name in $vmNames) {
             else {
                 throw ("Unable to identify a SCVMM virtual NIC for VM '{0}' target IP '{1}'." -f $name, $nicRecord.IPAddress)
             }
+        }
+
+        if ($GuestBootWaitSeconds -gt 0) {
+            Write-Log -Message ("Waiting {0} seconds before PowerShell Direct guest configuration for VM '{1}'." -f $GuestBootWaitSeconds, $name)
+            Start-Sleep -Seconds $GuestBootWaitSeconds
         }
 
         Write-Log -Message ("Configuring guest NIC settings for VM '{0}' through PowerShell Direct on host '{1}'." -f $name, $hostName)

@@ -186,6 +186,24 @@ function ConvertTo-NormalizedMacAddress {
     return (($MacAddress -replace '[^0-9A-Fa-f]', '').ToUpperInvariant())
 }
 
+function Get-NetworkMatchKey {
+    param(
+        [AllowNull()]
+        [string]$NetworkName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($NetworkName)) {
+        return $null
+    }
+
+    $match = [regex]::Match($NetworkName, '\b\d{1,3}(?:\.\d{1,3}){2}\.(?:\d{1,3}|x)\b', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($match.Success) {
+        return $match.Value.ToLowerInvariant()
+    }
+
+    return $NetworkName.Trim().ToLowerInvariant()
+}
+
 function Test-BackSideIPv4Address {
     param(
         [AllowNull()]
@@ -651,6 +669,7 @@ function ConvertTo-NicRecord {
     $portGroupType = if ($portGroupInfo) { $portGroupInfo.PortGroupType } else { $null }
     $vlanDescription = if ($portGroupInfo) { $portGroupInfo.VlanDescription } else { $null }
     $virtualAdapterName = if ($NetworkAdapter) { $NetworkAdapter.Name } else { $null }
+    $networkMatchKey = Get-NetworkMatchKey -NetworkName $portGroupName
 
     return [ordered]@{
         InterfaceRole        = $InterfaceRole
@@ -669,6 +688,7 @@ function ConvertTo-NicRecord {
         DNSServers           = @($GuestNic.DNSServers)
         RegisterDnsClient    = $GuestNic.RegisterDnsClient
         PortGroupName        = $portGroupName
+        NetworkMatchKey      = $networkMatchKey
         PortGroupType        = $portGroupType
         VLANID               = $vlanId
         VlanDescription      = $vlanDescription
