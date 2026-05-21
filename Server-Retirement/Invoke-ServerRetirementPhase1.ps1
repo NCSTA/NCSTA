@@ -181,7 +181,7 @@ function Format-RetirementDateDisplay {
     $parsedDate = [datetime]::MinValue
     $culture = [System.Globalization.CultureInfo]::InvariantCulture
     $dateStyles = [System.Globalization.DateTimeStyles]::AssumeLocal
-    $knownFormats = @(
+    [string[]]$knownFormats = @(
         'M/d/yyyy',
         'MM/dd/yyyy',
         'M-d-yyyy',
@@ -194,6 +194,13 @@ function Format-RetirementDateDisplay {
         'M-d-yy',
         'MM-dd-yy'
     )
+
+    if ($text -match '^\d{8}$') {
+        [string[]]$compactFormats = @('MMddyyyy', 'yyyyMMdd')
+        if ([datetime]::TryParseExact($text, $compactFormats, $culture, $dateStyles, [ref]$parsedDate)) {
+            return $parsedDate.ToString('MM/dd/yyyy', $culture)
+        }
+    }
 
     if ([datetime]::TryParseExact($text, $knownFormats, $culture, $dateStyles, [ref]$parsedDate)) {
         return $parsedDate.ToString('MM/dd/yyyy', $culture)
@@ -513,7 +520,7 @@ function Invoke-ServerRetirementAudit {
                 )
             }
             catch {
-                $collectorWarnings.Add("Custom SMB share collection failed: $($_.Exception.Message)")
+                $collectorWarnings.Add("SMB share collection failed: $($_.Exception.Message)")
             }
 
             $openSmbSessions = @()
@@ -648,7 +655,7 @@ function New-RetirementEmailBody {
     $customSmbShareCount = Get-CollectionCount -InputObject $AuditResult.CustomSmbShares
 
     $externalConnectionTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.ExternalConnections -Title 'Active Processes and TCP Connections' -MaxRows $EmailDetailRowLimit
-    $customSmbShareTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.CustomSmbShares -Title 'Custom SMB Shares' -MaxRows $EmailDetailRowLimit
+    $customSmbShareTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.CustomSmbShares -Title 'SMB Shares' -MaxRows $EmailDetailRowLimit
     $openSmbSessionTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.OpenSmbSessions -Title 'Open SMB Sessions' -MaxRows $EmailDetailRowLimit
     $openFileSessionTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.OpenFileSessions -Title 'Open File Sessions' -MaxRows $EmailDetailRowLimit
 
@@ -730,7 +737,7 @@ function New-RetirementEmailBody {
                                             <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">$externalConnectionCount</p>
                                         </td>
                                         <td width="25%" valign="top" bgcolor="#f4f4f4" style="width:25%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
-                                            <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">Custom SMB Shares</p>
+                                            <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">SMB Shares</p>
                                             <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">$customSmbShareCount</p>
                                         </td>
                                         <td width="25%" valign="top" bgcolor="#f4f4f4" style="width:25%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
@@ -958,7 +965,7 @@ try {
             $openFileSessionCount = Get-CollectionCount -InputObject $auditResult.OpenFileSessions
             $customSmbShareCount = Get-CollectionCount -InputObject $auditResult.CustomSmbShares
 
-            Write-RetirementLog ("Audit summary for {0} -> External Connections: {1}, Open SMB Sessions: {2}, Open File Sessions: {3}, Custom SMB Shares: {4}" -f $serverName, $externalConnectionCount, $openSmbSessionCount, $openFileSessionCount, $customSmbShareCount)
+            Write-RetirementLog ("Audit summary for {0} -> External Connections: {1}, Open SMB Sessions: {2}, Open File Sessions: {3}, SMB Shares: {4}" -f $serverName, $externalConnectionCount, $openSmbSessionCount, $openFileSessionCount, $customSmbShareCount)
 
             if ($externalConnectionCount -eq 0 -and $openSmbSessionCount -eq 0 -and $openFileSessionCount -eq 0) {
                 $clearCount++
