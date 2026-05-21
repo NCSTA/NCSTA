@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="x-ua-compatible" content="ie=edge" />
+    <title>Server Retirement Dependency Notification - Sample</title>
+    <!--[if mso]>
+    <noscript>
+        <xml>
+            <o:OfficeDocumentSettings>
+                <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+        </xml>
+    </noscript>
+    <![endif]-->
+</head>
+<body style="Margin:0;margin:0;padding:0;background-color:#f4f4f4;">
+    <div style="display:none;font-size:1px;line-height:1px;color:#f4f4f4;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">
+        Active dependencies were detected for filesrv01.contoso.com before the scheduled retirement date.
+    </div>
+    <center style="width:100%;background-color:#f4f4f4;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#f4f4f4;">
+            <tr>
+                <td align="center" style="padding:24px 12px;">
+                    <!--[if mso]>
+                    <table role="presentation" align="center" width="900" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                            <td>
+                    <![endif]-->
+                    <table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:900px;border-collapse:collapse;background-color:#ffffff;">
+                        <tr>
+                            <td bgcolor="#007b86" style="background-color:#007b86;padding:22px 28px;">
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
+                                    <tr>
+                                        <td>
+                                            <p style="Margin:0 0 6px 0;margin:0 0 6px 0;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;mso-line-height-rule:exactly;">WINDOWS SERVER RETIREMENT - PHASE 1</p>
+                                            <h1 style="Margin:0;margin:0;font-family:Segoe UI,Arial,sans-serif;font-size:24px;line-height:30px;color:#ffffff;font-weight:700;mso-line-height-rule:exactly;">CHG0123456 retire filesrv01.contoso.com</h1>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td bgcolor="#ffffff" style="background-color:#ffffff;padding:24px 28px 8px 28px;">
+                                <p style="Margin:0 0 14px 0;margin:0 0 14px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;">Hello Team, you submitted server retirement for <strong>filesrv01.contoso.com</strong> under change control <strong>CHG0123456</strong>. This server is scheduled to be powered off on <strong>06152026</strong>.</p>
+                                <p style="Margin:0 0 18px 0;margin:0 0 18px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;">However, the following active dependencies or open sessions were detected during the Phase 1 retirement audit. Please review and remediate these connections before the retirement date to avoid service interruption.</p>
+
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#f4f4f4;">
+                                    <tr>
+                                        <td style="padding:12px;border-left:6px solid #007b86;font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:18px;mso-line-height-rule:exactly;">
+                                            Status: Active dependencies detected. Production owners should validate the rows below before approving power-off.
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:18px 0 0 0;background-color:#ffffff;">
+                                    <tr>
+                                        <td width="33.33%" valign="top" style="width:33.33%;padding:10px;border:1px solid #f4f4f4;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;">
+                                            <strong>Server</strong><br />filesrv01.contoso.com
+                                        </td>
+                                        <td width="33.33%" valign="top" style="width:33.33%;padding:10px;border:1px solid #f4f4f4;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;">
+                                            <strong>Change</strong><br />CHG0123456
+                                        </td>
+                                        <td width="33.33%" valign="top" style="width:33.33%;padding:10px;border:1px solid #f4f4f4;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;">
+                                            <strong>Power-off Date</strong><br />06152026
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:18px 0;background-color:#ffffff;">
+                                    <tr>
+                                        <td width="33.33%" valign="top" bgcolor="#f4f4f4" style="width:33.33%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
+                                            <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">External Connections</p>
+                                            <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">2</p>
+                                        </td>
+                                        <td width="33.33%" valign="top" bgcolor="#f4f4f4" style="width:33.33%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
+                                            <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">Open SMB Sessions</p>
+                                            <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">2</p>
+                                        </td>
+                                        <td width="33.33%" valign="top" bgcolor="#f4f4f4" style="width:33.33%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
+                                            <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">Open File Sessions</p>
+                                            <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">3</p>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <h3 style="Margin:26px 0 8px 0;margin:26px 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:16px;line-height:22px;color:#007b86;">Non-Excluded Active Processes and TCP Connections</h3>
+                                <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#007b86;">Showing first 2 of 2</p>
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#ffffff;margin:0 0 18px 0;">
+                                    <tr style="background-color:#007b86;color:#ffffff;">
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">ProcessName</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">ProcessId</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">UserId</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">SourceComputer</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">RemoteAddress</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">RemotePort</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">LocalPort</th>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">sqlservr</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">4188</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">CONTOSO\svc-reporting</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">appweb03.contoso.com</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">10.42.18.73</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">51422</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">1433</td>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">w3wp</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">7024</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">CONTOSO\svc-webapp</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">lb-prod-01.contoso.com</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">10.42.10.15</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">49810</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">443</td>
+                                    </tr>
+                                </table>
+
+                                <h3 style="Margin:26px 0 8px 0;margin:26px 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:16px;line-height:22px;color:#007b86;">Open SMB Sessions</h3>
+                                <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#007b86;">Showing first 2 of 2</p>
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#ffffff;margin:0 0 18px 0;">
+                                    <tr style="background-color:#007b86;color:#ffffff;">
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">ClientComputerName</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">ClientUserName</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">OpenFileCount</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">SecondsExists</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">Dialect</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">Encrypted</th>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">finops-ws42.contoso.com</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">CONTOSO\j.santos</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">2</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">1248</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">3.1.1</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">False</td>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">batch01.contoso.com</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">CONTOSO\svc-etl</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">1</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">671</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">3.1.1</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">False</td>
+                                    </tr>
+                                </table>
+
+                                <h3 style="Margin:26px 0 8px 0;margin:26px 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:16px;line-height:22px;color:#007b86;">Open File Sessions</h3>
+                                <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#007b86;">Showing first 3 of 3</p>
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#ffffff;margin:0 0 18px 0;">
+                                    <tr style="background-color:#007b86;color:#ffffff;">
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">SourceComputer</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">FilePath</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">UserId</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">Permissions</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">Locks</th>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">finops-ws42.contoso.com</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">E:\Shares\Finance\Q2-Forecast.xlsx</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">CONTOSO\j.santos</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Read, Write</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">1</td>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">finops-ws42.contoso.com</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">E:\Shares\Finance\MonthEnd\close-checklist.docx</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">CONTOSO\j.santos</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Read</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">0</td>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">batch01.contoso.com</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">E:\Shares\Import\customer-load.csv</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">CONTOSO\svc-etl</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Read</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">0</td>
+                                    </tr>
+                                </table>
+
+                                <p style="Margin:20px 0 12px 0;margin:20px 0 12px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;">If these connections are expected, reroute or close them before the target power-off date and update the retirement change record accordingly.</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td bgcolor="#f4f4f4" align="center" style="background-color:#f4f4f4;padding:14px 24px;text-align:center;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;">
+                                Automated Infrastructure Services Notification
+                            </td>
+                        </tr>
+                    </table>
+                    <!--[if mso]>
+                            </td>
+                        </tr>
+                    </table>
+                    <![endif]-->
+                </td>
+            </tr>
+        </table>
+    </center>
+</body>
+</html>
