@@ -43,7 +43,7 @@
                         </tr>
                         <tr>
                             <td bgcolor="#ffffff" style="background-color:#ffffff;padding:24px 28px 8px 28px;">
-                                <p style="Margin:0 0 14px 0;margin:0 0 14px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;">Hello Team, you submitted server retirement for <strong>filesrv01.contoso.com</strong> under change control <strong>CHG0123456</strong>. This server is scheduled to be powered off on <strong>06152026</strong>.</p>
+                                <p style="Margin:0 0 14px 0;margin:0 0 14px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;">Hello Team, you submitted server retirement for <strong>filesrv01.contoso.com</strong> under change control <strong>CHG0123456</strong>. This server is scheduled to be powered off on <strong>06/15/2026</strong>.</p>
                                 <p style="Margin:0 0 18px 0;margin:0 0 18px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;">However, the following active dependencies or open sessions were detected during the Phase 1 retirement audit. Please review and remediate these connections before the retirement date to avoid service interruption.</p>
 
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#f4f4f4;">
@@ -63,29 +63,33 @@
                                             <strong>Change</strong><br />CHG0123456
                                         </td>
                                         <td width="33.33%" valign="top" style="width:33.33%;padding:10px;border:1px solid #f4f4f4;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;">
-                                            <strong>Power-off Date</strong><br />06152026
+                                            <strong>Power-off Date</strong><br />06/15/2026
                                         </td>
                                     </tr>
                                 </table>
 
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:18px 0;background-color:#ffffff;">
                                     <tr>
-                                        <td width="33.33%" valign="top" bgcolor="#f4f4f4" style="width:33.33%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
-                                            <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">External Connections</p>
+                                        <td width="25%" valign="top" bgcolor="#f4f4f4" style="width:25%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
+                                            <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">Active Processes/TCP</p>
                                             <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">2</p>
                                         </td>
-                                        <td width="33.33%" valign="top" bgcolor="#f4f4f4" style="width:33.33%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
+                                        <td width="25%" valign="top" bgcolor="#f4f4f4" style="width:25%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
+                                            <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">Custom SMB Shares</p>
+                                            <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">6</p>
+                                        </td>
+                                        <td width="25%" valign="top" bgcolor="#f4f4f4" style="width:25%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
                                             <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">Open SMB Sessions</p>
                                             <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">2</p>
                                         </td>
-                                        <td width="33.33%" valign="top" bgcolor="#f4f4f4" style="width:33.33%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
+                                        <td width="25%" valign="top" bgcolor="#f4f4f4" style="width:25%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
                                             <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">Open File Sessions</p>
                                             <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">3</p>
                                         </td>
                                     </tr>
                                 </table>
 
-                                <h3 style="Margin:26px 0 8px 0;margin:26px 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:16px;line-height:22px;color:#007b86;">Non-Excluded Active Processes and TCP Connections</h3>
+                                <h3 style="Margin:26px 0 8px 0;margin:26px 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:16px;line-height:22px;color:#007b86;">Active Processes and TCP Connections</h3>
                                 <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#007b86;">Showing first 2 of 2</p>
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#ffffff;margin:0 0 18px 0;">
                                     <tr style="background-color:#007b86;color:#ffffff;">
@@ -114,6 +118,47 @@
                                         <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">10.42.10.15</td>
                                         <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">49810</td>
                                         <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">443</td>
+                                    </tr>
+                                </table>
+
+                                <h3 style="Margin:26px 0 8px 0;margin:26px 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:16px;line-height:22px;color:#007b86;">Custom SMB Shares</h3>
+                                <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#007b86;">Showing first 5 of 6</p>
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#ffffff;margin:0 0 18px 0;">
+                                    <tr style="background-color:#007b86;color:#ffffff;">
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">Name</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">Path</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">Description</th>
+                                        <th align="left" style="padding:10px;border:1px solid #f4f4f4;text-align:left;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;color:#ffffff;">CurrentUsers</th>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Finance</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">E:\Shares\Finance</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Finance department share</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">2</td>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Import</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">E:\Shares\Import</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Application import drop zone</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">1</td>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Reports</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">E:\Shares\Reports</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Reporting output</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">0</td>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Archive</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">F:\Archive</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Legacy archive share</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">0</td>
+                                    </tr>
+                                    <tr style="background-color:#ffffff;">
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">AppData</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">E:\Shares\AppData</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">Shared application data</td>
+                                        <td valign="top" style="padding:10px;border:1px solid #f4f4f4;vertical-align:top;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;">0</td>
                                     </tr>
                                 </table>
 
@@ -184,7 +229,7 @@
                         </tr>
                         <tr>
                             <td bgcolor="#f4f4f4" align="center" style="background-color:#f4f4f4;padding:14px 24px;text-align:center;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;">
-                                Automated Infrastructure Services Notification
+                                Domain and Windows Server Team Automated Notification
                             </td>
                         </tr>
                     </table>

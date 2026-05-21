@@ -6,7 +6,7 @@ This project supports Phase 1 of a Windows Server retirement workflow. It helps 
 
 The script reads a CSV of retirement targets, checks WinRM connectivity, runs a remote audit against each server, logs all actions locally, and sends an Outlook-compatible HTML email to the owning team when active dependencies are detected.
 
-Servers with no active external TCP connections, no open SMB sessions, and no open SMB file sessions are logged as clear. Custom SMB shares with zero active sessions do not trigger an email.
+Servers with no active external TCP connections, no open SMB sessions, and no open SMB file sessions are logged as clear. Custom SMB shares are collected for visibility, but custom shares with zero active sessions do not trigger an email by themselves.
 
 ## Files
 
@@ -29,7 +29,7 @@ Column details:
 - `Servername` - FQDN of the target Windows server.
 - `change` - change control ticket number.
 - `Distro` - email address or distribution group for the owning team.
-- `datetoretire` - planned power-off date. The email displays this as `MMddyyyy`.
+- `datetoretire` - planned power-off date. The email displays this as `MM/dd/yyyy`.
 
 ## Configuration
 
@@ -44,6 +44,12 @@ $SmtpCredential = $null
 $PSRemotingCredential = $null
 $PSRemotingAuthentication = 'Default'
 $EmailDetailRowLimit = 5
+$ExcludedSmbShareNamePatterns = @(
+    '^ADMIN\$$',
+    '^IPC\$$',
+    '^print\$$',
+    '^[A-Z]\$$'
+)
 ```
 
 Set `$SMTPServer` before production use. Leave `$PSRemotingCredential` as `$null` to use the current user context, or assign a credential object if the orchestration server requires alternate credentials.
@@ -71,7 +77,7 @@ The script performs these steps for each CSV row:
 1. Validates required CSV columns.
 2. Checks WinRM connectivity with `Test-WSMan`.
 3. Runs the remote `Test-ServerRetirementEligibility` audit.
-4. Counts active non-excluded TCP connections, SMB sessions, and open SMB files.
+4. Counts active TCP connections, custom SMB shares, SMB sessions, and open SMB files.
 5. Logs clear servers without sending email.
 6. Sends one HTML email per server when dependencies are detected.
 
@@ -86,9 +92,11 @@ The email subject identifies the server and change ticket. The email header is f
 Each email includes:
 
 - Server name, change ticket, and power-off date.
-- Total counts for external connections, open SMB sessions, and open file sessions.
+- Total counts for active TCP connections, custom SMB shares, open SMB sessions, and open file sessions.
 - Up to five rows per detail section, controlled by `$EmailDetailRowLimit`.
 - A `Showing first X of Y` line above each capped detail table.
+
+Default administrative shares are excluded from the custom SMB share section by `$ExcludedSmbShareNamePatterns`. The defaults exclude `ADMIN$`, `IPC$`, `print$`, and drive administrative shares such as `C$` and `D$`.
 
 The HTML template is table-based with inline styles for Outlook compatibility and uses only these colors:
 
