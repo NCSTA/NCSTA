@@ -42,10 +42,20 @@ $EmailFrom = 'server-retirement@yourcompany.com'
 $EmailUseSsl = $false
 $SmtpCredential = $null
 $PSRemotingCredential = $null
+$PSRemotingAuthentication = 'Default'
 $EmailDetailRowLimit = 5
 ```
 
 Set `$SMTPServer` before production use. Leave `$PSRemotingCredential` as `$null` to use the current user context, or assign a credential object if the orchestration server requires alternate credentials.
+
+If you use prompted credentials, set the credential like this:
+
+```powershell
+$PSRemotingCredential = Get-Credential -Message 'Enter credential for target server PSRemoting'
+$PSRemotingAuthentication = 'Default'
+```
+
+The authentication value is passed to both `Test-WSMan` and `Invoke-Command`. `Default` is usually correct for domain-joined Windows servers; use `Kerberos`, `Negotiate`, or another supported option only if your WinRM policy requires it.
 
 ## Running The Audit
 

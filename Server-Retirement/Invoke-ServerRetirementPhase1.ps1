@@ -37,6 +37,7 @@ $EmailDetailRowLimit = 5
 
 # Optional PSRemoting credential. Leave $null to use the current security context.
 $PSRemotingCredential = $null
+$PSRemotingAuthentication = 'Default'
 
 # Timeout is in milliseconds.
 $WinRmOperationTimeoutMilliseconds = 180000
@@ -284,7 +285,11 @@ function Test-ServerWinRmConnectivity {
         [string]$ServerName,
 
         [AllowNull()]
-        [System.Management.Automation.PSCredential]$Credential
+        [System.Management.Automation.PSCredential]$Credential,
+
+        [Parameter()]
+        [ValidateSet('Default', 'Basic', 'Negotiate', 'Credssp', 'Digest', 'Kerberos')]
+        [string]$Authentication = 'Default'
     )
 
     $testParams = @{
@@ -294,6 +299,7 @@ function Test-ServerWinRmConnectivity {
 
     if ($null -ne $Credential) {
         $testParams.Credential = $Credential
+        $testParams.Authentication = $Authentication
     }
 
     try {
@@ -322,6 +328,10 @@ function Invoke-ServerRetirementAudit {
 
         [AllowNull()]
         [System.Management.Automation.PSCredential]$Credential,
+
+        [Parameter()]
+        [ValidateSet('Default', 'Basic', 'Negotiate', 'Credssp', 'Digest', 'Kerberos')]
+        [string]$Authentication = 'Default',
 
         [Parameter(Mandatory = $true)]
         [int]$OperationTimeoutMilliseconds
@@ -569,6 +579,7 @@ function Invoke-ServerRetirementAudit {
 
     if ($null -ne $Credential) {
         $invokeParams.Credential = $Credential
+        $invokeParams.Authentication = $Authentication
     }
 
     Invoke-Command @invokeParams
@@ -858,7 +869,10 @@ try {
         Write-RetirementLog "Processing target server: $serverName"
         Write-RetirementLog "Checking WinRM/PSRemoting connectivity for $serverName."
 
-        $connectivity = Test-ServerWinRmConnectivity -ServerName $serverName -Credential $PSRemotingCredential
+        $connectivity = Test-ServerWinRmConnectivity `
+            -ServerName $serverName `
+            -Credential $PSRemotingCredential `
+            -Authentication $PSRemotingAuthentication
         if (-not $connectivity.Succeeded) {
             $skippedCount++
             $errorCount++
@@ -874,6 +888,7 @@ try {
                 -ServerName $serverName `
                 -NativeProcessExclusionList $NativeProcessExclusionList `
                 -Credential $PSRemotingCredential `
+                -Authentication $PSRemotingAuthentication `
                 -OperationTimeoutMilliseconds $WinRmOperationTimeoutMilliseconds
 
             if ($null -eq $auditResult) {
