@@ -53,6 +53,13 @@ $NativeProcessExclusionList = @(
     'venPlatformHandler'
 )
 
+$ExcludedSmbShareNamePatterns = @(
+    '^ADMIN\$$',
+    '^IPC\$$',
+    '^print\$$',
+    '^[A-Z]\$$'
+)
+
 $RequiredCsvColumns = @('Servername', 'change', 'Distro', 'datetoretire')
 
 # ==========================================
@@ -189,11 +196,11 @@ function Format-RetirementDateDisplay {
     )
 
     if ([datetime]::TryParseExact($text, $knownFormats, $culture, $dateStyles, [ref]$parsedDate)) {
-        return $parsedDate.ToString('MMddyyyy', $culture)
+        return $parsedDate.ToString('MM/dd/yyyy', $culture)
     }
 
     if ([datetime]::TryParse($text, [ref]$parsedDate)) {
-        return $parsedDate.ToString('MMddyyyy', $culture)
+        return $parsedDate.ToString('MM/dd/yyyy', $culture)
     }
 
     return $text
@@ -326,6 +333,9 @@ function Invoke-ServerRetirementAudit {
         [Parameter(Mandatory = $true)]
         [string[]]$NativeProcessExclusionList,
 
+        [Parameter(Mandatory = $true)]
+        [string[]]$ExcludedSmbShareNamePatterns,
+
         [AllowNull()]
         [System.Management.Automation.PSCredential]$Credential,
 
@@ -339,7 +349,8 @@ function Invoke-ServerRetirementAudit {
 
     $remoteAuditScript = {
         param(
-            [string[]]$NativeProcessExclusionList
+            [string[]]$NativeProcessExclusionList,
+            [string[]]$ExcludedSmbShareNamePatterns
         )
 
         function Resolve-RemoteHostName {
@@ -386,10 +397,33 @@ function Invoke-ServerRetirementAudit {
             return 'Unknown'
         }
 
+        function Test-IsExcludedSmbShareName {
+            [CmdletBinding()]
+            param(
+                [AllowNull()]
+                [string]$ShareName,
+
+                [string[]]$ExcludedSmbShareNamePatterns
+            )
+
+            if ([string]::IsNullOrWhiteSpace($ShareName)) {
+                return $true
+            }
+
+            foreach ($pattern in @($ExcludedSmbShareNamePatterns)) {
+                if ($ShareName -match $pattern) {
+                    return $true
+                }
+            }
+
+            return $false
+        }
+
         function Test-ServerRetirementEligibility {
             [CmdletBinding()]
             param(
-                [string[]]$NativeProcessExclusionList
+                [string[]]$NativeProcessExclusionList,
+                [string[]]$ExcludedSmbShareNamePatterns
             )
 
             $collectorErrors = [System.Collections.Generic.List[string]]::new()
@@ -473,7 +507,7 @@ function Invoke-ServerRetirementAudit {
                 $customSmbShares = @(
                     Get-SmbShare -ErrorAction Stop |
                         Where-Object {
-                            $_.Name -notmatch '^(ADMIN\$|IPC\$|print\$|[A-Z]\$)$'
+                            -not (Test-IsExcludedSmbShareName -ShareName $_.Name -ExcludedSmbShareNamePatterns $ExcludedSmbShareNamePatterns)
                         } |
                         Select-Object -Property Name, Path, Description, CurrentUsers
                 )
@@ -565,14 +599,16 @@ function Invoke-ServerRetirementAudit {
             }
         }
 
-        Test-ServerRetirementEligibility -NativeProcessExclusionList $NativeProcessExclusionList
+        Test-ServerRetirementEligibility `
+            -NativeProcessExclusionList $NativeProcessExclusionList `
+            -ExcludedSmbShareNamePatterns $ExcludedSmbShareNamePatterns
     }
 
     $sessionOption = New-PSSessionOption -OperationTimeout $OperationTimeoutMilliseconds
     $invokeParams = @{
         ComputerName  = $ServerName
         ScriptBlock   = $remoteAuditScript
-        ArgumentList  = (, $NativeProcessExclusionList)
+        ArgumentList  = $NativeProcessExclusionList, $ExcludedSmbShareNamePatterns
         SessionOption = $sessionOption
         ErrorAction   = 'Stop'
     }
@@ -609,8 +645,10 @@ function New-RetirementEmailBody {
     $externalConnectionCount = Get-CollectionCount -InputObject $AuditResult.ExternalConnections
     $openSmbSessionCount = Get-CollectionCount -InputObject $AuditResult.OpenSmbSessions
     $openFileSessionCount = Get-CollectionCount -InputObject $AuditResult.OpenFileSessions
+    $customSmbShareCount = Get-CollectionCount -InputObject $AuditResult.CustomSmbShares
 
-    $externalConnectionTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.ExternalConnections -Title 'Non-Excluded Active Processes and TCP Connections' -MaxRows $EmailDetailRowLimit
+    $externalConnectionTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.ExternalConnections -Title 'Active Processes and TCP Connections' -MaxRows $EmailDetailRowLimit
+    $customSmbShareTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.CustomSmbShares -Title 'Custom SMB Shares' -MaxRows $EmailDetailRowLimit
     $openSmbSessionTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.OpenSmbSessions -Title 'Open SMB Sessions' -MaxRows $EmailDetailRowLimit
     $openFileSessionTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.OpenFileSessions -Title 'Open File Sessions' -MaxRows $EmailDetailRowLimit
 
@@ -687,15 +725,19 @@ function New-RetirementEmailBody {
 
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:18px 0;background-color:#ffffff;">
                                     <tr>
-                                        <td width="33.33%" valign="top" bgcolor="#f4f4f4" style="width:33.33%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
-                                            <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">External Connections</p>
+                                        <td width="25%" valign="top" bgcolor="#f4f4f4" style="width:25%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
+                                            <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">Active Processes/TCP</p>
                                             <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">$externalConnectionCount</p>
                                         </td>
-                                        <td width="33.33%" valign="top" bgcolor="#f4f4f4" style="width:33.33%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
+                                        <td width="25%" valign="top" bgcolor="#f4f4f4" style="width:25%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
+                                            <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">Custom SMB Shares</p>
+                                            <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">$customSmbShareCount</p>
+                                        </td>
+                                        <td width="25%" valign="top" bgcolor="#f4f4f4" style="width:25%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
                                             <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">Open SMB Sessions</p>
                                             <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">$openSmbSessionCount</p>
                                         </td>
-                                        <td width="33.33%" valign="top" bgcolor="#f4f4f4" style="width:33.33%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
+                                        <td width="25%" valign="top" bgcolor="#f4f4f4" style="width:25%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
                                             <p style="Margin:0 0 8px 0;margin:0 0 8px 0;font-size:12px;line-height:16px;">Open File Sessions</p>
                                             <p style="Margin:0;margin:0;font-size:28px;line-height:32px;color:#007b86;font-weight:700;">$openFileSessionCount</p>
                                         </td>
@@ -703,6 +745,7 @@ function New-RetirementEmailBody {
                                 </table>
 
                                 $externalConnectionTable
+                                $customSmbShareTable
                                 $openSmbSessionTable
                                 $openFileSessionTable
 
@@ -711,7 +754,7 @@ function New-RetirementEmailBody {
                         </tr>
                         <tr>
                             <td bgcolor="#f4f4f4" align="center" style="background-color:#f4f4f4;padding:14px 24px;text-align:center;font-family:Segoe UI,Arial,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;">
-                                Automated Infrastructure Services Notification
+                                Domain and Windows Server Team Automated Notification
                             </td>
                         </tr>
                     </table>
@@ -887,6 +930,7 @@ try {
             $auditResult = Invoke-ServerRetirementAudit `
                 -ServerName $serverName `
                 -NativeProcessExclusionList $NativeProcessExclusionList `
+                -ExcludedSmbShareNamePatterns $ExcludedSmbShareNamePatterns `
                 -Credential $PSRemotingCredential `
                 -Authentication $PSRemotingAuthentication `
                 -OperationTimeoutMilliseconds $WinRmOperationTimeoutMilliseconds
