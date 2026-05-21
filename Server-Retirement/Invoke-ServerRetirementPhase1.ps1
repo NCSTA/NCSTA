@@ -801,6 +801,7 @@ function Get-RequiredTextValue {
         [object]$Value,
 
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Fallback
     )
 
