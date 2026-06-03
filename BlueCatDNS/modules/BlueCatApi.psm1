@@ -475,10 +475,11 @@ function Invoke-BlueCatSelectiveDeploy {
     )
 
     $body = @{
-        entityIds  = @($EntityId)
+        resources  = @($EntityId)
         properties = @{
-            scope     = $Scope
-            batchMode = $BatchMode
+            scope             = $Scope
+            batchMode         = $BatchMode
+            continueOnFailure = $false
         }
     }
 
