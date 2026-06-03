@@ -474,9 +474,14 @@ function Invoke-BlueCatSelectiveDeploy {
         [ValidateSet('disabled','batch_by_server')][string]$BatchMode = 'disabled'
     )
 
+    $resource = Invoke-BlueCatApi -Endpoint "resourceRecords/$EntityId"
+    if (-not $resource -or -not $resource.type) {
+        throw "Unable to load BlueCat resource record $EntityId for selective deployment."
+    }
+
     $body = @{
         resources  = @(
-            @{ id = $EntityId }
+            $resource
         )
         properties = @{
             scope             = $Scope
