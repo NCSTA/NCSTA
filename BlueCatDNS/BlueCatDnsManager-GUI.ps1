@@ -418,6 +418,7 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                                 <Label Content="Deployment ID:"/>
                                 <TextBox x:Name="txtCheckDeployId" Width="150" Margin="0,0,10,0"/>
                                 <Button x:Name="btnCheckDeploy" Content="Check Status"/>
+                                <Button x:Name="btnRecentDeployments" Content="Recent Deployments" Margin="10,0,0,0"/>
                             </StackPanel>
                             <TextBox x:Name="txtDeployResult" Height="120"
                                      IsReadOnly="True" TextWrapping="Wrap"
@@ -525,6 +526,7 @@ $cboQuickDeployZone = $controls['cboQuickDeployZone']
 $btnQuickDeploy     = $controls['btnQuickDeploy']
 $txtCheckDeployId   = $controls['txtCheckDeployId']
 $btnCheckDeploy     = $controls['btnCheckDeploy']
+$btnRecentDeployments = $controls['btnRecentDeployments']
 
 
 $txtDeployResult    = $controls['txtDeployResult']
@@ -717,6 +719,32 @@ function New-RecordSearchFilter {
     }
 
     return "name:contains('$escapedSearch')"
+}
+
+function Get-DeploymentIdFromResponse {
+    param([object]$Response)
+
+    if (-not $Response) { return $null }
+
+    foreach ($propertyName in @('id','deploymentId','deploymentID','taskId','deploymentTaskId')) {
+        $property = $Response.PSObject.Properties[$propertyName]
+        if ($property -and $property.Value -match '^\d+$') {
+            return [int]$property.Value
+        }
+    }
+
+    if ($Response.data) {
+        return Get-DeploymentIdFromResponse -Response $Response.data
+    }
+
+    return $null
+}
+
+function Format-JsonForDisplay {
+    param([object]$InputObject)
+
+    if ($null -eq $InputObject) { return '<empty response>' }
+    return ($InputObject | ConvertTo-Json -Depth 8)
 }
 
 function Get-RecordDisplayValue {
@@ -1237,12 +1265,27 @@ $btnSelectiveDeploy.Add_Click({
     Set-Status 'Running selective deploy...' '#f9e2af'
     try {
         $result = Invoke-BlueCatSelectiveDeploy -EntityId ([int]$entityId)
-        $txtDeployResult.Text = ($result | ConvertTo-Json -Depth 5)
+        $deploymentId = Get-DeploymentIdFromResponse -Response $result
+        if ($deploymentId) {
+            $txtCheckDeployId.Text = $deploymentId.ToString()
+        }
+        $txtDeployResult.Text = "Selective deploy response for entity $entityId"
+        if ($deploymentId) {
+            $txtDeployResult.Text += "`nDeployment ID detected: $deploymentId"
+        } else {
+            $txtDeployResult.Text += "`nNo deployment ID was detected in the response. Check the JSON below and the Logs tab."
+        }
+        $txtDeployResult.Text += "`n`n$(Format-JsonForDisplay $result)"
         Write-AppLog -Level SUCCESS -Action 'SelectiveDeploy' -Message "Selective deploy submitted for entity $entityId" -Details @{
             EntityId   = [int]$entityId
+            DeploymentId = $deploymentId
             Deployment = $result
         }
-        Set-Status "Selective deploy initiated for entity $entityId" '#a6e3a1'
+        if ($deploymentId) {
+            Set-Status "Selective deploy submitted for entity $entityId (deployment $deploymentId)" '#a6e3a1'
+        } else {
+            Set-Status "Selective deploy submitted for entity $entityId" '#a6e3a1'
+        }
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
@@ -1269,13 +1312,28 @@ $btnQuickDeploy.Add_Click({
     Set-Status 'Running quick deploy...' '#f9e2af'
     try {
         $result = Invoke-BlueCatQuickDeploy -ZoneId $zoneId
-        $txtDeployResult.Text = ($result | ConvertTo-Json -Depth 5)
+        $deploymentId = Get-DeploymentIdFromResponse -Response $result
+        if ($deploymentId) {
+            $txtCheckDeployId.Text = $deploymentId.ToString()
+        }
         $selectedZone = Get-SelectedZone $cboQuickDeployZone
+        $txtDeployResult.Text = "Quick deploy response for zone $($selectedZone.absoluteName)"
+        if ($deploymentId) {
+            $txtDeployResult.Text += "`nDeployment ID detected: $deploymentId"
+        } else {
+            $txtDeployResult.Text += "`nNo deployment ID was detected in the response. Check the JSON below and the Logs tab."
+        }
+        $txtDeployResult.Text += "`n`n$(Format-JsonForDisplay $result)"
         Write-AppLog -Level SUCCESS -Action 'QuickDeploy' -Message "Quick deploy submitted for zone $($selectedZone.absoluteName)" -Details @{
             Zone       = $selectedZone.absoluteName
+            DeploymentId = $deploymentId
             Deployment = $result
         }
-        Set-Status "Quick deploy initiated for zone" '#a6e3a1'
+        if ($deploymentId) {
+            Set-Status "Quick deploy submitted for zone (deployment $deploymentId)" '#a6e3a1'
+        } else {
+            Set-Status "Quick deploy submitted for zone" '#a6e3a1'
+        }
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
@@ -1298,7 +1356,7 @@ $btnCheckDeploy.Add_Click({
 
     try {
         $result = Get-BlueCatDeploymentStatus -DeploymentId ([int]$deployId)
-        $txtDeployResult.Text = ($result | ConvertTo-Json -Depth 5)
+        $txtDeployResult.Text = Format-JsonForDisplay $result
         Write-AppLog -Level INFO -Action 'DeploymentStatus' -Message "Retrieved status for deployment $deployId" -Details @{
             EntityId = [int]$deployId
             Response = $result
@@ -1307,11 +1365,31 @@ $btnCheckDeploy.Add_Click({
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
-        $txtDeployResult.Text = "ERROR: $errMsg"
+        $txtDeployResult.Text = "ERROR checking deployment ID ${deployId}:`n$errMsg`n`nThis usually means the value is not a deployment/task ID. Use the ID returned in the selective or quick deploy response, not the DNS record/entity ID."
         Write-AppLog -Level ERROR -Action 'DeploymentStatus' -Message $errMsg -Details @{
             EntityId = [int]$deployId
         }
         Set-Status 'Status check failed' '#f38ba8'
+    }
+})
+
+$btnRecentDeployments.Add_Click({
+    if (-not $script:IsConnected) { Show-Error 'Error' 'Not connected.'; return }
+
+    Set-Status 'Loading recent deployments...' '#f9e2af'
+    try {
+        $result = Get-BlueCatDeployments -Limit 20
+        $txtDeployResult.Text = Format-JsonForDisplay $result
+        Write-AppLog -Level INFO -Action 'RecentDeployments' -Message 'Retrieved recent deployments' -Details @{
+            Deployment = $result
+        }
+        Set-Status 'Recent deployments loaded' '#a6e3a1'
+    }
+    catch {
+        $errMsg = Get-ExceptionMessage $_
+        $txtDeployResult.Text = "ERROR loading recent deployments:`n$errMsg"
+        Write-AppLog -Level ERROR -Action 'RecentDeployments' -Message $errMsg
+        Set-Status 'Recent deployments failed' '#f38ba8'
     }
 })
 

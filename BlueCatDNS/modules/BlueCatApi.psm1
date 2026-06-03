@@ -518,6 +518,22 @@ function Get-BlueCatDeploymentStatus {
     return $result
 }
 
+function Get-BlueCatDeployments {
+    [CmdletBinding()]
+    param(
+        [int]$Limit = 20,
+        [string]$Filter
+    )
+
+    $endpoint = "deployments?limit=$Limit"
+    if ($Filter) {
+        $endpoint += "&filter=$([uri]::EscapeDataString($Filter))"
+    }
+
+    $result = Invoke-BlueCatApi -Endpoint $endpoint
+    return Get-BlueCatResponseData $result
+}
+
 # ---------------------------------------------------------------------------
 # Server operations
 # ---------------------------------------------------------------------------
@@ -579,5 +595,5 @@ Export-ModuleMember -Function Connect-BlueCat, Disconnect-BlueCat, Get-BlueCatCu
     Get-BlueCatResourceRecords, Get-BlueCatResourceRecord,
     New-BlueCatResourceRecord, Update-BlueCatResourceRecord, Remove-BlueCatResourceRecord,
     Invoke-BlueCatSelectiveDeploy, Invoke-BlueCatQuickDeploy, Invoke-BlueCatServerDeploy,
-    Get-BlueCatDeploymentStatus, Get-BlueCatServers, Test-BlueCatConnection,
+    Get-BlueCatDeploymentStatus, Get-BlueCatDeployments, Get-BlueCatServers, Test-BlueCatConnection,
     Get-BlueCatRecordTypeDisplayName, Get-BlueCatRecordTypeApiName
