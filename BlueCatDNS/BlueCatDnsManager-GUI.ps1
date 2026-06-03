@@ -391,11 +391,16 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                 <Label Content="Entity ID:"/>
                                 <TextBox x:Name="txtDeployEntityId" Width="150" Margin="0,0,10,0"/>
+                                <Label Content="Scope:"/>
+                                <ComboBox x:Name="cboDeployScope" Width="120" Margin="0,0,10,0" SelectedIndex="0">
+                                    <ComboBoxItem Content="specific"/>
+                                    <ComboBoxItem Content="related"/>
+                                </ComboBox>
                                 <Button x:Name="btnSelectiveDeploy" Content="Selective Deploy"
                                         Style="{StaticResource SuccessButton}"/>
                             </StackPanel>
                             <TextBlock Foreground="#6c7086" FontSize="12" TextWrapping="Wrap"
-                                       Text="Deploys only the specified entity and its related records. Does NOT push the entire staged batch. Use the record ID from the Create/Modify or Delete tabs."/>
+                                       Text="Deploys only the specified entity by default. Use related only when BlueCat must include linked resources and the account has permission to those resources."/>
                         </StackPanel>
                     </GroupBox>
 
@@ -521,6 +526,7 @@ $btnDeployStaged    = $controls['btnDeployStaged']
 $dgStaged           = $controls['dgStaged']
 
 $txtDeployEntityId  = $controls['txtDeployEntityId']
+$cboDeployScope     = $controls['cboDeployScope']
 $btnSelectiveDeploy = $controls['btnSelectiveDeploy']
 $cboQuickDeployZone = $controls['cboQuickDeployZone']
 $btnQuickDeploy     = $controls['btnQuickDeploy']
@@ -1262,14 +1268,19 @@ $btnSelectiveDeploy.Add_Click({
         return
     }
 
+    $scope = 'specific'
+    if ($cboDeployScope.SelectedItem -and $cboDeployScope.SelectedItem.Content) {
+        $scope = $cboDeployScope.SelectedItem.Content.ToString()
+    }
+
     Set-Status 'Running selective deploy...' '#f9e2af'
     try {
-        $result = Invoke-BlueCatSelectiveDeploy -EntityId ([int]$entityId)
+        $result = Invoke-BlueCatSelectiveDeploy -EntityId ([int]$entityId) -Scope $scope
         $deploymentId = Get-DeploymentIdFromResponse -Response $result
         if ($deploymentId) {
             $txtCheckDeployId.Text = $deploymentId.ToString()
         }
-        $txtDeployResult.Text = "Selective deploy response for entity $entityId"
+        $txtDeployResult.Text = "Selective deploy response for entity $entityId (scope: $scope)"
         if ($deploymentId) {
             $txtDeployResult.Text += "`nDeployment ID detected: $deploymentId"
         } else {
@@ -1278,6 +1289,7 @@ $btnSelectiveDeploy.Add_Click({
         $txtDeployResult.Text += "`n`n$(Format-JsonForDisplay $result)"
         Write-AppLog -Level SUCCESS -Action 'SelectiveDeploy' -Message "Selective deploy submitted for entity $entityId" -Details @{
             EntityId   = [int]$entityId
+            Scope      = $scope
             DeploymentId = $deploymentId
             Deployment = $result
         }
@@ -1292,6 +1304,7 @@ $btnSelectiveDeploy.Add_Click({
         $txtDeployResult.Text = "ERROR: $errMsg"
         Write-AppLog -Level ERROR -Action 'SelectiveDeploy' -Message $errMsg -Details @{
             EntityId = [int]$entityId
+            Scope    = $scope
         }
         Set-Status 'Selective deploy failed' '#f38ba8'
     }

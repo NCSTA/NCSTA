@@ -470,7 +470,7 @@ function Invoke-BlueCatSelectiveDeploy {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][int]$EntityId,
-        [ValidateSet('related','specific')][string]$Scope = 'related',
+        [ValidateSet('specific','related')][string]$Scope = 'specific',
         [ValidateSet('disabled','batch_by_server')][string]$BatchMode = 'disabled'
     )
 
