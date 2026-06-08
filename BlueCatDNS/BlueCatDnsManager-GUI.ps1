@@ -48,7 +48,8 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="BlueCat DNS Manager"
-    Width="960" Height="720"
+    Width="1360" Height="820"
+    MinWidth="1120" MinHeight="760"
     WindowStartupLocation="CenterScreen"
     Background="#1e1e2e">
 
@@ -184,16 +185,21 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="BlueCat DNS Manager"
-                           Foreground="#89b4fa" FontSize="18" FontWeight="Bold"
-                           VerticalAlignment="Center" Margin="0,0,20,0"/>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                           Foreground="#89b4fa" FontSize="17" FontWeight="Bold"
+                           VerticalAlignment="Center" Margin="0,0,14,0"/>
+                <WrapPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Label Content="Server:" Margin="0,0,4,0"/>
-                    <TextBox x:Name="txtServer" Width="220" Margin="0,0,10,0"/>
+                    <TextBox x:Name="txtServer" Width="180" Margin="0,0,8,0"/>
                     <Label Content="Config:" Margin="0,0,4,0"/>
-                    <ComboBox x:Name="cboConfig" Width="180" Margin="0,0,10,0" DisplayMemberPath="name"/>
-                    <Label Content="View:" Margin="0,0,4,0"/>
-                    <ComboBox x:Name="cboView" Width="180" DisplayMemberPath="name"/>
-                </StackPanel>
+                    <ComboBox x:Name="cboConfig" Width="150" Margin="0,0,8,0" DisplayMemberPath="name"/>
+                    <StackPanel x:Name="pnlView" Orientation="Horizontal" Visibility="Collapsed">
+                        <Label Content="View:" Margin="0,0,4,0"/>
+                        <ComboBox x:Name="cboView" Width="95" Margin="0,0,8,0" DisplayMemberPath="name"/>
+                    </StackPanel>
+                    <Label Content="Zone:" Margin="0,0,4,0"/>
+                    <ComboBox x:Name="cboZone" Width="250" Margin="0,0,8,0"
+                              IsEditable="True" DisplayMemberPath="absoluteName"/>
+                </WrapPanel>
                 <Button Grid.Column="2" x:Name="btnConnect" Content="Connect" Margin="10,0,0,0"/>
                 <Ellipse Grid.Column="3" x:Name="statusLight" Width="12" Height="12"
                          Fill="#f38ba8" Margin="10,0,0,0" VerticalAlignment="Center"/>
@@ -208,6 +214,35 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
             <TabItem Header="Create / Modify">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
                     <StackPanel>
+                        <GroupBox Header="Existing Records in Selected Zone">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Label Content="Search:"/>
+                                    <TextBox x:Name="txtSearchRecords" Width="300"
+                                             Margin="0,0,10,0"/>
+                                    <Button x:Name="btnSearchRecords" Content="Search Records"/>
+                                    <Button x:Name="btnNewRecord" Content="New Record"
+                                            Margin="10,0,0,0"
+                                            ToolTip="Clears any selected record and prepares the form below for creating a new DNS record."/>
+                                    <Button x:Name="btnRecordHelp" Content="?" Width="32" Height="32"
+                                            Padding="0" Margin="10,0,0,0"
+                                            ToolTip="Create, modify, and record-type help"/>
+                                </StackPanel>
+                                <DataGrid x:Name="dgRecords" AutoGenerateColumns="False"
+                                          IsReadOnly="True" Height="220"
+                                          SelectionMode="Single"
+                                          CanUserSortColumns="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="ID" Binding="{Binding id}" Width="70"/>
+                                        <DataGridTextColumn Header="Type" Binding="{Binding type}" Width="100"/>
+                                        <DataGridTextColumn Header="Name" Binding="{Binding absoluteName}" Width="220"/>
+                                        <DataGridTextColumn Header="Value" Binding="{Binding rdata}" Width="*"/>
+                                        <DataGridTextColumn Header="TTL" Binding="{Binding ttl}" Width="60"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </GroupBox>
+
                         <GroupBox Header="Record Details">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -239,10 +274,6 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
 
                                 <Label Grid.Row="1" Grid.Column="0" Content="Record Name:"/>
                                 <TextBox Grid.Row="1" Grid.Column="1" x:Name="txtRecordName" Margin="0,2"/>
-
-                                <Label Grid.Row="1" Grid.Column="2" Content="Zone:"/>
-                                <ComboBox Grid.Row="1" Grid.Column="3" x:Name="cboZone" Margin="0,2"
-                                          IsEditable="True" DisplayMemberPath="absoluteName"/>
 
                                 <Label Grid.Row="2" Grid.Column="0" Content="Value / Target:"/>
                                 <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3"
@@ -281,28 +312,6 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                                     Style="{StaticResource SuccessButton}" Margin="0,0,10,0"/>
                             <Button x:Name="btnModifyRecord" Content="Modify Selected Record"/>
                         </StackPanel>
-
-                        <GroupBox Header="Existing Records in Zone" Margin="0,16,0,0">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <TextBox x:Name="txtSearchRecords" Width="300"
-                                             Margin="0,0,10,0"/>
-                                    <Button x:Name="btnSearchRecords" Content="Search Zone Records"/>
-                                </StackPanel>
-                                <DataGrid x:Name="dgRecords" AutoGenerateColumns="False"
-                                          IsReadOnly="True" Height="220"
-                                          SelectionMode="Single"
-                                          CanUserSortColumns="True">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="ID" Binding="{Binding id}" Width="70"/>
-                                        <DataGridTextColumn Header="Type" Binding="{Binding type}" Width="100"/>
-                                        <DataGridTextColumn Header="Name" Binding="{Binding absoluteName}" Width="220"/>
-                                        <DataGridTextColumn Header="Value" Binding="{Binding rdata}" Width="*"/>
-                                        <DataGridTextColumn Header="TTL" Binding="{Binding ttl}" Width="60"/>
-                                    </DataGrid.Columns>
-                                </DataGrid>
-                            </StackPanel>
-                        </GroupBox>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -313,9 +322,7 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                     <GroupBox Header="Find Record to Delete">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <Label Content="Zone:"/>
-                                <ComboBox x:Name="cboDeleteZone" Width="260" Margin="0,0,10,0"
-                                          IsEditable="True" DisplayMemberPath="absoluteName"/>
+                                <Label Content="Search:"/>
                                 <TextBox x:Name="txtDeleteSearch" Width="240" Margin="0,0,10,0"/>
                                 <Button x:Name="btnDeleteSearch" Content="Search"/>
                             </StackPanel>
@@ -375,6 +382,7 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                             <DataGridTextColumn Header="Level" Binding="{Binding level}" Width="75"/>
                             <DataGridTextColumn Header="Action" Binding="{Binding action}" Width="115"/>
                             <DataGridTextColumn Header="Entity" Binding="{Binding entityId}" Width="75"/>
+                            <DataGridTextColumn Header="Deployment" Binding="{Binding deploymentId}" Width="90"/>
                             <DataGridTextColumn Header="Record" Binding="{Binding record}" Width="220"/>
                             <DataGridTextColumn Header="Zone" Binding="{Binding zone}" Width="160"/>
                             <DataGridTextColumn Header="Message" Binding="{Binding message}" Width="*"/>
@@ -391,29 +399,21 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                 <Label Content="Entity ID:"/>
                                 <TextBox x:Name="txtDeployEntityId" Width="150" Margin="0,0,10,0"/>
-                                <Label Content="Scope:"/>
-                                <ComboBox x:Name="cboDeployScope" Width="120" Margin="0,0,10,0" SelectedIndex="0">
-                                    <ComboBoxItem Content="specific"/>
-                                    <ComboBoxItem Content="related"/>
-                                </ComboBox>
                                 <Button x:Name="btnSelectiveDeploy" Content="Selective Deploy"
                                         Style="{StaticResource SuccessButton}"/>
                             </StackPanel>
                             <TextBlock Foreground="#6c7086" FontSize="12" TextWrapping="Wrap"
-                                       Text="Deploys only the specified entity by default. Use related only when BlueCat must include linked resources and the account has permission to those resources."/>
+                                       Text="Deploys only the specified DNS record entity."/>
                         </StackPanel>
                     </GroupBox>
 
                     <GroupBox Header="Quick Deploy (entire zone)">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <Label Content="Zone:"/>
-                                <ComboBox x:Name="cboQuickDeployZone" Width="260" Margin="0,0,10,0"
-                                          IsEditable="True" DisplayMemberPath="absoluteName"/>
-                                <Button x:Name="btnQuickDeploy" Content="Quick Deploy Zone"/>
+                                <Button x:Name="btnQuickDeploy" Content="Quick Deploy Selected Zone"/>
                             </StackPanel>
                             <TextBlock Foreground="#6c7086" FontSize="12" TextWrapping="Wrap"
-                                       Text="Deploys ALL pending changes in the selected zone. This is faster than a full server deploy but pushes everything staged in that zone."/>
+                               Text="Deploys ALL pending changes in the selected zone. This is faster than a full server deploy but pushes everything staged in that zone."/>
                         </StackPanel>
                     </GroupBox>
 
@@ -425,7 +425,24 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                                 <Button x:Name="btnCheckDeploy" Content="Check Status"/>
                                 <Button x:Name="btnRecentDeployments" Content="Recent Deployments" Margin="10,0,0,0"/>
                             </StackPanel>
-                            <TextBox x:Name="txtDeployResult" Height="120"
+                            <DataGrid x:Name="dgDeployments" AutoGenerateColumns="False"
+                                      IsReadOnly="True" Height="220"
+                                      SelectionMode="Single"
+                                      CanUserSortColumns="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Time" Binding="{Binding time}" Width="145"/>
+                                    <DataGridTextColumn Header="ID" Binding="{Binding id}" Width="70"/>
+                                    <DataGridTextColumn Header="Type" Binding="{Binding deploymentType}" Width="135"/>
+                                    <DataGridTextColumn Header="Name" Binding="{Binding name}" Width="190"/>
+                                    <DataGridTextColumn Header="Action" Binding="{Binding action}" Width="105"/>
+                                    <DataGridTextColumn Header="State" Binding="{Binding state}" Width="85"/>
+                                    <DataGridTextColumn Header="Status" Binding="{Binding status}" Width="85"/>
+                                    <DataGridTextColumn Header="Done" Binding="{Binding percentComplete}" Width="60"/>
+                                    <DataGridTextColumn Header="User" Binding="{Binding user}" Width="95"/>
+                                    <DataGridTextColumn Header="Message" Binding="{Binding message}" Width="*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <TextBox x:Name="txtDeployResult" Height="54" Margin="0,8,0,0"
                                      IsReadOnly="True" TextWrapping="Wrap"
                                      VerticalScrollBarVisibility="Auto"
                                      Background="#181825" Foreground="#a6e3a1"
@@ -487,6 +504,7 @@ $xaml.SelectNodes('//*[@*[contains(translate(name(),"x","X"),"Name")]]') | ForEa
 # Convenience aliases
 $txtServer          = $controls['txtServer']
 $cboConfig          = $controls['cboConfig']
+$pnlView            = $controls['pnlView']
 $cboView            = $controls['cboView']
 $btnConnect         = $controls['btnConnect']
 $statusLight        = $controls['statusLight']
@@ -509,9 +527,10 @@ $btnCreateRecord    = $controls['btnCreateRecord']
 $btnModifyRecord    = $controls['btnModifyRecord']
 $txtSearchRecords   = $controls['txtSearchRecords']
 $btnSearchRecords   = $controls['btnSearchRecords']
+$btnNewRecord       = $controls['btnNewRecord']
+$btnRecordHelp      = $controls['btnRecordHelp']
 $dgRecords          = $controls['dgRecords']
 
-$cboDeleteZone      = $controls['cboDeleteZone']
 $txtDeleteSearch    = $controls['txtDeleteSearch']
 $btnDeleteSearch    = $controls['btnDeleteSearch']
 $dgDeleteRecords    = $controls['dgDeleteRecords']
@@ -526,16 +545,23 @@ $btnDeployStaged    = $controls['btnDeployStaged']
 $dgStaged           = $controls['dgStaged']
 
 $txtDeployEntityId  = $controls['txtDeployEntityId']
-$cboDeployScope     = $controls['cboDeployScope']
 $btnSelectiveDeploy = $controls['btnSelectiveDeploy']
-$cboQuickDeployZone = $controls['cboQuickDeployZone']
 $btnQuickDeploy     = $controls['btnQuickDeploy']
 $txtCheckDeployId   = $controls['txtCheckDeployId']
 $btnCheckDeploy     = $controls['btnCheckDeploy']
 $btnRecentDeployments = $controls['btnRecentDeployments']
 
 
+$dgDeployments      = $controls['dgDeployments']
 $txtDeployResult    = $controls['txtDeployResult']
+
+$workArea = [System.Windows.SystemParameters]::WorkArea
+$targetWidth = [math]::Min(1360, [math]::Max(960, [double]$workArea.Width - 40))
+$targetHeight = [math]::Min(820, [math]::Max(720, [double]$workArea.Height - 60))
+$window.MinWidth = [math]::Min(1120, $targetWidth)
+$window.MinHeight = [math]::Min(760, $targetHeight)
+$window.Width = $targetWidth
+$window.Height = $targetHeight
 
 if ($BamServer) { $txtServer.Text = $BamServer }
 
@@ -546,6 +572,7 @@ if ($BamServer) { $txtServer.Text = $BamServer }
 $script:IsConnected = $false
 $script:ZoneCache = @()
 $script:ActivityLogFile = Join-Path $logPath "bluecat-dns-manager-$(Get-Date -Format 'yyyyMMdd').jsonl"
+$script:SuppressRecordSelectionFill = $false
 
 function Set-Status {
     param([string]$Message, [string]$Color = '#a6adc8')
@@ -600,6 +627,14 @@ function Write-AppLog {
         [hashtable]$Details = @{}
     )
 
+    $deploymentId = ''
+    if ($Details.ContainsKey('DeploymentId') -and $null -ne $Details['DeploymentId']) {
+        $deploymentId = $Details['DeploymentId']
+    }
+    elseif ($Details.ContainsKey('Deployment') -and $null -ne $Details['Deployment']) {
+        $deploymentId = Get-DeploymentIdFromResponse -Response $Details['Deployment']
+    }
+
     $entry = [ordered]@{
         timestamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
         level     = $Level
@@ -608,6 +643,7 @@ function Write-AppLog {
         user      = if ($script:IsConnected) { Get-BlueCatCurrentUser } else { [Environment]::UserName }
         server    = $txtServer.Text.Trim()
         entityId  = if ($Details.ContainsKey('EntityId')) { $Details['EntityId'] } else { '' }
+        deploymentId = $deploymentId
         record    = if ($Details.ContainsKey('Record')) { $Details['Record'] } else { '' }
         zone      = if ($Details.ContainsKey('Zone')) { $Details['Zone'] } else { '' }
         value     = if ($Details.ContainsKey('Value')) { $Details['Value'] } else { '' }
@@ -654,12 +690,8 @@ function Populate-ZoneCombos {
     $script:ZoneCache = @($allZones | Sort-Object absoluteName)
 
     $cboZone.ItemsSource = $script:ZoneCache
-    $cboDeleteZone.ItemsSource = $script:ZoneCache
-    $cboQuickDeployZone.ItemsSource = $script:ZoneCache
     if ($script:ZoneCache.Count -gt 0) {
         $cboZone.SelectedIndex = 0
-        $cboDeleteZone.SelectedIndex = 0
-        $cboQuickDeployZone.SelectedIndex = 0
     }
 }
 
@@ -746,13 +778,6 @@ function Get-DeploymentIdFromResponse {
     return $null
 }
 
-function Format-JsonForDisplay {
-    param([object]$InputObject)
-
-    if ($null -eq $InputObject) { return '<empty response>' }
-    return ($InputObject | ConvertTo-Json -Depth 8)
-}
-
 function Get-RecordDisplayValue {
     param($record)
     if ($record.rdata) { return $record.rdata }
@@ -764,6 +789,266 @@ function Get-RecordDisplayValue {
         return $record.linkedRecord.absoluteName
     }
     return ''
+}
+
+function Get-ObjectPropertyValue {
+    param(
+        [object]$InputObject,
+        [string[]]$Names
+    )
+
+    if ($null -eq $InputObject) { return $null }
+    foreach ($name in $Names) {
+        $property = $InputObject.PSObject.Properties[$name]
+        if ($property -and $null -ne $property.Value -and $property.Value.ToString() -ne '') {
+            return $property.Value
+        }
+    }
+    return $null
+}
+
+function Get-RelativeRecordName {
+    param(
+        [string]$AbsoluteName,
+        [string]$ZoneName
+    )
+
+    if (-not $AbsoluteName) { return '' }
+    if (-not $ZoneName) { return $AbsoluteName }
+
+    if ([string]::Equals($AbsoluteName, $ZoneName, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return '@'
+    }
+
+    $suffix = ".$ZoneName"
+    if ($AbsoluteName.EndsWith($suffix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $AbsoluteName.Substring(0, $AbsoluteName.Length - $suffix.Length)
+    }
+
+    return $AbsoluteName
+}
+
+function Set-RecordTypeSelection {
+    param([string]$ApiType)
+
+    $displayName = Get-BlueCatRecordTypeDisplayName $ApiType
+    for ($i = 0; $i -lt $cboRecordType.Items.Count; $i++) {
+        $item = $cboRecordType.Items[$i]
+        if ($item.Content -and $item.Content.ToString() -eq $displayName) {
+            $cboRecordType.SelectedIndex = $i
+            return
+        }
+    }
+}
+
+function Clear-RecordForm {
+    param([string]$StatusMessage)
+
+    $script:SuppressRecordSelectionFill = $true
+    try {
+        $dgRecords.SelectedItem = $null
+        $dgRecords.SelectedIndex = -1
+    }
+    finally {
+        $script:SuppressRecordSelectionFill = $false
+    }
+
+    $cboRecordType.SelectedIndex = 0
+    $txtTTL.Text = '300'
+    $txtRecordName.Text = ''
+    $txtRecordValue.Text = ''
+    $txtComment.Text = ''
+    $chkReverse.IsChecked = $false
+    $btnModifyRecord.IsEnabled = $false
+
+    if ($StatusMessage) {
+        Set-Status $StatusMessage
+    }
+}
+
+function Update-RecordFormFromSelection {
+    param($SelectedRecord)
+
+    if (-not $SelectedRecord) {
+        $btnModifyRecord.IsEnabled = $false
+        return
+    }
+
+    $selectedZone = Get-SelectedZone $cboZone
+    $zoneName = if ($selectedZone) { $selectedZone.absoluteName } else { '' }
+
+    Set-RecordTypeSelection -ApiType $SelectedRecord.type
+    $txtRecordName.Text = Get-RelativeRecordName -AbsoluteName $SelectedRecord.absoluteName -ZoneName $zoneName
+    $txtRecordValue.Text = $SelectedRecord.rdata
+    $txtTTL.Text = if ($SelectedRecord.ttl) { $SelectedRecord.ttl.ToString() } else { '300' }
+    $btnModifyRecord.IsEnabled = $true
+
+    if ($SelectedRecord.id) {
+        $txtDeployEntityId.Text = $SelectedRecord.id.ToString()
+    }
+}
+
+function Get-DeploymentObjects {
+    param([object]$InputObject)
+
+    if ($null -eq $InputObject) { return @() }
+
+    $dataProperty = $InputObject.PSObject.Properties['data']
+    if ($dataProperty) {
+        return Get-DeploymentObjects -InputObject $dataProperty.Value
+    }
+
+    if ($InputObject -is [System.Array]) {
+        return @($InputObject)
+    }
+
+    return ,$InputObject
+}
+
+function Get-DeploymentDateValue {
+    param($Deployment)
+
+    return Get-ObjectPropertyValue -InputObject $Deployment -Names @(
+        'creationDateTime',
+        'startDateTime',
+        'completionDateTime',
+        'createdAt',
+        'timestamp',
+        'time'
+    )
+}
+
+function Format-DeploymentDateValue {
+    param($Value)
+
+    if ($null -eq $Value -or $Value.ToString() -eq '') { return '' }
+    try {
+        return ([datetime]$Value).ToString('yyyy-MM-dd HH:mm:ss')
+    }
+    catch {
+        return $Value.ToString()
+    }
+}
+
+function Get-DeploymentSortDate {
+    param($Deployment)
+
+    $value = Get-DeploymentDateValue -Deployment $Deployment
+    if ($null -eq $value -or $value.ToString() -eq '') { return [datetime]::MinValue }
+    try {
+        return [datetime]$value
+    }
+    catch {
+        return [datetime]::MinValue
+    }
+}
+
+function Get-DeploymentUserName {
+    param($Deployment)
+
+    $user = Get-ObjectPropertyValue -InputObject $Deployment -Names @('user','createdBy','owner')
+    if ($null -eq $user) { return '' }
+
+    $name = Get-ObjectPropertyValue -InputObject $user -Names @('name','username','userName')
+    if ($name) { return $name.ToString() }
+
+    return $user.ToString()
+}
+
+function Get-DeploymentDisplayName {
+    param($Deployment)
+
+    $name = Get-ObjectPropertyValue -InputObject $Deployment -Names @(
+        'name',
+        'absoluteName',
+        'entityName',
+        'resourceName',
+        'serverName'
+    )
+    if ($name) { return $name.ToString() }
+
+    $message = Get-ObjectPropertyValue -InputObject $Deployment -Names @('message','description')
+    if (-not $message) { return '' }
+
+    $text = $message.ToString()
+    if ($text -match '[#!]\s*(?<target>[^:]+?)(?:\s+(?:DNS|DHCPV4|DHCPV6|DHCP)\s+deployment|:|$)') {
+        return $matches['target'].Trim()
+    }
+
+    return ''
+}
+
+function ConvertTo-DeploymentRows {
+    param([object]$InputObject)
+
+    $rows = New-Object System.Collections.ArrayList
+    foreach ($deployment in @(Get-DeploymentObjects -InputObject $InputObject)) {
+        if (-not $deployment) { continue }
+
+        $method = Get-ObjectPropertyValue -InputObject $deployment -Names @('method','action')
+        $service = Get-ObjectPropertyValue -InputObject $deployment -Names @('service')
+        $actionParts = @($method, $service) | Where-Object {
+            $null -ne $_ -and $_.ToString().Trim() -ne ''
+        }
+        $percentValue = Get-ObjectPropertyValue -InputObject $deployment -Names @('percentComplete','completionPercentage')
+        $percentText = ''
+        if ($null -ne $percentValue -and $percentValue.ToString() -ne '') {
+            $percentText = if ($percentValue.ToString().EndsWith('%')) {
+                $percentValue.ToString()
+            } else {
+                "$percentValue%"
+            }
+        }
+
+        $dateValue = Get-DeploymentDateValue -Deployment $deployment
+        [void]$rows.Add([PSCustomObject]@{
+            time            = Format-DeploymentDateValue -Value $dateValue
+            id              = (Get-ObjectPropertyValue -InputObject $deployment -Names @('id','deploymentId','deploymentID','taskId'))
+            deploymentType  = (Get-ObjectPropertyValue -InputObject $deployment -Names @('type','deploymentType'))
+            name            = Get-DeploymentDisplayName -Deployment $deployment
+            action          = (($actionParts | ForEach-Object { $_.ToString() }) -join ' ')
+            state           = (Get-ObjectPropertyValue -InputObject $deployment -Names @('state'))
+            status          = (Get-ObjectPropertyValue -InputObject $deployment -Names @('status'))
+            percentComplete = $percentText
+            user            = Get-DeploymentUserName -Deployment $deployment
+            message         = (Get-ObjectPropertyValue -InputObject $deployment -Names @('message','description'))
+            sortDate        = Get-DeploymentSortDate -Deployment $deployment
+        })
+    }
+
+    return @($rows | Sort-Object sortDate -Descending)
+}
+
+function Set-DeploymentResults {
+    param(
+        [object]$InputObject,
+        [string]$Summary
+    )
+
+    $rows = @(ConvertTo-DeploymentRows -InputObject $InputObject)
+    $dgDeployments.ItemsSource = $rows
+    if ($rows.Count -gt 0) {
+        $dgDeployments.SelectedIndex = 0
+    }
+
+    if ($Summary) {
+        $txtDeployResult.Text = $Summary
+    }
+    elseif ($rows.Count -gt 0) {
+        $txtDeployResult.Text = $rows[0].message
+    }
+    else {
+        $txtDeployResult.Text = 'No deployment records returned.'
+    }
+
+    return $rows
+}
+
+function Set-DeploymentError {
+    param([string]$Message)
+
+    $dgDeployments.ItemsSource = @()
+    $txtDeployResult.Text = "ERROR: $Message"
 }
 
 # ---------------------------------------------------------------------------
@@ -824,8 +1109,14 @@ $cboConfig.Add_SelectionChanged({
 
     try {
         Set-BlueCatContext -ConfigurationId $sel.id -ViewId 0
-        $views = Get-BlueCatViews -ConfigurationId $sel.id
+        $views = @(Get-BlueCatViews -ConfigurationId $sel.id)
         $cboView.ItemsSource = $views
+        if ($views.Count -le 1) {
+            $pnlView.Visibility = [System.Windows.Visibility]::Collapsed
+        }
+        else {
+            $pnlView.Visibility = [System.Windows.Visibility]::Visible
+        }
         if ($views.Count -gt 0) {
             $cboView.SelectedIndex = 0
         }
@@ -849,6 +1140,14 @@ $cboView.Add_SelectionChanged({
     catch {
         Show-Error 'Load Zones' $_.Exception.Message
     }
+})
+
+$cboZone.Add_SelectionChanged({
+    if ($script:SuppressRecordSelectionFill) { return }
+
+    $dgRecords.ItemsSource = @()
+    $dgDeleteRecords.ItemsSource = @()
+    Clear-RecordForm
 })
 
 # ---------------------------------------------------------------------------
@@ -883,6 +1182,39 @@ $btnSearchRecords.Add_Click({
         Show-Error 'Search Failed' $_.Exception.Message
         Set-Status 'Search failed' '#f38ba8'
     }
+})
+
+$dgRecords.Add_SelectionChanged({
+    if ($script:SuppressRecordSelectionFill) { return }
+
+    Update-RecordFormFromSelection -SelectedRecord $dgRecords.SelectedItem
+})
+
+$btnNewRecord.Add_Click({
+    Clear-RecordForm -StatusMessage 'Ready to create a new record'
+})
+
+$btnRecordHelp.Add_Click({
+    $helpText = @"
+Create / Modify quick guide
+
+New Record: clears any selected existing record and resets Record Details for a new create action. It does not save anything until you click Create Record.
+
+A / Host Record: choose A / Host Record, enter the host name, enter the IPv4 address in Value / Target, then click Create Record. Enable Create reverse (PTR) record only when a PTR should also be created.
+
+CNAME: search for and select the existing target record first. Keep Value / Target set to that target FQDN, change Record Type to CNAME, enter the alias name in Record Name, then click Create Record.
+
+MX: enter the mail record name, then use "priority target" in Value / Target, for example "10 mail.example.com".
+
+TXT: enter the record name, then enter the TXT value in Value / Target.
+
+SRV: use "priority weight port target" in Value / Target, for example "10 5 443 server.example.com".
+
+Generic: enter the record name and raw record data in Value / Target.
+
+Modify: search the selected zone, select the existing record, update Value / Target, TTL, or comment, then click Modify Selected Record.
+"@
+    Show-Info 'Create / Modify Help' $helpText
 })
 
 # ---------------------------------------------------------------------------
@@ -966,10 +1298,15 @@ $btnCreateRecord.Add_Click({
             Set-Status 'Deploying record...' '#f9e2af'
             try {
                 $deployment = Invoke-BlueCatSelectiveDeploy -EntityId $entityId
+                $deploymentId = Get-DeploymentIdFromResponse -Response $deployment
+                if ($deploymentId) {
+                    $txtCheckDeployId.Text = $deploymentId.ToString()
+                }
                 Write-AppLog -Level SUCCESS -Action 'SelectiveDeploy' -Message "Selective deploy submitted for entity $entityId" -Details @{
                     EntityId   = $entityId
                     Record     = $recName
                     Zone       = $zoneName
+                    DeploymentId = $deploymentId
                     Deployment = $deployment
                 }
                 Set-Status "Record created and deployed (Entity: $entityId)" '#a6e3a1'
@@ -989,10 +1326,7 @@ $btnCreateRecord.Add_Click({
             Set-Status "Record created (Entity: $entityId) - not deployed" '#f9e2af'
         }
 
-        # Clear form
-        $txtRecordName.Text = ''
-        $txtRecordValue.Text = ''
-        $txtComment.Text = ''
+        Clear-RecordForm
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
@@ -1065,10 +1399,15 @@ $btnModifyRecord.Add_Click({
             Set-Status 'Deploying modified record...' '#f9e2af'
             try {
                 $deployment = Invoke-BlueCatSelectiveDeploy -EntityId ([int]$selected.id)
+                $deploymentId = Get-DeploymentIdFromResponse -Response $deployment
+                if ($deploymentId) {
+                    $txtCheckDeployId.Text = $deploymentId.ToString()
+                }
                 Write-AppLog -Level SUCCESS -Action 'SelectiveDeploy' -Message "Selective deploy submitted for entity $($selected.id)" -Details @{
                     EntityId   = [int]$selected.id
                     Record     = $selected.absoluteName
                     Zone       = $zoneName
+                    DeploymentId = $deploymentId
                     Deployment = $deployment
                 }
                 Set-Status "Record modified and deployed" '#a6e3a1'
@@ -1108,7 +1447,7 @@ $btnModifyRecord.Add_Click({
 $btnDeleteSearch.Add_Click({
     if (-not $script:IsConnected) { Show-Error 'Error' 'Not connected.'; return }
 
-    $zoneId = Get-SelectedZoneId $cboDeleteZone
+    $zoneId = Get-SelectedZoneId $cboZone
     if (-not $zoneId) { Show-Error 'Error' 'Select a zone first.'; return }
 
     Set-Status 'Searching records...' '#f9e2af'
@@ -1155,7 +1494,7 @@ $btnDeleteRecord.Add_Click({
     if ($confirmResult -ne 'Yes') { return }
 
     $comment  = $txtDeleteComment.Text.Trim()
-    $selectedZone = Get-SelectedZone $cboDeleteZone
+    $selectedZone = Get-SelectedZone $cboZone
     $zoneName = $selectedZone.absoluteName
     $deployNow = $chkDeleteDeploy.IsChecked
     $entityId = [int]$selected.id
@@ -1178,12 +1517,17 @@ $btnDeleteRecord.Add_Click({
             Set-Status 'Deploying deletion...' '#f9e2af'
             try {
                 # After delete, deploy via quick deploy on the zone since entity no longer exists
-                $zoneId = Get-SelectedZoneId $cboDeleteZone
+                $zoneId = Get-SelectedZoneId $cboZone
                 $deployment = Invoke-BlueCatQuickDeploy -ZoneId $zoneId
+                $deploymentId = Get-DeploymentIdFromResponse -Response $deployment
+                if ($deploymentId) {
+                    $txtCheckDeployId.Text = $deploymentId.ToString()
+                }
                 Write-AppLog -Level SUCCESS -Action 'QuickDeploy' -Message "Quick deploy submitted for zone $zoneName" -Details @{
                     EntityId   = $entityId
                     Record     = $selected.absoluteName
                     Zone       = $zoneName
+                    DeploymentId = $deploymentId
                     Deployment = $deployment
                 }
                 Set-Status "Record deleted and zone deployed" '#a6e3a1'
@@ -1192,10 +1536,15 @@ $btnDeleteRecord.Add_Click({
                 # Try selective deploy as fallback
                 try {
                     $deployment = Invoke-BlueCatSelectiveDeploy -EntityId $entityId
+                    $deploymentId = Get-DeploymentIdFromResponse -Response $deployment
+                    if ($deploymentId) {
+                        $txtCheckDeployId.Text = $deploymentId.ToString()
+                    }
                     Write-AppLog -Level SUCCESS -Action 'SelectiveDeploy' -Message "Selective deploy submitted for deleted entity $entityId" -Details @{
                         EntityId   = $entityId
                         Record     = $selected.absoluteName
                         Zone       = $zoneName
+                        DeploymentId = $deploymentId
                         Deployment = $deployment
                     }
                     Set-Status "Record deleted and deployed" '#a6e3a1'
@@ -1269,9 +1618,6 @@ $btnSelectiveDeploy.Add_Click({
     }
 
     $scope = 'specific'
-    if ($cboDeployScope.SelectedItem -and $cboDeployScope.SelectedItem.Content) {
-        $scope = $cboDeployScope.SelectedItem.Content.ToString()
-    }
 
     Set-Status 'Running selective deploy...' '#f9e2af'
     try {
@@ -1280,13 +1626,11 @@ $btnSelectiveDeploy.Add_Click({
         if ($deploymentId) {
             $txtCheckDeployId.Text = $deploymentId.ToString()
         }
-        $txtDeployResult.Text = "Selective deploy response for entity $entityId (scope: $scope)"
         if ($deploymentId) {
-            $txtDeployResult.Text += "`nDeployment ID detected: $deploymentId"
+            [void](Set-DeploymentResults -InputObject $result -Summary "Selective deploy submitted for entity $entityId. Deployment ID: $deploymentId")
         } else {
-            $txtDeployResult.Text += "`nNo deployment ID was detected in the response. Check the JSON below and the Logs tab."
+            [void](Set-DeploymentResults -InputObject $result -Summary "Selective deploy submitted for entity $entityId. No deployment ID was detected in the response.")
         }
-        $txtDeployResult.Text += "`n`n$(Format-JsonForDisplay $result)"
         Write-AppLog -Level SUCCESS -Action 'SelectiveDeploy' -Message "Selective deploy submitted for entity $entityId" -Details @{
             EntityId   = [int]$entityId
             Scope      = $scope
@@ -1301,7 +1645,7 @@ $btnSelectiveDeploy.Add_Click({
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
-        $txtDeployResult.Text = "ERROR: $errMsg"
+        Set-DeploymentError -Message $errMsg
         Write-AppLog -Level ERROR -Action 'SelectiveDeploy' -Message $errMsg -Details @{
             EntityId = [int]$entityId
             Scope    = $scope
@@ -1313,7 +1657,7 @@ $btnSelectiveDeploy.Add_Click({
 $btnQuickDeploy.Add_Click({
     if (-not $script:IsConnected) { Show-Error 'Error' 'Not connected.'; return }
 
-    $zoneId = Get-SelectedZoneId $cboQuickDeployZone
+    $zoneId = Get-SelectedZoneId $cboZone
     if (-not $zoneId) { Show-Error 'Error' 'Select a zone.'; return }
 
     $confirmResult = [System.Windows.MessageBox]::Show(
@@ -1329,14 +1673,12 @@ $btnQuickDeploy.Add_Click({
         if ($deploymentId) {
             $txtCheckDeployId.Text = $deploymentId.ToString()
         }
-        $selectedZone = Get-SelectedZone $cboQuickDeployZone
-        $txtDeployResult.Text = "Quick deploy response for zone $($selectedZone.absoluteName)"
+        $selectedZone = Get-SelectedZone $cboZone
         if ($deploymentId) {
-            $txtDeployResult.Text += "`nDeployment ID detected: $deploymentId"
+            [void](Set-DeploymentResults -InputObject $result -Summary "Quick deploy submitted for zone $($selectedZone.absoluteName). Deployment ID: $deploymentId")
         } else {
-            $txtDeployResult.Text += "`nNo deployment ID was detected in the response. Check the JSON below and the Logs tab."
+            [void](Set-DeploymentResults -InputObject $result -Summary "Quick deploy submitted for zone $($selectedZone.absoluteName). No deployment ID was detected in the response.")
         }
-        $txtDeployResult.Text += "`n`n$(Format-JsonForDisplay $result)"
         Write-AppLog -Level SUCCESS -Action 'QuickDeploy' -Message "Quick deploy submitted for zone $($selectedZone.absoluteName)" -Details @{
             Zone       = $selectedZone.absoluteName
             DeploymentId = $deploymentId
@@ -1350,7 +1692,7 @@ $btnQuickDeploy.Add_Click({
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
-        $txtDeployResult.Text = "ERROR: $errMsg"
+        Set-DeploymentError -Message $errMsg
         Write-AppLog -Level ERROR -Action 'QuickDeploy' -Message $errMsg -Details @{
             ZoneId = $zoneId
         }
@@ -1369,18 +1711,18 @@ $btnCheckDeploy.Add_Click({
 
     try {
         $result = Get-BlueCatDeploymentStatus -DeploymentId ([int]$deployId)
-        $txtDeployResult.Text = Format-JsonForDisplay $result
+        [void](Set-DeploymentResults -InputObject $result -Summary "Deployment $deployId status retrieved.")
         Write-AppLog -Level INFO -Action 'DeploymentStatus' -Message "Retrieved status for deployment $deployId" -Details @{
-            EntityId = [int]$deployId
+            DeploymentId = [int]$deployId
             Response = $result
         }
         Set-Status "Deployment $deployId status retrieved"
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
-        $txtDeployResult.Text = "ERROR checking deployment ID ${deployId}:`n$errMsg`n`nThis usually means the value is not a deployment/task ID. Use the ID returned in the selective or quick deploy response, not the DNS record/entity ID."
+        Set-DeploymentError -Message "Checking deployment ID ${deployId}: $errMsg. This usually means the value is not a deployment/task ID. Use the ID returned in the selective or quick deploy response, not the DNS record/entity ID."
         Write-AppLog -Level ERROR -Action 'DeploymentStatus' -Message $errMsg -Details @{
-            EntityId = [int]$deployId
+            DeploymentId = [int]$deployId
         }
         Set-Status 'Status check failed' '#f38ba8'
     }
@@ -1392,7 +1734,10 @@ $btnRecentDeployments.Add_Click({
     Set-Status 'Loading recent deployments...' '#f9e2af'
     try {
         $result = Get-BlueCatDeployments -Limit 20
-        $txtDeployResult.Text = Format-JsonForDisplay $result
+        $rows = Set-DeploymentResults -InputObject $result -Summary 'Recent deployments loaded. Rows are sorted newest first.'
+        if ($rows.Count -gt 0 -and $rows[0].id) {
+            $txtCheckDeployId.Text = $rows[0].id.ToString()
+        }
         Write-AppLog -Level INFO -Action 'RecentDeployments' -Message 'Retrieved recent deployments' -Details @{
             Deployment = $result
         }
@@ -1400,9 +1745,16 @@ $btnRecentDeployments.Add_Click({
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
-        $txtDeployResult.Text = "ERROR loading recent deployments:`n$errMsg"
+        Set-DeploymentError -Message "Loading recent deployments: $errMsg"
         Write-AppLog -Level ERROR -Action 'RecentDeployments' -Message $errMsg
         Set-Status 'Recent deployments failed' '#f38ba8'
+    }
+})
+
+$dgDeployments.Add_SelectionChanged({
+    $selected = $dgDeployments.SelectedItem
+    if ($selected -and $selected.message) {
+        $txtDeployResult.Text = $selected.message.ToString()
     }
 })
 
@@ -1428,6 +1780,9 @@ $window.Add_Closing({
 # ---------------------------------------------------------------------------
 # Initial state
 # ---------------------------------------------------------------------------
+
+    $btnModifyRecord.IsEnabled = $false
+    $dgDeployments.ItemsSource = @()
 
     # Populate schedule time options (every 15 minutes) and set defaults
     $dpScheduleDate.SelectedDate = (Get-Date)
