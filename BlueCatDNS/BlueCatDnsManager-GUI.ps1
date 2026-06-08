@@ -631,6 +631,35 @@ function Get-ExceptionMessage {
     return (($messages | Select-Object -Unique) -join "`n")
 }
 
+function Test-QuickDeployLimitError {
+    param([string]$Message)
+
+    if (-not $Message) { return $false }
+    return ($Message -match 'DeploymentDifferentialCalculationError' -or
+            $Message -match 'Maximum number of history records exceeded for quick deployment' -or
+            $Message -match 'calculating the differential between deployments')
+}
+
+function Get-FriendlyQuickDeployErrorMessage {
+    param(
+        [string]$Message,
+        [string]$ZoneName,
+        [string]$CompletedChangeMessage
+    )
+
+    $zoneText = if ($ZoneName) { " for zone '$ZoneName'" } else { '' }
+    $prefix = if ($CompletedChangeMessage) { "$CompletedChangeMessage`n`n" } else { '' }
+
+    if (Test-QuickDeployLimitError -Message $Message) {
+        return ($prefix +
+            "Quick Deploy$zoneText could not be calculated because BlueCat's quick-deploy history limit was exceeded. " +
+            "A full deployment, or an administrator-managed differential/full deployment, is required for the affected DNS server/scope.`n`n" +
+            "Original BlueCat error:`n$Message")
+    }
+
+    return ($prefix + "Quick Deploy$zoneText failed:`n$Message")
+}
+
 function Write-AppLog {
     param(
         [ValidateSet('INFO','SUCCESS','WARNING','ERROR')][string]$Level = 'INFO',
@@ -1606,13 +1635,19 @@ $btnDeleteRecord.Add_Click({
             }
             catch {
                 $errMsg = Get-ExceptionMessage $_
+                $friendlyMsg = Get-FriendlyQuickDeployErrorMessage -Message $errMsg -ZoneName $zoneName -CompletedChangeMessage 'Record was deleted in Address Manager.'
                 Write-AppLog -Level ERROR -Action 'QuickDeployDeletedRecord' -Message $errMsg -Details @{
                     EntityId = $entityId
                     Record   = $selected.absoluteName
                     Zone     = $zoneName
+                    FriendlyMessage = $friendlyMsg
                 }
-                Show-Error 'Deploy Failed' "Record was deleted in Address Manager, but Quick Deploy for zone '$zoneName' failed:`n$errMsg"
-                Set-Status 'Deleted but quick deploy failed' '#f38ba8'
+                Show-Error 'Deploy Failed' $friendlyMsg
+                if (Test-QuickDeployLimitError -Message $errMsg) {
+                    Set-Status 'Deleted; full deployment required' '#f9e2af'
+                } else {
+                    Set-Status 'Deleted but quick deploy failed' '#f38ba8'
+                }
             }
         }
         else {
@@ -1746,11 +1781,20 @@ $btnQuickDeploy.Add_Click({
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
-        Set-DeploymentError -Message $errMsg
+        $selectedZone = Get-SelectedZone $cboZone
+        $zoneName = if ($selectedZone) { $selectedZone.absoluteName } else { '' }
+        $friendlyMsg = Get-FriendlyQuickDeployErrorMessage -Message $errMsg -ZoneName $zoneName
+        Set-DeploymentError -Message $friendlyMsg
         Write-AppLog -Level ERROR -Action 'QuickDeploy' -Message $errMsg -Details @{
             ZoneId = $zoneId
+            Zone   = $zoneName
+            FriendlyMessage = $friendlyMsg
         }
-        Set-Status 'Quick deploy failed' '#f38ba8'
+        if (Test-QuickDeployLimitError -Message $errMsg) {
+            Set-Status 'Quick deploy limit exceeded; full deployment required' '#f9e2af'
+        } else {
+            Set-Status 'Quick deploy failed' '#f38ba8'
+        }
     }
 })
 
