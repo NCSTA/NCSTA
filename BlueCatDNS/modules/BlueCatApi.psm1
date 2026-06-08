@@ -407,10 +407,22 @@ function Update-BlueCatResourceRecord {
     $existing = Get-BlueCatResourceRecord -Id $Id
     $body = @{}
 
-    if ($Name)  { $body['name'] = $Name }
-    if ($TTL)   { $body['ttl'] = $TTL }
-
     $recordType = if ($Type) { $Type } else { $existing.type }
+    if (-not $recordType) {
+        throw "Unable to determine the record type for resource record $Id."
+    }
+
+    $recordName = if ($Name) { $Name } else { $existing.name }
+    if (-not $recordName -and $existing.absoluteName) {
+        $recordName = $existing.absoluteName
+    }
+    if (-not $recordName) {
+        throw "Unable to determine the record name for resource record $Id."
+    }
+
+    $body['type'] = $recordType
+    $body['name'] = $recordName
+    if ($TTL)   { $body['ttl'] = $TTL }
 
     if ($RData) {
         switch ($recordType) {

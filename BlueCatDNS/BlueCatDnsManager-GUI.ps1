@@ -279,9 +279,10 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                                 <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3"
                                          x:Name="txtRecordValue" Margin="0,2"/>
 
-                                <Label Grid.Row="3" Grid.Column="0" Content="Comment:"/>
+                                <Label Grid.Row="3" Grid.Column="0" Content="Task ID:"/>
                                 <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3"
-                                         x:Name="txtComment" Margin="0,2"/>
+                                         x:Name="txtComment" Margin="0,2"
+                                         ToolTip="Enter the ticket or task number for this DNS change."/>
 
                                 <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="4"
                                             Orientation="Horizontal" Margin="0,8,0,0">
@@ -383,6 +384,7 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                             <DataGridTextColumn Header="Action" Binding="{Binding action}" Width="115"/>
                             <DataGridTextColumn Header="Entity" Binding="{Binding entityId}" Width="75"/>
                             <DataGridTextColumn Header="Deployment" Binding="{Binding deploymentId}" Width="90"/>
+                            <DataGridTextColumn Header="Task ID" Binding="{Binding taskId}" Width="95"/>
                             <DataGridTextColumn Header="Record" Binding="{Binding record}" Width="220"/>
                             <DataGridTextColumn Header="Zone" Binding="{Binding zone}" Width="160"/>
                             <DataGridTextColumn Header="Message" Binding="{Binding message}" Width="*"/>
@@ -654,6 +656,7 @@ function Write-AppLog {
         server    = $txtServer.Text.Trim()
         entityId  = if ($Details.ContainsKey('EntityId')) { $Details['EntityId'] } else { '' }
         deploymentId = $deploymentId
+        taskId    = if ($Details.ContainsKey('TaskId')) { $Details['TaskId'] } else { '' }
         record    = if ($Details.ContainsKey('Record')) { $Details['Record'] } else { '' }
         zone      = if ($Details.ContainsKey('Zone')) { $Details['Zone'] } else { '' }
         value     = if ($Details.ContainsKey('Value')) { $Details['Value'] } else { '' }
@@ -1256,6 +1259,8 @@ Create / Modify quick guide
 
 New Record: clears any selected existing record and resets Record Details for a new create action. It does not save anything until you click Create Record.
 
+Task ID: enter the ticket or task number tied to this DNS change. It is saved in BlueCat change-control history and the Logs tab.
+
 A / Host Record: choose A / Host Record, enter the host name, enter the IPv4 address in Value / Target, then click Create Record. Enable Create reverse (PTR) record only when a PTR should also be created.
 
 CNAME: search for and select the existing target record first. Keep Value / Target set to that target FQDN, change Record Type to CNAME, enter the alias name in Record Name, then click Create Record.
@@ -1268,7 +1273,7 @@ SRV: use "priority weight port target" in Value / Target, for example "10 5 443 
 
 Generic: enter the record name and raw record data in Value / Target.
 
-Modify: search the selected zone, select the existing record, update Value / Target, TTL, or comment, then click Modify Selected Record.
+Modify: search the selected zone, select the existing record, update Value / Target, TTL, or Task ID, then click Modify Selected Record.
 "@
     Show-Info 'Create / Modify Help' $helpText
 })
@@ -1287,7 +1292,7 @@ $btnCreateRecord.Add_Click({
     $recValue = $txtRecordValue.Text.Trim()
     $recType  = Get-BlueCatRecordTypeApiName ($cboRecordType.SelectedItem.Content.ToString())
     $ttl      = [int]$txtTTL.Text
-    $comment  = $txtComment.Text.Trim()
+    $taskId   = $txtComment.Text.Trim()
     $selectedZone = Get-SelectedZone $cboZone
     $zoneName = $selectedZone.absoluteName
 
@@ -1332,7 +1337,7 @@ $btnCreateRecord.Add_Click({
             Name    = $recName
             RData   = $recValue
             TTL     = $ttl
-            Comment = $comment
+            Comment = $taskId
         }
         if ($chkReverse.IsChecked) { $params['CreateReverseRecord'] = $true }
         if ($linkedRecord) { $params['LinkedRecord'] = $linkedRecord }
@@ -1347,7 +1352,7 @@ $btnCreateRecord.Add_Click({
             Value    = $recValue
             Type     = $recType
             TTL      = $ttl
-            Comment  = $comment
+            TaskId   = $taskId
         }
 
         if ($deployMode -eq 'immediate') {
@@ -1410,14 +1415,15 @@ $btnModifyRecord.Add_Click({
         return
     }
 
+    $recName  = $txtRecordName.Text.Trim()
     $recValue = $txtRecordValue.Text.Trim()
     $ttl      = [int]$txtTTL.Text
-    $comment  = $txtComment.Text.Trim()
+    $taskId   = $txtComment.Text.Trim()
     $selectedZone = Get-SelectedZone $cboZone
     $zoneName = $selectedZone.absoluteName
 
-    if (-not $recValue) {
-        Show-Error 'Validation' 'Enter the new value for the record.'
+    if (-not $recName -or -not $recValue) {
+        Show-Error 'Validation' 'Record name and value are required.'
         return
     }
 
@@ -1434,21 +1440,22 @@ $btnModifyRecord.Add_Click({
     try {
         $params = @{
             Id      = [int]$selected.id
+            Name    = $recName
             RData   = $recValue
             TTL     = $ttl
-            Comment = $comment
+            Comment = $taskId
             Type    = $selected.type
         }
         Update-BlueCatResourceRecord @params
 
         Write-AppLog -Level SUCCESS -Action 'ModifyRecord' -Message "Modified '$($selected.absoluteName)'" -Details @{
             EntityId = [int]$selected.id
-            Record   = $selected.absoluteName
+            Record   = $recName
             Zone     = $zoneName
             Value    = $recValue
             Type     = $selected.type
             TTL      = $ttl
-            Comment  = $comment
+            TaskId   = $taskId
         }
 
         if ($deployMode -eq 'immediate') {
