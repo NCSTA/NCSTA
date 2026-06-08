@@ -401,7 +401,8 @@ function Update-BlueCatResourceRecord {
         [array]$Addresses,
         [int]$TTL,
         [string]$Comment,
-        [string]$Type
+        [string]$Type,
+        [object]$ReverseRecord = $null
     )
 
     $existing = Get-BlueCatResourceRecord -Id $Id
@@ -423,6 +424,17 @@ function Update-BlueCatResourceRecord {
     $body['type'] = $recordType
     $body['name'] = $recordName
     if ($TTL)   { $body['ttl'] = $TTL }
+    if ($recordType -eq 'HostRecord') {
+        if ($null -ne $ReverseRecord) {
+            $body['reverseRecord'] = [bool]$ReverseRecord
+        }
+        elseif ($existing.PSObject.Properties['reverseRecord'] -and $null -ne $existing.reverseRecord) {
+            $body['reverseRecord'] = [bool]$existing.reverseRecord
+        }
+        else {
+            $body['reverseRecord'] = $false
+        }
+    }
 
     if ($RData) {
         switch ($recordType) {

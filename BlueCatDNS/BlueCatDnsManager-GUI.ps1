@@ -288,7 +288,7 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                                             Orientation="Horizontal" Margin="0,8,0,0">
                                     <CheckBox x:Name="chkDeployNow" Content="Deploy immediately after save"
                                               IsChecked="False" Margin="0,0,20,0"/>
-                                    <CheckBox x:Name="chkReverse" Content="Create reverse (PTR) record"
+                                    <CheckBox x:Name="chkReverse" Content="Reverse (PTR) record"
                                               Margin="0,0,20,0"/>
                                 </StackPanel>
                             </Grid>
@@ -342,7 +342,7 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                     </GroupBox>
 
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <CheckBox x:Name="chkDeleteDeploy" Content="Deploy immediately after delete"
+                        <CheckBox x:Name="chkDeleteDeploy" Content="Quick deploy selected zone after delete"
                                   IsChecked="False" Margin="0,0,20,0" VerticalAlignment="Center"/>
                         <TextBox x:Name="txtDeleteComment" Width="300" Margin="0,0,10,0"/>
                         <Label Content="Comment" Foreground="#6c7086"/>
@@ -920,6 +920,12 @@ function Update-RecordFormFromSelection {
     $txtRecordName.Text = Get-RelativeRecordName -AbsoluteName $SelectedRecord.absoluteName -ZoneName $zoneName
     $txtRecordValue.Text = $SelectedRecord.rdata
     $txtTTL.Text = if ($SelectedRecord.ttl) { $SelectedRecord.ttl.ToString() } else { '300' }
+    $reverseRecord = Get-ObjectPropertyValue -InputObject $SelectedRecord -Names @('reverseRecord')
+    $chkReverse.IsChecked = if ($SelectedRecord.type -eq 'HostRecord' -and $null -ne $reverseRecord) {
+        [bool]$reverseRecord
+    } else {
+        $false
+    }
     $btnModifyRecord.IsEnabled = $true
 
     if ($SelectedRecord.id) {
@@ -1231,6 +1237,7 @@ $btnSearchRecords.Add_Click({
                 absoluteName = $_.absoluteName
                 rdata        = (Get-RecordDisplayValue $_)
                 ttl          = $_.ttl
+                reverseRecord = (Get-ObjectPropertyValue -InputObject $_ -Names @('reverseRecord'))
             }
         }
 
@@ -1445,6 +1452,7 @@ $btnModifyRecord.Add_Click({
             TTL     = $ttl
             Comment = $taskId
             Type    = $selected.type
+            ReverseRecord = [bool]$chkReverse.IsChecked
         }
         Update-BlueCatResourceRecord @params
 
@@ -1525,6 +1533,7 @@ $btnDeleteSearch.Add_Click({
                 absoluteName = $_.absoluteName
                 rdata        = (Get-RecordDisplayValue $_)
                 ttl          = $_.ttl
+                reverseRecord = (Get-ObjectPropertyValue -InputObject $_ -Names @('reverseRecord'))
             }
         }
 
@@ -1596,32 +1605,14 @@ $btnDeleteRecord.Add_Click({
                 Set-Status "Record deleted and zone deployed" '#a6e3a1'
             }
             catch {
-                # Try selective deploy as fallback
-                try {
-                    $deployment = Invoke-BlueCatSelectiveDeploy -EntityId $entityId
-                    $deploymentId = Get-DeploymentIdFromResponse -Response $deployment
-                    if ($deploymentId) {
-                        $txtCheckDeployId.Text = $deploymentId.ToString()
-                    }
-                    Write-AppLog -Level SUCCESS -Action 'SelectiveDeploy' -Message "Selective deploy submitted for deleted entity $entityId" -Details @{
-                        EntityId   = $entityId
-                        Record     = $selected.absoluteName
-                        Zone       = $zoneName
-                        DeploymentId = $deploymentId
-                        Deployment = $deployment
-                    }
-                    Set-Status "Record deleted and deployed" '#a6e3a1'
+                $errMsg = Get-ExceptionMessage $_
+                Write-AppLog -Level ERROR -Action 'QuickDeployDeletedRecord' -Message $errMsg -Details @{
+                    EntityId = $entityId
+                    Record   = $selected.absoluteName
+                    Zone     = $zoneName
                 }
-                catch {
-                    $errMsg = Get-ExceptionMessage $_
-                    Write-AppLog -Level ERROR -Action 'DeployDeletedRecord' -Message $errMsg -Details @{
-                        EntityId = $entityId
-                        Record   = $selected.absoluteName
-                        Zone     = $zoneName
-                    }
-                    Show-Error 'Deploy Failed' "Record deleted but deployment failed:`n$errMsg"
-                    Set-Status 'Deleted but deploy failed' '#f38ba8'
-                }
+                Show-Error 'Deploy Failed' "Record was deleted in Address Manager, but Quick Deploy for zone '$zoneName' failed:`n$errMsg"
+                Set-Status 'Deleted but quick deploy failed' '#f38ba8'
             }
         }
         else {
