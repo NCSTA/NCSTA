@@ -448,7 +448,14 @@ function Update-BlueCatResourceRecord {
                 }
             }
             'AliasRecord' {
-                $body['linkedRecord'] = @{ absoluteName = $RData }
+                $linkedRecordType = 'HostRecord'
+                if ($existing.linkedRecord -and $existing.linkedRecord.type) {
+                    $linkedRecordType = $existing.linkedRecord.type
+                }
+                $body['linkedRecord'] = @{
+                    type         = $linkedRecordType
+                    absoluteName = $RData.TrimEnd('.')
+                }
             }
             'TXTRecord' {
                 $body['text'] = $RData

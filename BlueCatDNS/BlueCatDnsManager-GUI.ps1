@@ -909,6 +909,27 @@ function Set-RecordTypeSelection {
     }
 }
 
+function Update-ReverseCheckboxState {
+    param([switch]$DefaultChecked)
+
+    $selectedItem = $cboRecordType.SelectedItem
+    $recordType = if ($selectedItem -and $selectedItem.Content) {
+        Get-BlueCatRecordTypeApiName $selectedItem.Content.ToString()
+    } else {
+        ''
+    }
+
+    $isHostRecord = ($recordType -eq 'HostRecord')
+    $chkReverse.IsEnabled = $isHostRecord
+    if ($isHostRecord) {
+        if ($DefaultChecked) {
+            $chkReverse.IsChecked = $true
+        }
+    } else {
+        $chkReverse.IsChecked = $false
+    }
+}
+
 function Clear-RecordForm {
     param([string]$StatusMessage)
 
@@ -927,6 +948,7 @@ function Clear-RecordForm {
     $txtRecordValue.Text = ''
     $txtComment.Text = ''
     $chkReverse.IsChecked = $false
+    Update-ReverseCheckboxState -DefaultChecked
     $btnModifyRecord.IsEnabled = $false
 
     if ($StatusMessage) {
@@ -949,9 +971,12 @@ function Update-RecordFormFromSelection {
     $txtRecordName.Text = Get-RelativeRecordName -AbsoluteName $SelectedRecord.absoluteName -ZoneName $zoneName
     $txtRecordValue.Text = $SelectedRecord.rdata
     $txtTTL.Text = if ($SelectedRecord.ttl) { $SelectedRecord.ttl.ToString() } else { '300' }
+    Update-ReverseCheckboxState -DefaultChecked
     $reverseRecord = Get-ObjectPropertyValue -InputObject $SelectedRecord -Names @('reverseRecord')
     $chkReverse.IsChecked = if ($SelectedRecord.type -eq 'HostRecord' -and $null -ne $reverseRecord) {
         [bool]$reverseRecord
+    } elseif ($SelectedRecord.type -eq 'HostRecord') {
+        $true
     } else {
         $false
     }
@@ -1243,6 +1268,12 @@ $cboZone.Add_SelectionChanged({
     $dgDeleteRecords.ItemsSource = @()
     Clear-RecordForm
 })
+
+$cboRecordType.Add_SelectionChanged({
+    Update-ReverseCheckboxState -DefaultChecked
+})
+
+Update-ReverseCheckboxState -DefaultChecked
 
 # ---------------------------------------------------------------------------
 # Event: Search records in zone
