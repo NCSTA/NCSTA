@@ -190,15 +190,14 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                 <WrapPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Label Content="Server:" Margin="0,0,4,0"/>
                     <TextBox x:Name="txtServer" Width="180" Margin="0,0,8,0"/>
-                    <Label Content="Config:" Margin="0,0,4,0"/>
-                    <ComboBox x:Name="cboConfig" Width="150" Margin="0,0,8,0" DisplayMemberPath="name"/>
+                    <StackPanel x:Name="pnlConfig" Orientation="Horizontal" Visibility="Collapsed">
+                        <Label Content="Config:" Margin="0,0,4,0"/>
+                        <ComboBox x:Name="cboConfig" Width="150" Margin="0,0,8,0" DisplayMemberPath="name"/>
+                    </StackPanel>
                     <StackPanel x:Name="pnlView" Orientation="Horizontal" Visibility="Collapsed">
                         <Label Content="View:" Margin="0,0,4,0"/>
                         <ComboBox x:Name="cboView" Width="95" Margin="0,0,8,0" DisplayMemberPath="name"/>
                     </StackPanel>
-                    <Label Content="Zone:" Margin="0,0,4,0"/>
-                    <ComboBox x:Name="cboZone" Width="250" Margin="0,0,8,0"
-                              IsEditable="True" DisplayMemberPath="absoluteName"/>
                 </WrapPanel>
                 <Button Grid.Column="2" x:Name="btnConnect" Content="Connect" Margin="10,0,0,0"/>
                 <Ellipse Grid.Column="3" x:Name="statusLight" Width="12" Height="12"
@@ -207,11 +206,12 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
         </Border>
 
         <!-- Main Content Tabs -->
-        <TabControl Grid.Row="1" x:Name="mainTabs" Background="#1e1e2e" BorderBrush="#45475a"
-                    Margin="0" Padding="0">
+        <Grid Grid.Row="1">
+            <TabControl x:Name="mainTabs" Background="#1e1e2e" BorderBrush="#45475a"
+                        Margin="0" Padding="0">
 
-            <!-- TAB: Create / Modify Record -->
-            <TabItem Header="Create / Modify">
+                <!-- TAB: Create / Modify Record -->
+                <TabItem Header="Create / Modify">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
                     <StackPanel>
                         <GroupBox Header="Existing Records in Selected Zone">
@@ -314,10 +314,10 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
-            </TabItem>
+                </TabItem>
 
-            <!-- TAB: Delete Record -->
-            <TabItem Header="Delete Record">
+                <!-- TAB: Delete Record -->
+                <TabItem Header="Delete Record">
                 <StackPanel Margin="16">
                     <GroupBox Header="Find Record to Delete">
                         <StackPanel>
@@ -352,10 +352,10 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                                 Style="{StaticResource DangerButton}"/>
                     </StackPanel>
                 </StackPanel>
-            </TabItem>
+                </TabItem>
 
-            <!-- TAB: Logs -->
-            <TabItem Header="Logs">
+                <!-- TAB: Logs -->
+                <TabItem Header="Logs">
                 <StackPanel Margin="16">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                         <Label Content="Filter:"/>
@@ -389,10 +389,10 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                         </DataGrid.Columns>
                     </DataGrid>
                 </StackPanel>
-            </TabItem>
+                </TabItem>
 
-            <!-- TAB: Quick / Selective Deploy -->
-            <TabItem Header="Deploy Tools">
+                <!-- TAB: Quick / Selective Deploy -->
+                <TabItem Header="Deploy Tools">
                 <StackPanel Margin="16">
                     <GroupBox Header="Selective Deploy (single entity)">
                         <StackPanel>
@@ -450,9 +450,18 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                         </StackPanel>
                     </GroupBox>
                 </StackPanel>
-            </TabItem>
+                </TabItem>
 
-        </TabControl>
+            </TabControl>
+
+            <StackPanel x:Name="pnlZonePicker" Orientation="Horizontal"
+                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="0,5,16,0">
+                <Label Content="Zone:" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                <ComboBox x:Name="cboZone" Width="360" Margin="0"
+                          IsEditable="True" DisplayMemberPath="absoluteName"/>
+            </StackPanel>
+        </Grid>
 
         <!-- Status Bar -->
         <Border Grid.Row="2" Background="#181825" Padding="12,6">
@@ -503,6 +512,7 @@ $xaml.SelectNodes('//*[@*[contains(translate(name(),"x","X"),"Name")]]') | ForEa
 
 # Convenience aliases
 $txtServer          = $controls['txtServer']
+$pnlConfig          = $controls['pnlConfig']
 $cboConfig          = $controls['cboConfig']
 $pnlView            = $controls['pnlView']
 $cboView            = $controls['cboView']
@@ -682,7 +692,7 @@ function Refresh-LogGrid {
 }
 
 function Populate-ZoneCombos {
-    $topZones = Get-BlueCatZones
+    $topZones = @(ConvertTo-ItemList -InputObject (Get-BlueCatZones))
     $allZones = New-Object System.Collections.ArrayList
     $seenZoneIds = @{}
 
@@ -805,6 +815,32 @@ function Get-ObjectPropertyValue {
         }
     }
     return $null
+}
+
+function Add-ListItem {
+    param(
+        [System.Collections.ArrayList]$Accumulator,
+        [object]$Item
+    )
+
+    if ($null -eq $Item) { return }
+
+    if ($Item -is [System.Array] -and -not ($Item -is [string])) {
+        foreach ($child in $Item) {
+            Add-ListItem -Accumulator $Accumulator -Item $child
+        }
+        return
+    }
+
+    [void]$Accumulator.Add($Item)
+}
+
+function ConvertTo-ItemList {
+    param([object]$InputObject)
+
+    $items = New-Object System.Collections.ArrayList
+    Add-ListItem -Accumulator $items -Item $InputObject
+    return @($items)
 }
 
 function Get-RelativeRecordName {
@@ -1084,8 +1120,14 @@ $btnConnect.Add_Click({
         if ($SkipCertCheck) { $params['SkipCertCheck'] = $true }
         Connect-BlueCat @params
 
-        $configs = Get-BlueCatConfigurations
+        $configs = @(ConvertTo-ItemList -InputObject (Get-BlueCatConfigurations))
         $cboConfig.ItemsSource = $configs
+        if ($configs.Count -le 1) {
+            $pnlConfig.Visibility = [System.Windows.Visibility]::Collapsed
+        }
+        else {
+            $pnlConfig.Visibility = [System.Windows.Visibility]::Visible
+        }
         if ($configs.Count -gt 0) {
             $cboConfig.SelectedIndex = 0
         }
@@ -1108,8 +1150,13 @@ $cboConfig.Add_SelectionChanged({
     if (-not $sel) { return }
 
     try {
-        Set-BlueCatContext -ConfigurationId $sel.id -ViewId 0
-        $views = @(Get-BlueCatViews -ConfigurationId $sel.id)
+        $configId = Get-ObjectPropertyValue -InputObject $sel -Names @('id')
+        if ($null -eq $configId -or $configId -is [System.Array]) {
+            throw 'The selected configuration did not resolve to a single BlueCat configuration ID.'
+        }
+
+        Set-BlueCatContext -ConfigurationId ([int]$configId) -ViewId 0
+        $views = @(ConvertTo-ItemList -InputObject (Get-BlueCatViews -ConfigurationId ([int]$configId)))
         $cboView.ItemsSource = $views
         if ($views.Count -le 1) {
             $pnlView.Visibility = [System.Windows.Visibility]::Collapsed
@@ -1133,7 +1180,16 @@ $cboView.Add_SelectionChanged({
     if (-not $selConfig -or -not $selView) { return }
 
     try {
-        Set-BlueCatContext -ConfigurationId $selConfig.id -ViewId $selView.id
+        $configId = Get-ObjectPropertyValue -InputObject $selConfig -Names @('id')
+        $viewId = Get-ObjectPropertyValue -InputObject $selView -Names @('id')
+        if ($null -eq $configId -or $configId -is [System.Array]) {
+            throw 'The selected configuration did not resolve to a single BlueCat configuration ID.'
+        }
+        if ($null -eq $viewId -or $viewId -is [System.Array]) {
+            throw 'The selected view did not resolve to a single BlueCat view ID.'
+        }
+
+        Set-BlueCatContext -ConfigurationId ([int]$configId) -ViewId ([int]$viewId)
         Populate-ZoneCombos
         Set-Status "Context: $($selConfig.name) / $($selView.name) - $($script:ZoneCache.Count) zones loaded"
     }
@@ -1163,7 +1219,7 @@ $btnSearchRecords.Add_Click({
     Set-Status 'Searching records...' '#f9e2af'
     try {
         $filter = New-RecordSearchFilter -SearchText $txtSearchRecords.Text
-        $records = Get-BlueCatResourceRecords -ZoneId $zoneId -Filter $filter
+        $records = @(ConvertTo-ItemList -InputObject (Get-BlueCatResourceRecords -ZoneId $zoneId -Filter $filter))
 
         $display = $records | ForEach-Object {
             [PSCustomObject]@{
@@ -1453,7 +1509,7 @@ $btnDeleteSearch.Add_Click({
     Set-Status 'Searching records...' '#f9e2af'
     try {
         $filter = New-RecordSearchFilter -SearchText $txtDeleteSearch.Text
-        $records = Get-BlueCatResourceRecords -ZoneId $zoneId -Filter $filter
+        $records = @(ConvertTo-ItemList -InputObject (Get-BlueCatResourceRecords -ZoneId $zoneId -Filter $filter))
 
         $display = $records | ForEach-Object {
             [PSCustomObject]@{
