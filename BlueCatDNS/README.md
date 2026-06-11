@@ -24,6 +24,11 @@ The GUI supports record create/modify/delete operations, optional immediate depl
 .\Launch-BlueCatDnsManager-SkipCert.bat
 ```
 
+## Documentation
+
+- [Codebase and collaboration guide](docs/bluecat-dns-manager/README.md)
+- [Operator guide](HOWTO.md)
+
 ## Features
 
 ### Create / Modify Records
@@ -50,16 +55,19 @@ The GUI supports record create/modify/delete operations, optional immediate depl
 ## Project Structure
 
 ```text
-BlueCat-DNS-Manager/
-├── BlueCatDnsManager-GUI.ps1
-├── Launch-BlueCatDnsManager.bat
-├── Launch-BlueCatDnsManager-SkipCert.bat
-├── modules/
-│   └── BlueCatApi.psm1
-├── scripts/
-│   └── Setup.ps1
-├── data/
-└── logs/
+BlueCatDNS/
+|-- BlueCatDnsManager-GUI.ps1
+|-- Launch-BlueCatDnsManager.bat
+|-- Launch-BlueCatDnsManager-SkipCert.bat
+|-- modules/
+|   `-- BlueCatApi.psm1
+|-- scripts/
+|   `-- Setup.ps1
+|-- docs/
+|   `-- bluecat-dns-manager/
+|       `-- README.md
+|-- data/                              Runtime directory
+`-- logs/                              Runtime directory
 ```
 
 ## API Endpoints Used
@@ -79,6 +87,7 @@ BlueCat-DNS-Manager/
 | Selective Deploy | `POST /api/v2/deployments` |
 | Quick Deploy (Zone) | `POST /api/v2/zones/{id}/deployments` |
 | Server Deploy | `POST /api/v2/servers/{id}/deployments` |
+| Recent Deployments | `GET /api/v2/deployments` |
 | Deploy Status | `GET /api/v2/deployments/{id}` |
 
 ## Troubleshooting
