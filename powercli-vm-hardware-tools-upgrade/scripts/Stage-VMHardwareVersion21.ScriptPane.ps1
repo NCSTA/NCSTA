@@ -122,6 +122,7 @@ function Export-ResultList {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [System.Collections.IEnumerable]$Items,
 
         [Parameter(Mandatory)]
@@ -139,9 +140,11 @@ function Add-ListItems {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [System.Collections.Generic.List[object]]$Target,
 
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [System.Collections.IEnumerable]$Source
     )
 
