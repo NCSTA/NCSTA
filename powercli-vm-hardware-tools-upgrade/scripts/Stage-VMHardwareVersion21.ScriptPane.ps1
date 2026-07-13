@@ -29,6 +29,11 @@ $MinimumToolsMajorVersion = 13
 # CSV audit output location.
 $OutputDirectory = 'C:\Temp\VMHardwareUpgradeResults'
 
+# Maximum time to wait for vCenter to expose the scheduled upgrade settings.
+# Completed task objects can disappear quickly, so configuration verification
+# is the authoritative success check.
+$VerificationTimeoutSeconds = 120
+
 # Enter exact VM inventory names here.
 $ServerNames = @(
     'SERVER01',
@@ -151,6 +156,111 @@ function Add-ListItems {
     foreach ($item in $Source) {
         $Target.Add($item) | Out-Null
     }
+}
+
+function Wait-ScheduledHardwareUpgradeVerification {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$VMId,
+
+        [Parameter(Mandatory)]
+        [object]$TaskReference,
+
+        [Parameter(Mandatory)]
+        [string]$TargetVersion,
+
+        [Parameter(Mandatory)]
+        [ValidateRange(5, 600)]
+        [int]$TimeoutSeconds
+    )
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $taskState = 'Unavailable'
+    $lastVMLookupError = ''
+    $lastTaskLookupError = ''
+
+    do {
+        try {
+            $refreshedVM = Get-View -Id $VMId -Property @(
+                'Config.Version',
+                'Config.ScheduledHardwareUpgradeInfo',
+                'Runtime.PowerState'
+            ) -ErrorAction Stop
+
+            $scheduledInfo = $refreshedVM.Config.ScheduledHardwareUpgradeInfo
+
+            if ($null -ne $scheduledInfo -and
+                $scheduledInfo.UpgradePolicy -eq 'always' -and
+                $scheduledInfo.VersionKey -eq $TargetVersion) {
+
+                $verificationMethod = if ($taskState -eq 'success') {
+                    'Task and scheduled configuration'
+                }
+                else {
+                    'Scheduled configuration'
+                }
+
+                return [pscustomobject]@{
+                    VM                 = $refreshedVM
+                    TaskState          = $taskState
+                    VerificationMethod = $verificationMethod
+                }
+            }
+
+            $lastVMLookupError = ''
+        }
+        catch {
+            $lastVMLookupError = $_.Exception.Message
+        }
+
+        $taskView = $null
+
+        try {
+            $taskView = Get-View -Id $TaskReference -Property @(
+                'Info.State',
+                'Info.Error'
+            ) -ErrorAction Stop
+
+            $taskState = [string]$taskView.Info.State
+            $lastTaskLookupError = ''
+        }
+        catch {
+            # A completed vCenter task may be removed before PowerCLI can read it.
+            # Keep polling the VM configuration instead of treating that as failure.
+            $lastTaskLookupError = $_.Exception.Message
+        }
+
+        if ($null -ne $taskView -and $taskState -eq 'error') {
+            $taskErrorMessage = [string]$taskView.Info.Error.LocalizedMessage
+
+            if ([string]::IsNullOrWhiteSpace($taskErrorMessage)) {
+                $taskErrorMessage = 'vCenter reported that the reconfiguration task failed.'
+            }
+
+            throw $taskErrorMessage
+        }
+
+        if ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+            Start-Sleep -Seconds 1
+        }
+    }
+    while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds)
+
+    $details = @(
+        "Task reference: $($TaskReference.Value)"
+        "Last task state: $taskState"
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($lastVMLookupError)) {
+        $details += "Last VM lookup error: $lastVMLookupError"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($lastTaskLookupError)) {
+        $details += "Last task lookup error: $lastTaskLookupError"
+    }
+
+    throw "Timed out after $TimeoutSeconds seconds waiting to verify the scheduled hardware upgrade. $($details -join '; ')"
 }
 
 if (-not (Get-Module -ListAvailable -Name VMware.VimAutomation.Core)) {
@@ -407,23 +517,14 @@ foreach ($serverName in $ServerNames) {
         $configSpec.ScheduledHardwareUpgradeInfo = $upgradeInfo
 
         $taskReference = $vmView.ReconfigVM_Task($configSpec)
-        $task = Get-Task -Id "Task-$($taskReference.Value)" -ErrorAction Stop
-        $task | Wait-Task -ErrorAction Stop | Out-Null
+        $verification = Wait-ScheduledHardwareUpgradeVerification `
+            -VMId $vmObject.Id `
+            -TaskReference $taskReference `
+            -TargetVersion $TargetHardwareVersion `
+            -TimeoutSeconds $VerificationTimeoutSeconds
 
-        $refreshedVM = Get-View -Id $vmObject.Id -Property @(
-            'Config.Version',
-            'Config.ScheduledHardwareUpgradeInfo',
-            'Runtime.PowerState'
-        )
-
+        $refreshedVM = $verification.VM
         $scheduledInfo = $refreshedVM.Config.ScheduledHardwareUpgradeInfo
-
-        if ($null -eq $scheduledInfo -or
-            $scheduledInfo.UpgradePolicy -ne 'always' -or
-            $scheduledInfo.VersionKey -ne $TargetHardwareVersion) {
-
-            throw 'The reconfiguration task completed, but the scheduled hardware upgrade settings could not be verified.'
-        }
 
         $ScheduledVMs.Add(
             [pscustomobject]@{
@@ -438,7 +539,9 @@ foreach ($serverName in $ServerNames) {
                 ToolsRunningStatus = $toolsRunningStatus
                 UpgradePolicy      = [string]$scheduledInfo.UpgradePolicy
                 ScheduledVersion   = [string]$scheduledInfo.VersionKey
-                TaskId             = $task.Id
+                TaskId             = [string]$taskReference.Value
+                TaskState          = [string]$verification.TaskState
+                VerificationMethod = [string]$verification.VerificationMethod
                 Timestamp          = Get-Date
             }
         ) | Out-Null

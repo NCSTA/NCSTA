@@ -81,6 +81,7 @@ $ApplyChanges = $false
 $TargetHardwareVersion = 'vmx-21'
 $MinimumToolsMajorVersion = 13
 $OutputDirectory = 'C:\Temp\VMHardwareUpgradeResults'
+$VerificationTimeoutSeconds = 120
 
 $ServerNames = @(
     'SERVER01',
@@ -110,7 +111,7 @@ ScheduledHardwareUpgradeInfo.UpgradePolicy = 'always'
 ScheduledHardwareUpgradeInfo.VersionKey = 'vmx-21'
 ```
 
-The script waits for the reconfiguration task, refreshes the VM view, and verifies that the scheduled upgrade policy and target version were actually set.
+The script polls the VM configuration and verifies that the scheduled upgrade policy is `always` and the target version is `vmx-21`. Completed vCenter task objects can disappear before `Get-Task` can retrieve them, so a missing task object is treated as diagnostic information rather than a failure. The scheduled VM configuration is the authoritative success check.
 
 ## Audit Outputs
 
