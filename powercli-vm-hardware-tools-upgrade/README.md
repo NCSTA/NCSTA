@@ -29,12 +29,15 @@ File:
 scripts/Get-WindowsServerVMwareToolsHtmlReport.ScriptPane.ps1
 ```
 
-The report script inventories Windows Server VMs only and creates a self-contained HTML dashboard with:
+The report script inventories Windows Server VMs only and creates a self-contained dark-mode HTML dashboard with:
 
-- Clickable dashboard cards for total, current, outdated, below minimum, not running, not installed, powered off, and hardware below VM version 21.
+- Clickable dashboard cards for total, below minimum, not running, not installed, powered off, and hardware below VM version 21.
+- Donut charts for VM hardware version 21 coverage and scheduled hardware upgrade policy `always`; each chart can also filter the table.
 - Search box across all visible data.
 - Cluster and power-state filters.
-- Sortable table headers.
+- Sortable and drag-resizable table headers.
+- A Columns menu with per-column visibility, Show all, and Reset controls.
+- A synchronized horizontal scrollbar fixed to the bottom of the browser while the table is visible.
 - CSV export of the current filtered view.
 - Hardware version and scheduled hardware upgrade fields.
 - Configurable output path and minimum VMware Tools major version.
