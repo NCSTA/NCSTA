@@ -271,18 +271,30 @@ $reportData = @($reportData | Sort-Object VMName)
 
 $summary = [ordered]@{
     Total           = $reportData.Count
-    Current         = @($reportData | Where-Object ToolsCategory -eq 'Current').Count
-    Outdated        = @($reportData | Where-Object {
-        $_.ToolsCategory -in @('Outdated', 'Supported Old', 'Too Old')
-    }).Count
     BelowMinimum    = @($reportData | Where-Object MeetsMinimumTools -eq $false).Count
     NotRunning      = @($reportData | Where-Object ToolsCategory -eq 'Not Running').Count
     NotInstalled    = @($reportData | Where-Object ToolsCategory -eq 'Not Installed').Count
     PoweredOff      = @($reportData | Where-Object PowerState -ne 'poweredOn').Count
+    HardwareAt21    = @($reportData | Where-Object HardwareVersion -eq 'vmx-21').Count
+    PolicyAlways    = @($reportData | Where-Object ScheduledHWUpgrade -eq 'always').Count
     HardwareBelow21 = @($reportData | Where-Object {
         $_.HardwareVersion -match '^vmx-(\d+)$' -and
         [int]$Matches[1] -lt 21
     }).Count
+}
+
+$hardwareAt21Percent = if ($summary['Total'] -gt 0) {
+    [int][math]::Round(($summary['HardwareAt21'] / $summary['Total']) * 100)
+}
+else {
+    0
+}
+
+$policyAlwaysPercent = if ($summary['Total'] -gt 0) {
+    [int][math]::Round(($summary['PolicyAlways'] / $summary['Total']) * 100)
+}
+else {
+    0
 }
 
 $jsonData = ConvertTo-Json -InputObject @($reportData) -Depth 6 -Compress
@@ -300,23 +312,47 @@ $htmlTemplate = @'
 <title>__REPORT_TITLE__</title>
 <style>
     :root {
-        --background: #f5f7fb;
-        --panel: #ffffff;
-        --text: #172033;
-        --muted: #61708a;
-        --border: #d8e0ea;
-        --blue: #1d5fd1;
-        --green: #147a39;
-        --amber: #a86800;
-        --red: #c3262f;
-        --orange: #d34d12;
-        --violet: #6750c2;
-        --gray: #596579;
-        --row-hover: #f7fafc;
+        color-scheme: dark;
+        --background: #0d1117;
+        --panel: #161b22;
+        --panel-raised: #1c2128;
+        --input: #0f141b;
+        --header: #20262f;
+        --text: #e6edf3;
+        --muted: #9da7b3;
+        --border: #30363d;
+        --border-strong: #46505c;
+        --blue: #58a6ff;
+        --green: #3fb950;
+        --amber: #d29922;
+        --red: #f85149;
+        --orange: #f0883e;
+        --violet: #a371f7;
+        --gray: #8b949e;
+        --cyan: #39c5cf;
+        --row-hover: #1f2630;
+        --chart-track: #30363d;
     }
 
     * {
         box-sizing: border-box;
+        scrollbar-color: #58616d var(--panel);
+        scrollbar-width: thin;
+    }
+
+    *::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+    }
+
+    *::-webkit-scrollbar-track {
+        background: var(--panel);
+    }
+
+    *::-webkit-scrollbar-thumb {
+        background: #58616d;
+        border: 3px solid var(--panel);
+        border-radius: 8px;
     }
 
     body {
@@ -327,14 +363,18 @@ $htmlTemplate = @'
         font-size: 14px;
     }
 
+    [hidden] {
+        display: none !important;
+    }
+
     .page {
-        max-width: 1800px;
+        width: 100%;
         margin: 0 auto;
-        padding: 24px;
+        padding: 22px 22px 40px;
     }
 
     .header {
-        margin-bottom: 18px;
+        margin-bottom: 16px;
     }
 
     h1 {
@@ -348,30 +388,45 @@ $htmlTemplate = @'
         color: var(--muted);
     }
 
-    .dashboard {
+    .overview-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(172px, 1fr));
+        grid-template-columns: minmax(0, 1.65fr) minmax(370px, 0.85fr);
         gap: 12px;
-        margin-bottom: 18px;
+        margin-bottom: 16px;
     }
 
-    .card {
+    .dashboard {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(150px, 1fr));
+        gap: 10px;
+    }
+
+    .card,
+    .coverage-item {
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 8px;
-        padding: 14px;
+        color: var(--text);
         cursor: pointer;
         user-select: none;
-        transition: box-shadow 0.12s ease, border-color 0.12s ease;
+        transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
     }
 
-    .card:hover {
-        box-shadow: 0 7px 18px rgba(23, 32, 51, 0.08);
+    .card {
+        min-height: 94px;
+        padding: 14px;
     }
 
-    .card.active {
+    .card:hover,
+    .coverage-item:hover {
+        background: var(--panel-raised);
+        border-color: var(--border-strong);
+    }
+
+    .card.active,
+    .coverage-item.active {
         border-color: var(--blue);
-        box-shadow: 0 0 0 3px rgba(29, 95, 209, 0.16);
+        box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.18);
     }
 
     .card-label {
@@ -379,7 +434,7 @@ $htmlTemplate = @'
         font-size: 12px;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.4px;
+        letter-spacing: 0;
     }
 
     .card-value {
@@ -396,32 +451,105 @@ $htmlTemplate = @'
     .violet .card-value { color: var(--violet); }
     .gray .card-value { color: var(--gray); }
 
+    .coverage-panel {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .coverage-item {
+        display: grid;
+        grid-template-columns: 74px minmax(0, 1fr);
+        align-items: center;
+        gap: 14px;
+        min-height: 89px;
+        padding: 9px 14px;
+        text-align: left;
+        font: inherit;
+    }
+
+    .donut {
+        --accent: var(--blue);
+        --percent: 0;
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 68px;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: conic-gradient(
+            var(--accent) calc(var(--percent) * 1%),
+            var(--chart-track) 0
+        );
+    }
+
+    .donut::after {
+        content: "";
+        position: absolute;
+        inset: 9px;
+        border-radius: 50%;
+        background: var(--panel);
+    }
+
+    .coverage-item:hover .donut::after {
+        background: var(--panel-raised);
+    }
+
+    .donut-value {
+        position: relative;
+        z-index: 1;
+        font-size: 15px;
+        font-weight: 750;
+    }
+
+    .coverage-title {
+        display: block;
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    .coverage-count {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+    }
+
     .toolbar {
+        position: relative;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 10px;
+        gap: 9px;
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 8px 8px 0 0;
-        padding: 12px;
+        padding: 11px;
     }
 
-    input,
+    input[type="text"],
     select,
-    button {
-        border: 1px solid var(--border);
+    button:not(.coverage-item) {
+        border: 1px solid var(--border-strong);
         border-radius: 6px;
-        background: #fff;
+        background: var(--input);
         color: var(--text);
         padding: 8px 10px;
         font: inherit;
         min-height: 38px;
     }
 
-    input {
-        min-width: 280px;
-        flex: 1;
+    input[type="text"] {
+        min-width: 300px;
+        flex: 1 1 340px;
+    }
+
+    input::placeholder {
+        color: #7d8794;
+    }
+
+    select {
+        min-width: 145px;
     }
 
     button {
@@ -429,8 +557,110 @@ $htmlTemplate = @'
         font-weight: 650;
     }
 
-    button:hover {
-        background: #f0f4f8;
+    button:not(.coverage-item):hover {
+        background: #252c35;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible {
+        outline: 2px solid var(--blue);
+        outline-offset: 2px;
+    }
+
+    .column-control {
+        position: relative;
+    }
+
+    .columns-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .columns-icon {
+        display: inline-grid;
+        grid-template-columns: repeat(3, 3px);
+        gap: 2px;
+        width: 13px;
+        height: 14px;
+    }
+
+    .columns-icon::before,
+    .columns-icon::after,
+    .columns-icon span {
+        content: "";
+        display: block;
+        border-radius: 2px;
+        background: currentColor;
+    }
+
+    .column-menu {
+        position: absolute;
+        top: calc(100% + 7px);
+        right: 0;
+        z-index: 30;
+        width: 310px;
+        max-height: min(66vh, 570px);
+        overflow: auto;
+        background: var(--panel-raised);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.42);
+    }
+
+    .column-menu-title {
+        padding: 12px 13px 9px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .column-options {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2px 8px;
+        padding: 0 9px 10px;
+    }
+
+    .column-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        padding: 7px 5px;
+        border-radius: 5px;
+        color: var(--text);
+        cursor: pointer;
+    }
+
+    .column-option:hover {
+        background: #252c35;
+    }
+
+    .column-option span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .column-option input {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        accent-color: var(--blue);
+    }
+
+    .column-menu-actions {
+        display: flex;
+        gap: 8px;
+        padding: 10px;
+        border-top: 1px solid var(--border);
+    }
+
+    .column-menu-actions button {
+        flex: 1;
     }
 
     .result-count {
@@ -440,16 +670,19 @@ $htmlTemplate = @'
     }
 
     .table-container {
+        min-height: 330px;
+        max-height: 68vh;
+        overflow: auto;
         background: var(--panel);
         border: 1px solid var(--border);
         border-top: 0;
         border-radius: 0 0 8px 8px;
-        overflow: auto;
-        max-height: 70vh;
     }
 
     table {
         width: 100%;
+        min-width: 100%;
+        table-layout: fixed;
         border-collapse: collapse;
         white-space: nowrap;
     }
@@ -457,19 +690,81 @@ $htmlTemplate = @'
     th {
         position: sticky;
         top: 0;
-        z-index: 2;
-        background: #eaf0f7;
+        z-index: 3;
+        overflow: hidden;
+        padding: 10px 19px 10px 10px;
+        background: var(--header);
+        border-right: 1px solid var(--border);
+        border-bottom: 1px solid var(--border-strong);
+        color: #dce5ef;
         text-align: left;
-        padding: 10px;
-        border-bottom: 1px solid var(--border);
+        text-overflow: ellipsis;
         cursor: pointer;
         font-weight: 700;
     }
 
+    th:last-child {
+        border-right: 0;
+    }
+
+    .th-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .sort-indicator {
+        margin-left: 5px;
+        color: var(--blue);
+        font-size: 10px;
+    }
+
+    .column-resizer {
+        position: absolute;
+        top: 0;
+        right: -3px;
+        bottom: 0;
+        z-index: 5;
+        width: 9px;
+        cursor: col-resize;
+        touch-action: none;
+    }
+
+    .column-resizer::after {
+        content: "";
+        position: absolute;
+        top: 25%;
+        bottom: 25%;
+        left: 4px;
+        width: 1px;
+        background: var(--border-strong);
+    }
+
+    .column-resizer:hover::after,
+    body.resizing-column .column-resizer::after {
+        background: var(--blue);
+    }
+
+    body.resizing-column {
+        cursor: col-resize;
+        user-select: none;
+    }
+
     td {
+        overflow: hidden;
         padding: 8px 10px;
-        border-bottom: 1px solid #edf1f5;
+        border-right: 1px solid #252b33;
+        border-bottom: 1px solid #252b33;
+        color: #d7dee7;
+        text-overflow: ellipsis;
         vertical-align: middle;
+    }
+
+    td:last-child {
+        border-right: 0;
+    }
+
+    tbody tr:nth-child(even) {
+        background: #141920;
     }
 
     tbody tr:hover {
@@ -479,76 +774,142 @@ $htmlTemplate = @'
     .badge {
         display: inline-block;
         min-width: 86px;
-        text-align: center;
+        max-width: 100%;
+        overflow: hidden;
         padding: 4px 8px;
         border-radius: 999px;
         font-size: 12px;
         font-weight: 700;
+        text-align: center;
+        text-overflow: ellipsis;
+        vertical-align: middle;
     }
 
     .status-current {
-        color: #0f5d29;
-        background: #dcfce7;
+        color: #78d98b;
+        background: #173d25;
     }
 
     .status-outdated,
     .status-supported-old,
     .status-below-minimum {
-        color: #854200;
-        background: #ffedd5;
+        color: #f4b86a;
+        background: #4a2c16;
     }
 
     .status-not-running {
-        color: #7a4b00;
-        background: #fef3c7;
+        color: #e7c55b;
+        background: #453916;
     }
 
     .status-not-installed,
     .status-too-old,
     .status-blacklisted {
-        color: #991b1b;
-        background: #fee2e2;
+        color: #ff8b84;
+        background: #4b2023;
     }
 
     .status-unmanaged,
     .status-unknown {
-        color: #475569;
-        background: #e2e8f0;
+        color: #c2cad4;
+        background: #343b44;
     }
 
     .status-newer-than-host,
     .status-too-new {
-        color: #5532a8;
-        background: #ede9fe;
+        color: #c5a8ff;
+        background: #35265a;
     }
 
     .yes {
-        color: var(--green);
+        color: #78d98b;
         font-weight: 700;
     }
 
     .no {
-        color: var(--red);
+        color: #ff8b84;
         font-weight: 700;
+    }
+
+    .scrollbar-dock {
+        position: fixed;
+        bottom: 0;
+        z-index: 50;
+        display: none;
+        height: 19px;
+        overflow-x: scroll;
+        overflow-y: hidden;
+        background: var(--panel-raised);
+        border: 1px solid var(--border-strong);
+        border-bottom: 0;
+        border-radius: 6px 6px 0 0;
+        box-shadow: 0 -5px 18px rgba(0, 0, 0, 0.28);
+    }
+
+    .scrollbar-dock.visible {
+        display: block;
+    }
+
+    .scrollbar-track {
+        height: 1px;
     }
 
     .footer {
         color: var(--muted);
-        padding: 16px 2px 4px;
+        padding: 14px 2px 4px;
         font-size: 12px;
     }
 
-    @media (max-width: 900px) {
-        .page {
-            padding: 12px;
+    @media (max-width: 1200px) {
+        .overview-grid {
+            grid-template-columns: 1fr;
         }
 
-        input {
+        .coverage-panel {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+    @media (max-width: 760px) {
+        .page {
+            padding: 12px 12px 36px;
+        }
+
+        .dashboard {
+            grid-template-columns: repeat(2, minmax(130px, 1fr));
+        }
+
+        .coverage-panel {
+            grid-template-columns: 1fr;
+        }
+
+        input[type="text"] {
             min-width: 100%;
         }
 
+        .column-control,
+        .column-control > button {
+            width: 100%;
+        }
+
+        .column-menu {
+            position: fixed;
+            top: auto;
+            right: 12px;
+            bottom: 24px;
+            left: 12px;
+            z-index: 70;
+            width: auto;
+            max-height: 70vh;
+        }
+
         .result-count {
+            width: 100%;
             margin-left: 0;
+        }
+
+        .table-container {
+            max-height: 62vh;
         }
     }
 </style>
@@ -558,49 +919,63 @@ $htmlTemplate = @'
     <div class="header">
         <h1>__REPORT_TITLE__</h1>
         <div class="subtitle">
-            Generated __GENERATED_DATE__ | Minimum VMware Tools generation: __MINIMUM_TOOLS_MAJOR__.0 | Click a dashboard card to filter
+            Generated __GENERATED_DATE__ | Minimum VMware Tools generation: __MINIMUM_TOOLS_MAJOR__.0
         </div>
     </div>
 
-    <div class="dashboard">
-        <div class="card blue active" data-filter="all">
-            <div class="card-label">Total Servers</div>
-            <div class="card-value">__SUMMARY_TOTAL__</div>
+    <div class="overview-grid">
+        <div class="dashboard">
+            <div class="card blue active" data-filter="all" tabindex="0" role="button">
+                <div class="card-label">Total Servers</div>
+                <div class="card-value">__SUMMARY_TOTAL__</div>
+            </div>
+
+            <div class="card red" data-filter="belowminimum" tabindex="0" role="button">
+                <div class="card-label">Below __MINIMUM_TOOLS_MAJOR__.0</div>
+                <div class="card-value">__SUMMARY_BELOW_MINIMUM__</div>
+            </div>
+
+            <div class="card amber" data-filter="notrunning" tabindex="0" role="button">
+                <div class="card-label">Tools Not Running</div>
+                <div class="card-value">__SUMMARY_NOT_RUNNING__</div>
+            </div>
+
+            <div class="card red" data-filter="notinstalled" tabindex="0" role="button">
+                <div class="card-label">Not Installed</div>
+                <div class="card-value">__SUMMARY_NOT_INSTALLED__</div>
+            </div>
+
+            <div class="card gray" data-filter="poweredoff" tabindex="0" role="button">
+                <div class="card-label">Powered Off</div>
+                <div class="card-value">__SUMMARY_POWERED_OFF__</div>
+            </div>
+
+            <div class="card violet" data-filter="hardwarebelow21" tabindex="0" role="button">
+                <div class="card-label">Hardware Below 21</div>
+                <div class="card-value">__SUMMARY_HARDWARE_BELOW_21__</div>
+            </div>
         </div>
 
-        <div class="card green" data-filter="current">
-            <div class="card-label">Tools Current</div>
-            <div class="card-value">__SUMMARY_CURRENT__</div>
-        </div>
+        <div class="coverage-panel">
+            <button class="coverage-item" type="button" data-filter="hardware21">
+                <span class="donut" style="--percent: __HARDWARE_AT_21_PERCENT__; --accent: var(--green);">
+                    <span class="donut-value">__HARDWARE_AT_21_PERCENT__%</span>
+                </span>
+                <span>
+                    <span class="coverage-title">VM hardware 21</span>
+                    <span class="coverage-count">__SUMMARY_HARDWARE_AT_21__ of __SUMMARY_TOTAL__ servers</span>
+                </span>
+            </button>
 
-        <div class="card orange" data-filter="outdated">
-            <div class="card-label">Tools Outdated</div>
-            <div class="card-value">__SUMMARY_OUTDATED__</div>
-        </div>
-
-        <div class="card red" data-filter="belowminimum">
-            <div class="card-label">Below __MINIMUM_TOOLS_MAJOR__.0</div>
-            <div class="card-value">__SUMMARY_BELOW_MINIMUM__</div>
-        </div>
-
-        <div class="card amber" data-filter="notrunning">
-            <div class="card-label">Tools Not Running</div>
-            <div class="card-value">__SUMMARY_NOT_RUNNING__</div>
-        </div>
-
-        <div class="card red" data-filter="notinstalled">
-            <div class="card-label">Not Installed</div>
-            <div class="card-value">__SUMMARY_NOT_INSTALLED__</div>
-        </div>
-
-        <div class="card gray" data-filter="poweredoff">
-            <div class="card-label">Powered Off</div>
-            <div class="card-value">__SUMMARY_POWERED_OFF__</div>
-        </div>
-
-        <div class="card violet" data-filter="hardwarebelow21">
-            <div class="card-label">Hardware Below 21</div>
-            <div class="card-value">__SUMMARY_HARDWARE_BELOW_21__</div>
+            <button class="coverage-item" type="button" data-filter="policyalways">
+                <span class="donut" style="--percent: __POLICY_ALWAYS_PERCENT__; --accent: var(--cyan);">
+                    <span class="donut-value">__POLICY_ALWAYS_PERCENT__%</span>
+                </span>
+                <span>
+                    <span class="coverage-title">HW upgrade policy: always</span>
+                    <span class="coverage-count">__SUMMARY_POLICY_ALWAYS__ of __SUMMARY_TOTAL__ servers</span>
+                </span>
+            </button>
         </div>
     </div>
 
@@ -618,36 +993,40 @@ $htmlTemplate = @'
             <option value="suspended">Suspended</option>
         </select>
 
-        <button id="clearButton" type="button">Clear filters</button>
-        <button id="csvButton" type="button">Export filtered CSV</button>
+        <button id="clearButton" type="button">Clear</button>
+        <button id="csvButton" type="button">Export CSV</button>
+
+        <div class="column-control" id="columnControl">
+            <button class="columns-button" id="columnsButton" type="button" aria-expanded="false" aria-controls="columnsMenu">
+                <span class="columns-icon" aria-hidden="true"><span></span></span>
+                <span id="columnsButtonLabel">Columns</span>
+            </button>
+
+            <div class="column-menu" id="columnsMenu" hidden>
+                <div class="column-menu-title">Visible columns</div>
+                <div class="column-options" id="columnOptions"></div>
+                <div class="column-menu-actions">
+                    <button id="showAllColumnsButton" type="button">Show all</button>
+                    <button id="resetColumnsButton" type="button">Reset</button>
+                </div>
+            </div>
+        </div>
 
         <span class="result-count" id="resultCount"></span>
     </div>
 
-    <div class="table-container">
+    <div class="table-container" id="tableContainer">
         <table id="reportTable">
+            <colgroup id="tableColumns"></colgroup>
             <thead>
-                <tr>
-                    <th data-column="VMName">VM Name</th>
-                    <th data-column="DNSName">DNS Name</th>
-                    <th data-column="OperatingSystem">Operating System</th>
-                    <th data-column="PowerState">Power</th>
-                    <th data-column="Cluster">Cluster</th>
-                    <th data-column="ESXiHost">ESXi Host</th>
-                    <th data-column="HardwareVersion">HW Version</th>
-                    <th data-column="ToolsDisplayVersion">Tools Version</th>
-                    <th data-column="ToolsCategory">Tools State</th>
-                    <th data-column="ToolsRunningStatus">Running State</th>
-                    <th data-column="ToolsInstallType">Install Type</th>
-                    <th data-column="ToolsUpgradePolicy">Upgrade Policy</th>
-                    <th data-column="MeetsMinimumTools">Meets Minimum</th>
-                    <th data-column="ScheduledHWUpgrade">HW Upgrade Policy</th>
-                    <th data-column="ScheduledHWTarget">HW Target</th>
-                    <th data-column="IPAddress">IP Address</th>
-                </tr>
+                <tr id="tableHeaderRow"></tr>
             </thead>
             <tbody></tbody>
         </table>
+    </div>
+
+    <div class="scrollbar-dock" id="scrollbarDock" aria-hidden="true">
+        <div class="scrollbar-track" id="scrollbarTrack"></div>
     </div>
 
     <div class="footer">
@@ -661,12 +1040,48 @@ const reportData = __JSON_DATA__;
 let activeCardFilter = "all";
 let sortColumn = "VMName";
 let sortAscending = true;
+let synchronizingScroll = false;
 
+const columnPreferenceKey = "vmware-tools-dashboard-columns-v2";
+const columnDefinitions = [
+    { key: "VMName", label: "VM Name", defaultWidth: 170, minWidth: 110, defaultVisible: true },
+    { key: "DNSName", label: "DNS Name", defaultWidth: 190, minWidth: 120, defaultVisible: false },
+    { key: "OperatingSystem", label: "Operating System", defaultWidth: 240, minWidth: 150, defaultVisible: true },
+    { key: "PowerState", label: "Power", defaultWidth: 110, minWidth: 85, defaultVisible: true },
+    { key: "Cluster", label: "Cluster", defaultWidth: 170, minWidth: 110, defaultVisible: true },
+    { key: "ESXiHost", label: "ESXi Host", defaultWidth: 190, minWidth: 120, defaultVisible: false },
+    { key: "HardwareVersion", label: "HW Version", defaultWidth: 115, minWidth: 90, defaultVisible: true },
+    { key: "ToolsDisplayVersion", label: "Tools Version", defaultWidth: 180, minWidth: 120, defaultVisible: true },
+    { key: "ToolsCategory", label: "Tools State", defaultWidth: 140, minWidth: 110, defaultVisible: true },
+    { key: "ToolsRunningStatus", label: "Running State", defaultWidth: 175, minWidth: 120, defaultVisible: true },
+    { key: "ToolsInstallType", label: "Install Type", defaultWidth: 125, minWidth: 95, defaultVisible: false },
+    { key: "ToolsUpgradePolicy", label: "Tools Policy", defaultWidth: 135, minWidth: 100, defaultVisible: false },
+    { key: "MeetsMinimumTools", label: "Meets Minimum", defaultWidth: 135, minWidth: 105, defaultVisible: true },
+    { key: "ScheduledHWUpgrade", label: "HW Upgrade Policy", defaultWidth: 150, minWidth: 115, defaultVisible: true },
+    { key: "ScheduledHWTarget", label: "HW Target", defaultWidth: 110, minWidth: 85, defaultVisible: false },
+    { key: "IPAddress", label: "IP Address", defaultWidth: 220, minWidth: 130, defaultVisible: false }
+].map(column => ({
+    ...column,
+    width: column.defaultWidth,
+    visible: column.defaultVisible
+}));
+
+const reportTable = document.getElementById("reportTable");
 const tableBody = document.querySelector("#reportTable tbody");
+const tableColumns = document.getElementById("tableColumns");
+const tableHeaderRow = document.getElementById("tableHeaderRow");
+const tableContainer = document.getElementById("tableContainer");
+const scrollbarDock = document.getElementById("scrollbarDock");
+const scrollbarTrack = document.getElementById("scrollbarTrack");
 const searchBox = document.getElementById("searchBox");
 const clusterFilter = document.getElementById("clusterFilter");
 const powerFilter = document.getElementById("powerFilter");
 const resultCount = document.getElementById("resultCount");
+const columnControl = document.getElementById("columnControl");
+const columnsButton = document.getElementById("columnsButton");
+const columnsButtonLabel = document.getElementById("columnsButtonLabel");
+const columnsMenu = document.getElementById("columnsMenu");
+const columnOptions = document.getElementById("columnOptions");
 
 function htmlEncode(value) {
     return String(value ?? "")
@@ -692,14 +1107,210 @@ function populateClusterFilter() {
     }
 }
 
+function getVisibleColumns() {
+    return columnDefinitions.filter(column => column.visible);
+}
+
+function loadColumnPreferences() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(columnPreferenceKey));
+
+        if (!saved || typeof saved !== "object") {
+            return;
+        }
+
+        for (const column of columnDefinitions) {
+            const preference = saved[column.key];
+
+            if (!preference) {
+                continue;
+            }
+
+            if (typeof preference.visible === "boolean") {
+                column.visible = preference.visible;
+            }
+
+            if (Number.isFinite(preference.width)) {
+                column.width = Math.max(column.minWidth, preference.width);
+            }
+        }
+
+        if (getVisibleColumns().length === 0) {
+            columnDefinitions[0].visible = true;
+        }
+    }
+    catch {
+        // Some file:// browser configurations disable local storage.
+    }
+}
+
+function saveColumnPreferences() {
+    try {
+        const preferences = Object.fromEntries(
+            columnDefinitions.map(column => [
+                column.key,
+                { visible: column.visible, width: column.width }
+            ])
+        );
+
+        localStorage.setItem(columnPreferenceKey, JSON.stringify(preferences));
+    }
+    catch {
+        // The report remains fully functional without saved preferences.
+    }
+}
+
+function updateColumnMenu() {
+    const visibleCount = getVisibleColumns().length;
+    columnsButtonLabel.textContent = `Columns (${visibleCount}/${columnDefinitions.length})`;
+
+    columnOptions.innerHTML = columnDefinitions.map(column => `
+        <label class="column-option" title="${htmlEncode(column.label)}">
+            <input type="checkbox" data-column="${column.key}" ${column.visible ? "checked" : ""}>
+            <span>${htmlEncode(column.label)}</span>
+        </label>
+    `).join("");
+
+    columnOptions.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        checkbox.addEventListener("change", () => {
+            const column = columnDefinitions.find(item => item.key === checkbox.dataset.column);
+
+            if (!column) {
+                return;
+            }
+
+            if (!checkbox.checked && getVisibleColumns().length === 1) {
+                checkbox.checked = true;
+                return;
+            }
+
+            column.visible = checkbox.checked;
+            saveColumnPreferences();
+            buildTableColumns();
+        });
+    });
+}
+
+function refreshTableWidth() {
+    const visibleWidth = getVisibleColumns().reduce((total, column) => total + column.width, 0);
+    reportTable.style.width = `${Math.max(visibleWidth, tableContainer.clientWidth)}px`;
+}
+
+function updateSortIndicators() {
+    tableHeaderRow.querySelectorAll("th[data-column]").forEach(header => {
+        const indicator = header.querySelector(".sort-indicator");
+        const isSorted = header.dataset.column === sortColumn;
+
+        header.setAttribute(
+            "aria-sort",
+            isSorted ? (sortAscending ? "ascending" : "descending") : "none"
+        );
+
+        indicator.innerHTML = isSorted
+            ? (sortAscending ? "&#9650;" : "&#9660;")
+            : "";
+    });
+}
+
+function wireHeaderInteractions() {
+    tableHeaderRow.querySelectorAll("th[data-column]").forEach(header => {
+        header.addEventListener("click", event => {
+            if (event.target.closest(".column-resizer")) {
+                return;
+            }
+
+            const selectedColumn = header.dataset.column;
+
+            if (sortColumn === selectedColumn) {
+                sortAscending = !sortAscending;
+            }
+            else {
+                sortColumn = selectedColumn;
+                sortAscending = true;
+            }
+
+            updateSortIndicators();
+            renderTable();
+        });
+
+        const resizer = header.querySelector(".column-resizer");
+
+        resizer.addEventListener("pointerdown", event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const column = columnDefinitions.find(item => item.key === header.dataset.column);
+
+            if (!column) {
+                return;
+            }
+
+            const startX = event.clientX;
+            const startWidth = column.width;
+            document.body.classList.add("resizing-column");
+
+            const handleMove = moveEvent => {
+                column.width = Math.max(column.minWidth, startWidth + moveEvent.clientX - startX);
+                const col = tableColumns.querySelector(`col[data-column="${column.key}"]`);
+
+                if (col) {
+                    col.style.width = `${column.width}px`;
+                }
+
+                refreshTableWidth();
+                updateScrollbarDock();
+            };
+
+            const handleUp = () => {
+                document.body.classList.remove("resizing-column");
+                window.removeEventListener("pointermove", handleMove);
+                window.removeEventListener("pointerup", handleUp);
+                saveColumnPreferences();
+            };
+
+            window.addEventListener("pointermove", handleMove);
+            window.addEventListener("pointerup", handleUp);
+        });
+
+        resizer.addEventListener("dblclick", event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const column = columnDefinitions.find(item => item.key === header.dataset.column);
+
+            if (column) {
+                column.width = column.defaultWidth;
+                saveColumnPreferences();
+                buildTableColumns();
+            }
+        });
+    });
+}
+
+function buildTableColumns() {
+    const visibleColumns = getVisibleColumns();
+
+    tableColumns.innerHTML = visibleColumns.map(column =>
+        `<col data-column="${column.key}" style="width: ${column.width}px;">`
+    ).join("");
+
+    tableHeaderRow.innerHTML = visibleColumns.map(column => `
+        <th data-column="${column.key}" title="${htmlEncode(column.label)}" aria-sort="none">
+            <span class="th-label">${htmlEncode(column.label)}</span>
+            <span class="sort-indicator" aria-hidden="true"></span>
+            <span class="column-resizer" title="Resize ${htmlEncode(column.label)}" aria-hidden="true"></span>
+        </th>
+    `).join("");
+
+    updateColumnMenu();
+    wireHeaderInteractions();
+    updateSortIndicators();
+    refreshTableWidth();
+    renderTable();
+}
+
 function matchesCardFilter(item) {
     switch (activeCardFilter) {
-        case "current":
-            return item.ToolsCategory === "Current";
-
-        case "outdated":
-            return ["Outdated", "Supported Old", "Too Old"].includes(item.ToolsCategory);
-
         case "belowminimum":
             return item.MeetsMinimumTools !== true;
 
@@ -716,6 +1327,12 @@ function matchesCardFilter(item) {
             const match = String(item.HardwareVersion).match(/^vmx-(\d+)$/);
             return match && Number(match[1]) < 21;
         }
+
+        case "hardware21":
+            return item.HardwareVersion === "vmx-21";
+
+        case "policyalways":
+            return String(item.ScheduledHWUpgrade).toLowerCase() === "always";
 
         default:
             return true;
@@ -752,32 +1369,54 @@ function getFilteredData() {
         });
 }
 
+function getDisplayValue(item, columnKey) {
+    if (columnKey === "MeetsMinimumTools") {
+        return item.MeetsMinimumTools ? "Yes" : "No";
+    }
+
+    return item[columnKey] ?? "";
+}
+
+function renderCell(item, column) {
+    const displayValue = getDisplayValue(item, column.key);
+    let content = htmlEncode(displayValue);
+    let title = htmlEncode(displayValue);
+
+    switch (column.key) {
+        case "VMName":
+            content = `<strong>${htmlEncode(item.VMName)}</strong>`;
+            break;
+
+        case "ToolsDisplayVersion":
+            title = `Raw value: ${htmlEncode(item.ToolsRawVersion)}`;
+            break;
+
+        case "ToolsCategory":
+            content = `<span class="badge ${classNameFromStatus(item.ToolsCategory)}">${htmlEncode(item.ToolsCategory)}</span>`;
+            break;
+
+        case "MeetsMinimumTools":
+            content = `<span class="${item.MeetsMinimumTools ? "yes" : "no"}">${item.MeetsMinimumTools ? "Yes" : "No"}</span>`;
+            break;
+    }
+
+    return `<td data-column="${column.key}" title="${title}">${content}</td>`;
+}
+
 function renderTable() {
     const filteredData = getFilteredData();
+    const visibleColumns = getVisibleColumns();
 
     tableBody.innerHTML = filteredData.map(item => `
         <tr>
-            <td><strong>${htmlEncode(item.VMName)}</strong></td>
-            <td>${htmlEncode(item.DNSName)}</td>
-            <td>${htmlEncode(item.OperatingSystem)}</td>
-            <td>${htmlEncode(item.PowerState)}</td>
-            <td>${htmlEncode(item.Cluster)}</td>
-            <td>${htmlEncode(item.ESXiHost)}</td>
-            <td>${htmlEncode(item.HardwareVersion)}</td>
-            <td title="Raw value: ${htmlEncode(item.ToolsRawVersion)}">${htmlEncode(item.ToolsDisplayVersion)}</td>
-            <td><span class="badge ${classNameFromStatus(item.ToolsCategory)}">${htmlEncode(item.ToolsCategory)}</span></td>
-            <td>${htmlEncode(item.ToolsRunningStatus)}</td>
-            <td>${htmlEncode(item.ToolsInstallType)}</td>
-            <td>${htmlEncode(item.ToolsUpgradePolicy)}</td>
-            <td class="${item.MeetsMinimumTools ? "yes" : "no"}">${item.MeetsMinimumTools ? "Yes" : "No"}</td>
-            <td>${htmlEncode(item.ScheduledHWUpgrade)}</td>
-            <td>${htmlEncode(item.ScheduledHWTarget)}</td>
-            <td>${htmlEncode(item.IPAddress)}</td>
+            ${visibleColumns.map(column => renderCell(item, column)).join("")}
         </tr>
     `).join("");
 
     resultCount.textContent =
         `${filteredData.length.toLocaleString()} of ${reportData.length.toLocaleString()} servers`;
+
+    requestAnimationFrame(updateScrollbarDock);
 }
 
 function exportFilteredCsv() {
@@ -806,30 +1445,110 @@ function exportFilteredCsv() {
     URL.revokeObjectURL(url);
 }
 
-document.querySelectorAll(".card").forEach(card => {
-    card.addEventListener("click", () => {
-        document.querySelectorAll(".card").forEach(item => item.classList.remove("active"));
-        card.classList.add("active");
-        activeCardFilter = card.dataset.filter;
-        renderTable();
+function activateDashboardFilter(control) {
+    document.querySelectorAll("[data-filter]").forEach(item => item.classList.remove("active"));
+    control.classList.add("active");
+    activeCardFilter = control.dataset.filter;
+    renderTable();
+}
+
+document.querySelectorAll("[data-filter]").forEach(control => {
+    control.addEventListener("click", () => activateDashboardFilter(control));
+
+    if (control.getAttribute("role") === "button") {
+        control.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                activateDashboardFilter(control);
+            }
+        });
+    }
+});
+
+columnsButton.addEventListener("click", () => {
+    const shouldOpen = columnsMenu.hidden;
+    columnsMenu.hidden = !shouldOpen;
+    columnsButton.setAttribute("aria-expanded", String(shouldOpen));
+});
+
+document.getElementById("showAllColumnsButton").addEventListener("click", () => {
+    columnDefinitions.forEach(column => { column.visible = true; });
+    saveColumnPreferences();
+    buildTableColumns();
+});
+
+document.getElementById("resetColumnsButton").addEventListener("click", () => {
+    columnDefinitions.forEach(column => {
+        column.visible = column.defaultVisible;
+        column.width = column.defaultWidth;
+    });
+
+    saveColumnPreferences();
+    buildTableColumns();
+});
+
+document.addEventListener("click", event => {
+    if (!columnControl.contains(event.target)) {
+        columnsMenu.hidden = true;
+        columnsButton.setAttribute("aria-expanded", "false");
+    }
+});
+
+document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !columnsMenu.hidden) {
+        columnsMenu.hidden = true;
+        columnsButton.setAttribute("aria-expanded", "false");
+        columnsButton.focus();
+    }
+});
+
+function updateScrollbarDock() {
+    refreshTableWidth();
+
+    const rect = tableContainer.getBoundingClientRect();
+    const viewportLeft = Math.max(0, rect.left);
+    const viewportRight = Math.min(window.innerWidth, rect.right);
+    const visibleWidth = Math.max(0, viewportRight - viewportLeft);
+    const tableIsVisible = rect.top < window.innerHeight && rect.bottom > 0;
+    const hasHorizontalOverflow = reportTable.scrollWidth > tableContainer.clientWidth + 1;
+
+    scrollbarTrack.style.width = `${reportTable.scrollWidth}px`;
+    scrollbarDock.style.left = `${viewportLeft}px`;
+    scrollbarDock.style.width = `${visibleWidth}px`;
+    scrollbarDock.classList.toggle(
+        "visible",
+        tableIsVisible && hasHorizontalOverflow && visibleWidth > 60
+    );
+}
+
+tableContainer.addEventListener("scroll", () => {
+    if (synchronizingScroll) {
+        return;
+    }
+
+    synchronizingScroll = true;
+    scrollbarDock.scrollLeft = tableContainer.scrollLeft;
+
+    requestAnimationFrame(() => {
+        synchronizingScroll = false;
     });
 });
 
-document.querySelectorAll("th[data-column]").forEach(header => {
-    header.addEventListener("click", () => {
-        const selectedColumn = header.dataset.column;
+scrollbarDock.addEventListener("scroll", () => {
+    if (synchronizingScroll) {
+        return;
+    }
 
-        if (sortColumn === selectedColumn) {
-            sortAscending = !sortAscending;
-        }
-        else {
-            sortColumn = selectedColumn;
-            sortAscending = true;
-        }
+    synchronizingScroll = true;
+    tableContainer.scrollLeft = scrollbarDock.scrollLeft;
 
-        renderTable();
+    requestAnimationFrame(() => {
+        synchronizingScroll = false;
     });
 });
+
+window.addEventListener("scroll", updateScrollbarDock, { passive: true });
+window.addEventListener("resize", updateScrollbarDock);
 
 searchBox.addEventListener("input", renderTable);
 clusterFilter.addEventListener("change", renderTable);
@@ -841,7 +1560,7 @@ document.getElementById("clearButton").addEventListener("click", () => {
     powerFilter.value = "";
     activeCardFilter = "all";
 
-    document.querySelectorAll(".card").forEach(item => item.classList.remove("active"));
+    document.querySelectorAll("[data-filter]").forEach(item => item.classList.remove("active"));
     document.querySelector('.card[data-filter="all"]').classList.add("active");
 
     renderTable();
@@ -849,8 +1568,9 @@ document.getElementById("clearButton").addEventListener("click", () => {
 
 document.getElementById("csvButton").addEventListener("click", exportFilteredCsv);
 
+loadColumnPreferences();
 populateClusterFilter();
-renderTable();
+buildTableColumns();
 </script>
 </body>
 </html>
@@ -861,12 +1581,14 @@ $html = $html.Replace('__REPORT_TITLE__', (ConvertTo-HtmlText -Value $reportTitl
 $html = $html.Replace('__GENERATED_DATE__', (ConvertTo-HtmlText -Value $generatedDate))
 $html = $html.Replace('__MINIMUM_TOOLS_MAJOR__', [string]$MinimumToolsMajorVersion)
 $html = $html.Replace('__SUMMARY_TOTAL__', [string]$summary['Total'])
-$html = $html.Replace('__SUMMARY_CURRENT__', [string]$summary['Current'])
-$html = $html.Replace('__SUMMARY_OUTDATED__', [string]$summary['Outdated'])
 $html = $html.Replace('__SUMMARY_BELOW_MINIMUM__', [string]$summary['BelowMinimum'])
 $html = $html.Replace('__SUMMARY_NOT_RUNNING__', [string]$summary['NotRunning'])
 $html = $html.Replace('__SUMMARY_NOT_INSTALLED__', [string]$summary['NotInstalled'])
 $html = $html.Replace('__SUMMARY_POWERED_OFF__', [string]$summary['PoweredOff'])
+$html = $html.Replace('__SUMMARY_HARDWARE_AT_21__', [string]$summary['HardwareAt21'])
+$html = $html.Replace('__HARDWARE_AT_21_PERCENT__', [string]$hardwareAt21Percent)
+$html = $html.Replace('__SUMMARY_POLICY_ALWAYS__', [string]$summary['PolicyAlways'])
+$html = $html.Replace('__POLICY_ALWAYS_PERCENT__', [string]$policyAlwaysPercent)
 $html = $html.Replace('__SUMMARY_HARDWARE_BELOW_21__', [string]$summary['HardwareBelow21'])
 $html = $html.Replace('__JSON_DATA__', $jsonData)
 
