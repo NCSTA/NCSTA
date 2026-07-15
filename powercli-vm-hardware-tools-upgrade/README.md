@@ -38,7 +38,12 @@ The report script inventories Windows Server VMs only and creates a self-contain
 - Sortable and drag-resizable table headers.
 - A Columns menu with per-column visibility, Show all, and Reset controls.
 - A synchronized horizontal scrollbar fixed to the bottom of the browser while the table is visible.
-- CSV export of the current filtered view.
+- Interactive inventory breakdown charts grouped by cluster, operating system, or exact VMware Tools version. Selecting a bar filters the table.
+- Named saved views containing the current search, filters, grouping, sort order, and column layout when the browser permits local storage.
+- A details drawer for each VM, opened by selecting its table row.
+- CSV export for either the visible columns or every available field in the current filtered view.
+- Full inventory snapshot export to JSON and comparison against an earlier snapshot or enhanced HTML report.
+- A print layout for the current filtered rows and visible columns, including browser Print to PDF support.
 - Hardware version and scheduled hardware upgrade fields.
 - Configurable output path and minimum VMware Tools major version.
 
@@ -60,6 +65,27 @@ Run from a script pane:
 2. Edit the settings at the top.
 3. Confirm you are connected to vCenter.
 4. Press F5.
+
+### Report Views and Exports
+
+Use **Views** to save the current report layout. A saved view includes:
+
+- Search text, cluster, power state, and selected dashboard status.
+- Inventory chart grouping and selected chart value.
+- Sort field and direction.
+- Visible columns and adjusted column widths.
+
+Saved views are stored by the browser, not in vCenter or in the HTML file. Some browsers restrict local storage for files opened directly from disk; the rest of the report remains available if view persistence is blocked.
+
+Use **Export** for:
+
+- **Visible columns CSV**: current filtered rows with only the columns shown in the table.
+- **Full filtered CSV**: current filtered rows with every report field.
+- **Inventory snapshot JSON**: the complete unfiltered inventory used as a historical baseline.
+
+Use **Compare** in a newer report and select an earlier snapshot JSON or an earlier enhanced HTML report. The comparison identifies added and removed VMs plus changes to VMware Tools version/state, Tools running status, VM hardware version, scheduled hardware upgrade policy, and scheduled target version.
+
+Use **Print** to print the current filtered report or select a PDF printer in the browser. Hidden columns remain hidden in printed output.
 
 ## Script 2: Stage VM Hardware Version 21
 
