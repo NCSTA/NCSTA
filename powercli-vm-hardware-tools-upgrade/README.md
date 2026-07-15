@@ -42,6 +42,10 @@ The report script inventories Windows Server VMs only and creates a self-contain
 - Hardware version and scheduled hardware upgrade fields.
 - Configurable output path and minimum VMware Tools major version.
 
+The generated report uses HTML5 with embedded custom CSS and vanilla JavaScript. It does not use W3.CSS, Bootstrap, external JavaScript packages, or CDN-hosted assets, so the report remains a portable single file that works offline.
+
+VMware Tools versions are read from vCenter through `Guest.ToolsVersion`; no guest credentials or `Invoke-VMScript` calls are used. The internal value is decoded using VMware's `1024 * major + 32 * minor + patch` format, so internal version `13322` is displayed as `13.0.10 (13322)`. The semantic and raw internal versions are both retained in CSV exports.
+
 Edit these values at the top before running:
 
 ```powershell
