@@ -574,7 +574,7 @@ $htmlTemplate = @'
 
     input[type="text"],
     select,
-    button:not(.coverage-item) {
+    button:not(.coverage-item):not(.bar-row) {
         border: 1px solid var(--border-strong);
         border-radius: 6px;
         background: var(--input);
@@ -602,7 +602,7 @@ $htmlTemplate = @'
         font-weight: 650;
     }
 
-    button:not(.coverage-item):hover {
+    button:not(.coverage-item):not(.bar-row):hover {
         background: #252c35;
     }
 
@@ -613,7 +613,8 @@ $htmlTemplate = @'
         outline-offset: 2px;
     }
 
-    .column-control {
+    .column-control,
+    .menu-control {
         position: relative;
     }
 
@@ -706,6 +707,200 @@ $htmlTemplate = @'
 
     .column-menu-actions button {
         flex: 1;
+    }
+
+    .action-menu {
+        position: absolute;
+        top: calc(100% + 7px);
+        right: 0;
+        z-index: 35;
+        width: 300px;
+        overflow: hidden;
+        background: var(--panel-raised);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.42);
+    }
+
+    .action-menu-section {
+        padding: 10px;
+    }
+
+    .action-menu-section + .action-menu-section {
+        border-top: 1px solid var(--border);
+    }
+
+    .action-menu-title {
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .action-menu input[type="text"] {
+        width: 100%;
+        min-width: 0;
+        margin-bottom: 8px;
+    }
+
+    .menu-command,
+    .saved-view-row {
+        display: flex;
+        width: 100%;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .menu-command {
+        margin-top: 5px;
+        text-align: left;
+    }
+
+    .saved-views-list {
+        display: grid;
+        gap: 5px;
+        max-height: 240px;
+        overflow: auto;
+    }
+
+    .saved-view-row button:first-child {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .saved-view-delete {
+        width: 38px;
+        flex: 0 0 38px;
+        padding: 7px;
+        color: var(--red);
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    .empty-state {
+        padding: 8px 2px;
+        color: var(--muted);
+        font-size: 12px;
+    }
+
+    .insights-panel {
+        margin-bottom: 16px;
+        overflow: hidden;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+    }
+
+    .insights-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .insights-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+    }
+
+    .insights-tabs {
+        display: inline-flex;
+        gap: 2px;
+        padding: 3px;
+        background: var(--input);
+        border: 1px solid var(--border);
+        border-radius: 7px;
+    }
+
+    .insights-tabs button {
+        min-height: 30px;
+        padding: 5px 9px;
+        border-color: transparent;
+        background: transparent;
+        color: var(--muted);
+    }
+
+    .insights-tabs button.active {
+        background: var(--header);
+        border-color: var(--border-strong);
+        color: var(--text);
+    }
+
+    .insights-scope {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 12px;
+    }
+
+    .bar-chart {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        gap: 8px 18px;
+        min-height: 82px;
+        padding: 12px;
+    }
+
+    .bar-row {
+        display: grid;
+        grid-template-columns: minmax(115px, 0.9fr) minmax(130px, 1.7fr) 44px;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        min-width: 0;
+        min-height: 32px;
+        padding: 4px 6px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text);
+        text-align: left;
+    }
+
+    .bar-row:hover,
+    .bar-row.active {
+        background: var(--panel-raised);
+        border-color: var(--border-strong);
+    }
+
+    .bar-row.active {
+        border-color: var(--blue);
+    }
+
+    .bar-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .bar-track {
+        height: 10px;
+        overflow: hidden;
+        background: var(--chart-track);
+        border-radius: 5px;
+    }
+
+    .bar-fill {
+        display: block;
+        min-width: 3px;
+        height: 100%;
+        background: var(--cyan);
+        border-radius: inherit;
+    }
+
+    .bar-count {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        text-align: right;
     }
 
     .result-count {
@@ -816,6 +1011,15 @@ $htmlTemplate = @'
         background: var(--row-hover);
     }
 
+    #reportTable tbody tr {
+        cursor: pointer;
+    }
+
+    #reportTable tbody tr:focus-visible {
+        outline: 2px solid var(--blue);
+        outline-offset: -2px;
+    }
+
     .badge {
         display: inline-block;
         min-width: 86px;
@@ -899,6 +1103,152 @@ $htmlTemplate = @'
         height: 1px;
     }
 
+    .overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        background: rgba(0, 0, 0, 0.66);
+    }
+
+    .detail-drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 90;
+        width: min(520px, 94vw);
+        overflow: auto;
+        background: var(--panel);
+        border-left: 1px solid var(--border-strong);
+        box-shadow: -18px 0 44px rgba(0, 0, 0, 0.45);
+    }
+
+    .drawer-header,
+    .modal-header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 16px;
+        background: var(--header);
+        border-bottom: 1px solid var(--border-strong);
+    }
+
+    .drawer-title,
+    .modal-title {
+        min-width: 0;
+        margin: 0;
+        overflow: hidden;
+        font-size: 18px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .close-button {
+        width: 38px;
+        margin-left: auto;
+        padding: 6px;
+        font-size: 22px;
+        line-height: 1;
+    }
+
+    .drawer-body {
+        padding: 14px 16px 28px;
+    }
+
+    .detail-section {
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .detail-section h3 {
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+    }
+
+    .detail-grid {
+        display: grid;
+        grid-template-columns: minmax(120px, 0.7fr) minmax(0, 1.3fr);
+        gap: 8px 14px;
+    }
+
+    .detail-label {
+        color: var(--muted);
+    }
+
+    .detail-value {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .modal-shell {
+        position: fixed;
+        inset: 5vh 4vw;
+        z-index: 90;
+        display: flex;
+        max-width: 1500px;
+        margin: auto;
+        flex-direction: column;
+        overflow: hidden;
+        background: var(--panel);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.58);
+    }
+
+    .comparison-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(110px, 1fr));
+        gap: 8px;
+        padding: 12px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .comparison-metric {
+        padding: 10px;
+        background: var(--panel-raised);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+    }
+
+    .comparison-metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+    }
+
+    .comparison-metric strong {
+        display: block;
+        margin-top: 4px;
+        font-size: 21px;
+    }
+
+    .comparison-table-wrap {
+        flex: 1;
+        overflow: auto;
+    }
+
+    .comparison-table {
+        min-width: 840px;
+        table-layout: auto;
+    }
+
+    .comparison-table th {
+        cursor: default;
+    }
+
+    .comparison-table td {
+        white-space: normal;
+    }
+
+    body.has-overlay {
+        overflow: hidden;
+    }
+
     .footer {
         color: var(--muted);
         padding: 14px 2px 4px;
@@ -932,12 +1282,8 @@ $htmlTemplate = @'
             min-width: 100%;
         }
 
-        .column-control,
-        .column-control > button {
-            width: 100%;
-        }
-
-        .column-menu {
+        .column-menu,
+        .action-menu {
             position: fixed;
             top: auto;
             right: 12px;
@@ -948,6 +1294,23 @@ $htmlTemplate = @'
             max-height: 70vh;
         }
 
+        .bar-chart {
+            grid-template-columns: 1fr;
+        }
+
+        .bar-row {
+            grid-template-columns: minmax(90px, 0.9fr) minmax(90px, 1.2fr) 40px;
+        }
+
+        .insights-scope {
+            width: 100%;
+            margin-left: 0;
+        }
+
+        .comparison-summary {
+            grid-template-columns: 1fr 1fr;
+        }
+
         .result-count {
             width: 100%;
             margin-left: 0;
@@ -955,6 +1318,76 @@ $htmlTemplate = @'
 
         .table-container {
             max-height: 62vh;
+        }
+    }
+
+    @media print {
+        :root {
+            color-scheme: light;
+            --background: #ffffff;
+            --panel: #ffffff;
+            --panel-raised: #ffffff;
+            --header: #e9edf2;
+            --text: #111827;
+            --muted: #4b5563;
+            --border: #c7cdd4;
+            --border-strong: #9ca3af;
+        }
+
+        body {
+            background: #ffffff;
+            color: #111827;
+            font-size: 10px;
+        }
+
+        .page {
+            padding: 0;
+        }
+
+        .toolbar,
+        .scrollbar-dock,
+        .overlay,
+        .detail-drawer,
+        .modal-shell,
+        .footer {
+            display: none !important;
+        }
+
+        .overview-grid,
+        .insights-panel {
+            break-inside: avoid;
+        }
+
+        .card,
+        .coverage-item,
+        .comparison-metric {
+            color: #111827;
+            box-shadow: none;
+        }
+
+        .table-container {
+            min-height: 0;
+            max-height: none;
+            overflow: visible;
+            border-top: 1px solid var(--border);
+        }
+
+        table {
+            width: 100% !important;
+        }
+
+        th {
+            position: static;
+            background: #e9edf2;
+            color: #111827;
+        }
+
+        td {
+            color: #111827;
+        }
+
+        .column-resizer {
+            display: none;
         }
     }
 </style>
@@ -1024,6 +1457,19 @@ $htmlTemplate = @'
         </div>
     </div>
 
+    <section class="insights-panel" aria-labelledby="insightsTitle">
+        <div class="insights-header">
+            <h2 class="insights-title" id="insightsTitle">Inventory breakdown</h2>
+            <div class="insights-tabs" role="tablist" aria-label="Inventory grouping">
+                <button class="active" type="button" role="tab" aria-selected="true" data-insight-key="Cluster">Cluster</button>
+                <button type="button" role="tab" aria-selected="false" data-insight-key="OperatingSystem">Operating system</button>
+                <button type="button" role="tab" aria-selected="false" data-insight-key="ToolsSemanticVersion">Tools version</button>
+            </div>
+            <span class="insights-scope" id="insightsScope"></span>
+        </div>
+        <div class="bar-chart" id="insightsChart"></div>
+    </section>
+
     <div class="toolbar">
         <input id="searchBox" type="text" placeholder="Search VM, OS, cluster, ESXi host, IP, Tools version...">
 
@@ -1039,7 +1485,36 @@ $htmlTemplate = @'
         </select>
 
         <button id="clearButton" type="button">Clear</button>
-        <button id="csvButton" type="button">Export CSV</button>
+
+        <div class="menu-control" id="viewsControl">
+            <button id="viewsButton" type="button" aria-expanded="false" aria-controls="viewsMenu">Views</button>
+            <div class="action-menu" id="viewsMenu" hidden>
+                <div class="action-menu-section">
+                    <div class="action-menu-title">Save current view</div>
+                    <input id="savedViewName" type="text" maxlength="60" placeholder="View name">
+                    <button class="menu-command" id="saveViewButton" type="button">Save view</button>
+                </div>
+                <div class="action-menu-section">
+                    <div class="action-menu-title">Saved views</div>
+                    <div class="saved-views-list" id="savedViewsList"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="menu-control" id="exportControl">
+            <button id="exportButton" type="button" aria-expanded="false" aria-controls="exportMenu">Export</button>
+            <div class="action-menu" id="exportMenu" hidden>
+                <div class="action-menu-section">
+                    <button class="menu-command" id="visibleCsvButton" type="button">Visible columns CSV</button>
+                    <button class="menu-command" id="fullCsvButton" type="button">Full filtered CSV</button>
+                    <button class="menu-command" id="snapshotButton" type="button">Inventory snapshot JSON</button>
+                </div>
+            </div>
+        </div>
+
+        <button id="compareButton" type="button">Compare</button>
+        <input id="compareFileInput" type="file" accept=".json,.html,.htm,application/json,text/html" hidden>
+        <button id="printButton" type="button">Print</button>
 
         <div class="column-control" id="columnControl">
             <button class="columns-button" id="columnsButton" type="button" aria-expanded="false" aria-controls="columnsMenu">
@@ -1079,15 +1554,53 @@ $htmlTemplate = @'
     </div>
 </div>
 
+<div class="overlay" id="drawerOverlay" hidden></div>
+<aside class="detail-drawer" id="detailDrawer" aria-labelledby="detailTitle" hidden>
+    <div class="drawer-header">
+        <h2 class="drawer-title" id="detailTitle">VM details</h2>
+        <button class="close-button" id="closeDetailButton" type="button" aria-label="Close details">&times;</button>
+    </div>
+    <div class="drawer-body" id="detailBody"></div>
+</aside>
+
+<div class="overlay" id="comparisonOverlay" hidden></div>
+<section class="modal-shell" id="comparisonModal" aria-labelledby="comparisonTitle" hidden>
+    <div class="modal-header">
+        <h2 class="modal-title" id="comparisonTitle">Inventory comparison</h2>
+        <button class="close-button" id="closeComparisonButton" type="button" aria-label="Close comparison">&times;</button>
+    </div>
+    <div class="comparison-summary" id="comparisonSummary"></div>
+    <div class="comparison-table-wrap">
+        <table class="comparison-table">
+            <thead>
+                <tr>
+                    <th>VM Name</th>
+                    <th>Change</th>
+                    <th>Field</th>
+                    <th>Previous</th>
+                    <th>Current</th>
+                </tr>
+            </thead>
+            <tbody id="comparisonBody"></tbody>
+        </table>
+    </div>
+</section>
+
+<script id="reportSnapshotData" type="application/json">__JSON_DATA__</script>
 <script>
-const reportData = __JSON_DATA__;
+const reportData = JSON.parse(document.getElementById("reportSnapshotData").textContent);
+const reportGeneratedAt = "__GENERATED_DATE__";
+const reportMinimumToolsMajor = __MINIMUM_TOOLS_MAJOR__;
 
 let activeCardFilter = "all";
 let sortColumn = "VMName";
 let sortAscending = true;
 let synchronizingScroll = false;
+let activeInsightKey = "Cluster";
+let activeGroupFilter = null;
 
 const columnPreferenceKey = "vmware-tools-dashboard-columns-v2";
+const savedViewsKey = "vmware-tools-dashboard-saved-views-v1";
 const columnDefinitions = [
     { key: "VMName", label: "VM Name", defaultWidth: 170, minWidth: 110, defaultVisible: true },
     { key: "DNSName", label: "DNS Name", defaultWidth: 190, minWidth: 120, defaultVisible: false },
@@ -1127,6 +1640,25 @@ const columnsButton = document.getElementById("columnsButton");
 const columnsButtonLabel = document.getElementById("columnsButtonLabel");
 const columnsMenu = document.getElementById("columnsMenu");
 const columnOptions = document.getElementById("columnOptions");
+const insightsChart = document.getElementById("insightsChart");
+const insightsScope = document.getElementById("insightsScope");
+const viewsControl = document.getElementById("viewsControl");
+const viewsButton = document.getElementById("viewsButton");
+const viewsMenu = document.getElementById("viewsMenu");
+const savedViewName = document.getElementById("savedViewName");
+const savedViewsList = document.getElementById("savedViewsList");
+const exportControl = document.getElementById("exportControl");
+const exportButton = document.getElementById("exportButton");
+const exportMenu = document.getElementById("exportMenu");
+const compareFileInput = document.getElementById("compareFileInput");
+const detailDrawer = document.getElementById("detailDrawer");
+const drawerOverlay = document.getElementById("drawerOverlay");
+const detailTitle = document.getElementById("detailTitle");
+const detailBody = document.getElementById("detailBody");
+const comparisonModal = document.getElementById("comparisonModal");
+const comparisonOverlay = document.getElementById("comparisonOverlay");
+const comparisonSummary = document.getElementById("comparisonSummary");
+const comparisonBody = document.getElementById("comparisonBody");
 
 function htmlEncode(value) {
     return String(value ?? "")
@@ -1139,6 +1671,46 @@ function htmlEncode(value) {
 
 function classNameFromStatus(value) {
     return "status-" + String(value ?? "unknown").toLowerCase().replaceAll(" ", "-");
+}
+
+function downloadTextFile(fileName, content, contentType) {
+    const blob = new Blob([content], { type: contentType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function closeMenus(exceptMenu = null) {
+    for (const [menu, button] of [
+        [columnsMenu, columnsButton],
+        [viewsMenu, viewsButton],
+        [exportMenu, exportButton]
+    ]) {
+        if (menu !== exceptMenu) {
+            menu.hidden = true;
+            button.setAttribute("aria-expanded", "false");
+        }
+    }
+}
+
+function toggleMenu(menu, button) {
+    const shouldOpen = menu.hidden;
+    closeMenus(menu);
+    menu.hidden = !shouldOpen;
+    button.setAttribute("aria-expanded", String(shouldOpen));
+}
+
+function setDashboardFilter(filterName) {
+    activeCardFilter = filterName || "all";
+    document.querySelectorAll("[data-filter]").forEach(item => {
+        item.classList.toggle("active", item.dataset.filter === activeCardFilter);
+    });
 }
 
 function populateClusterFilter() {
@@ -1203,6 +1775,158 @@ function saveColumnPreferences() {
     catch {
         // The report remains fully functional without saved preferences.
     }
+}
+
+function loadSavedViews() {
+    try {
+        const value = JSON.parse(localStorage.getItem(savedViewsKey));
+        return Array.isArray(value) ? value : [];
+    }
+    catch {
+        return [];
+    }
+}
+
+function storeSavedViews(views) {
+    try {
+        localStorage.setItem(savedViewsKey, JSON.stringify(views));
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+
+function captureViewState() {
+    return {
+        search: searchBox.value,
+        cluster: clusterFilter.value,
+        power: powerFilter.value,
+        cardFilter: activeCardFilter,
+        insightKey: activeInsightKey,
+        groupFilter: activeGroupFilter,
+        sortColumn,
+        sortAscending,
+        columns: Object.fromEntries(columnDefinitions.map(column => [
+            column.key,
+            { visible: column.visible, width: column.width }
+        ]))
+    };
+}
+
+function applyViewState(state) {
+    if (!state || typeof state !== "object") {
+        return;
+    }
+
+    searchBox.value = state.search || "";
+    clusterFilter.value = [...clusterFilter.options].some(option => option.value === state.cluster)
+        ? state.cluster
+        : "";
+    powerFilter.value = [...powerFilter.options].some(option => option.value === state.power)
+        ? state.power
+        : "";
+    sortColumn = columnDefinitions.some(column => column.key === state.sortColumn)
+        ? state.sortColumn
+        : "VMName";
+    sortAscending = state.sortAscending !== false;
+    activeInsightKey = ["Cluster", "OperatingSystem", "ToolsSemanticVersion"].includes(state.insightKey)
+        ? state.insightKey
+        : "Cluster";
+    activeGroupFilter = state.groupFilter && state.groupFilter.key && state.groupFilter.value
+        ? state.groupFilter
+        : null;
+    setDashboardFilter(state.cardFilter);
+
+    if (state.columns && typeof state.columns === "object") {
+        columnDefinitions.forEach(column => {
+            const savedColumn = state.columns[column.key];
+
+            if (savedColumn && typeof savedColumn.visible === "boolean") {
+                column.visible = savedColumn.visible;
+            }
+
+            if (savedColumn && Number.isFinite(savedColumn.width)) {
+                column.width = Math.max(column.minWidth, savedColumn.width);
+            }
+        });
+    }
+
+    if (getVisibleColumns().length === 0) {
+        columnDefinitions[0].visible = true;
+    }
+
+    document.querySelectorAll("[data-insight-key]").forEach(tab => {
+        const isActive = tab.dataset.insightKey === activeInsightKey;
+        tab.classList.toggle("active", isActive);
+        tab.setAttribute("aria-selected", String(isActive));
+    });
+
+    saveColumnPreferences();
+    buildTableColumns();
+}
+
+function renderSavedViews() {
+    const views = loadSavedViews();
+
+    if (views.length === 0) {
+        savedViewsList.innerHTML = '<div class="empty-state">No saved views</div>';
+        return;
+    }
+
+    savedViewsList.innerHTML = views.map(view => `
+        <div class="saved-view-row">
+            <button type="button" data-view-id="${htmlEncode(view.id)}" title="${htmlEncode(view.name)}">${htmlEncode(view.name)}</button>
+            <button class="saved-view-delete" type="button" data-delete-view-id="${htmlEncode(view.id)}" aria-label="Delete ${htmlEncode(view.name)}">&times;</button>
+        </div>
+    `).join("");
+
+    savedViewsList.querySelectorAll("[data-view-id]").forEach(button => {
+        button.addEventListener("click", () => {
+            const selected = loadSavedViews().find(view => view.id === button.dataset.viewId);
+
+            if (selected) {
+                applyViewState(selected.state);
+                closeMenus();
+            }
+        });
+    });
+
+    savedViewsList.querySelectorAll("[data-delete-view-id]").forEach(button => {
+        button.addEventListener("click", () => {
+            const updated = loadSavedViews().filter(view => view.id !== button.dataset.deleteViewId);
+            storeSavedViews(updated);
+            renderSavedViews();
+        });
+    });
+}
+
+function saveCurrentView() {
+    const name = savedViewName.value.trim();
+
+    if (!name) {
+        savedViewName.focus();
+        return;
+    }
+
+    const views = loadSavedViews();
+    const existing = views.find(view => view.name.toLowerCase() === name.toLowerCase());
+    const savedView = {
+        id: existing ? existing.id : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name,
+        state: captureViewState()
+    };
+    const updated = existing
+        ? views.map(view => view.id === existing.id ? savedView : view)
+        : [...views, savedView];
+
+    if (!storeSavedViews(updated)) {
+        alert("This browser did not allow the report to save views locally.");
+        return;
+    }
+
+    savedViewName.value = "";
+    renderSavedViews();
 }
 
 function updateColumnMenu() {
@@ -1384,7 +2108,7 @@ function matchesCardFilter(item) {
     }
 }
 
-function getFilteredData() {
+function getBaseFilteredData() {
     const searchText = searchBox.value.trim().toLowerCase();
     const selectedCluster = clusterFilter.value;
     const selectedPower = powerFilter.value;
@@ -1401,7 +2125,13 @@ function getFilteredData() {
             return Object.values(item).some(value =>
                 String(value ?? "").toLowerCase().includes(searchText)
             );
-        })
+        });
+}
+
+function getFilteredData() {
+    return getBaseFilteredData()
+        .filter(item => !activeGroupFilter ||
+            String(item[activeGroupFilter.key] || "Unknown") === activeGroupFilter.value)
         .sort((a, b) => {
             const left = a[sortColumn] ?? "";
             const right = b[sortColumn] ?? "";
@@ -1412,6 +2142,65 @@ function getFilteredData() {
                 { numeric: true, sensitivity: "base" }
             ) * (sortAscending ? 1 : -1);
         });
+}
+
+function renderInsights() {
+    const data = getBaseFilteredData();
+    const counts = new Map();
+
+    data.forEach(item => {
+        const value = String(item[activeInsightKey] || "Unknown");
+        counts.set(value, (counts.get(value) || 0) + 1);
+    });
+
+    const sorted = [...counts.entries()].sort((left, right) =>
+        right[1] - left[1] || left[0].localeCompare(right[0], undefined, { numeric: true })
+    );
+    const displayed = sorted.slice(0, 12);
+    const remainingCount = sorted.slice(12).reduce((total, item) => total + item[1], 0);
+    const maximum = Math.max(1, ...displayed.map(item => item[1]));
+
+    if (remainingCount > 0) {
+        displayed.push(["Other", remainingCount]);
+    }
+
+    insightsScope.textContent = activeGroupFilter
+        ? `${data.length.toLocaleString()} servers | selected: ${activeGroupFilter.value}`
+        : `${data.length.toLocaleString()} servers in current filter`;
+
+    if (displayed.length === 0) {
+        insightsChart.innerHTML = '<div class="empty-state">No data in the current filter</div>';
+        return;
+    }
+
+    insightsChart.innerHTML = displayed.map(([label, count]) => {
+        const isOther = label === "Other" && remainingCount > 0;
+        const isActive = !isOther && activeGroupFilter &&
+            activeGroupFilter.key === activeInsightKey && activeGroupFilter.value === label;
+        const width = Math.max(2, Math.round((count / maximum) * 100));
+
+        return `
+            <button class="bar-row ${isActive ? "active" : ""}" type="button"
+                    data-group-value="${isOther ? "" : htmlEncode(label)}"
+                    ${isOther ? "disabled" : ""} title="${htmlEncode(label)}: ${count}">
+                <span class="bar-label">${htmlEncode(label)}</span>
+                <span class="bar-track"><span class="bar-fill" style="width: ${width}%"></span></span>
+                <span class="bar-count">${count.toLocaleString()}</span>
+            </button>
+        `;
+    }).join("");
+
+    insightsChart.querySelectorAll("[data-group-value]:not([disabled])").forEach(button => {
+        button.addEventListener("click", () => {
+            const sameFilter = activeGroupFilter &&
+                activeGroupFilter.key === activeInsightKey &&
+                activeGroupFilter.value === button.dataset.groupValue;
+            activeGroupFilter = sameFilter
+                ? null
+                : { key: activeInsightKey, value: button.dataset.groupValue };
+            renderTable();
+        });
+    });
 }
 
 function getDisplayValue(item, columnKey) {
@@ -1453,7 +2242,7 @@ function renderTable() {
     const visibleColumns = getVisibleColumns();
 
     tableBody.innerHTML = filteredData.map(item => `
-        <tr>
+        <tr tabindex="0" data-vm-name="${htmlEncode(item.VMName)}" aria-label="View details for ${htmlEncode(item.VMName)}">
             ${visibleColumns.map(column => renderCell(item, column)).join("")}
         </tr>
     `).join("");
@@ -1461,10 +2250,11 @@ function renderTable() {
     resultCount.textContent =
         `${filteredData.length.toLocaleString()} of ${reportData.length.toLocaleString()} servers`;
 
+    renderInsights();
     requestAnimationFrame(updateScrollbarDock);
 }
 
-function exportFilteredCsv() {
+function exportCsv(columns, fileName) {
     const data = getFilteredData();
 
     if (data.length === 0) {
@@ -1472,28 +2262,273 @@ function exportFilteredCsv() {
         return;
     }
 
-    const columns = Object.keys(data[0]);
     const escapeCsv = value => '"' + String(value ?? "").replaceAll('"', '""') + '"';
     const csv = [
-        columns.map(escapeCsv).join(","),
-        ...data.map(row => columns.map(column => escapeCsv(row[column])).join(","))
+        columns.map(column => escapeCsv(column.label)).join(","),
+        ...data.map(row => columns.map(column => escapeCsv(getDisplayValue(row, column.key))).join(","))
     ].join("\r\n");
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+    downloadTextFile(fileName, csv, "text/csv;charset=utf-8;");
+}
 
-    link.href = url;
-    link.download = "VMwareTools-Filtered.csv";
-    link.click();
+function exportVisibleCsv() {
+    exportCsv(getVisibleColumns(), "VMwareTools-Visible-Filtered.csv");
+}
 
-    URL.revokeObjectURL(url);
+function exportFullCsv() {
+    const sample = getFilteredData()[0];
+
+    if (!sample) {
+        alert("There are no rows to export.");
+        return;
+    }
+
+    const columns = Object.keys(sample).map(key => ({ key, label: key }));
+    exportCsv(columns, "VMwareTools-Full-Filtered.csv");
+}
+
+function exportSnapshot() {
+    const snapshot = {
+        schema: "NCSTA.VMwareToolsDashboardSnapshot/1",
+        generatedAt: reportGeneratedAt,
+        minimumToolsMajorVersion: reportMinimumToolsMajor,
+        rowCount: reportData.length,
+        rows: reportData
+    };
+
+    const stamp = reportGeneratedAt.replaceAll(/[^0-9]/g, "").slice(0, 14) || "snapshot";
+    downloadTextFile(
+        `VMwareTools-Snapshot-${stamp}.json`,
+        JSON.stringify(snapshot, null, 2),
+        "application/json;charset=utf-8;"
+    );
+}
+
+function detailRows(item, keys) {
+    return keys.map(([key, label]) => `
+        <div class="detail-label">${htmlEncode(label)}</div>
+        <div class="detail-value">${htmlEncode(getDisplayValue(item, key) || "Not reported")}</div>
+    `).join("");
+}
+
+function detailSection(title, item, keys) {
+    return `
+        <section class="detail-section">
+            <h3>${htmlEncode(title)}</h3>
+            <div class="detail-grid">${detailRows(item, keys)}</div>
+        </section>
+    `;
+}
+
+function updateOverlayState() {
+    document.body.classList.toggle(
+        "has-overlay",
+        !detailDrawer.hidden || !comparisonModal.hidden
+    );
+}
+
+function openVmDetails(item) {
+    if (!item) {
+        return;
+    }
+
+    detailTitle.textContent = item.VMName || "VM details";
+    detailBody.innerHTML = [
+        detailSection("Identity", item, [
+            ["VMName", "VM name"],
+            ["DNSName", "DNS name"],
+            ["IPAddress", "IP address"],
+            ["OperatingSystem", "Operating system"]
+        ]),
+        detailSection("Virtualization", item, [
+            ["PowerState", "Power state"],
+            ["Cluster", "Cluster"],
+            ["ESXiHost", "ESXi host"],
+            ["HardwareVersion", "Hardware version"]
+        ]),
+        detailSection("VMware Tools", item, [
+            ["ToolsDisplayVersion", "Tools version"],
+            ["ToolsRawVersion", "Internal version"],
+            ["ToolsCategory", "Tools state"],
+            ["ToolsVersionStatus", "Version status"],
+            ["ToolsRunningStatus", "Running status"],
+            ["ToolsInstallType", "Install type"],
+            ["ToolsUpgradePolicy", "Upgrade policy"],
+            ["MeetsMinimumTools", "Meets minimum"]
+        ]),
+        detailSection("Scheduled hardware upgrade", item, [
+            ["ScheduledHWUpgrade", "Upgrade policy"],
+            ["ScheduledHWTarget", "Target version"]
+        ])
+    ].join("");
+
+    drawerOverlay.hidden = false;
+    detailDrawer.hidden = false;
+    updateOverlayState();
+    document.getElementById("closeDetailButton").focus();
+}
+
+function closeVmDetails() {
+    drawerOverlay.hidden = true;
+    detailDrawer.hidden = true;
+    updateOverlayState();
+}
+
+function normalizeSnapshotRows(payload) {
+    if (Array.isArray(payload)) {
+        return payload;
+    }
+
+    if (payload && Array.isArray(payload.rows)) {
+        return payload.rows;
+    }
+
+    if (payload && Array.isArray(payload.reportData)) {
+        return payload.reportData;
+    }
+
+    throw new Error("The selected file does not contain a VMware Tools report inventory.");
+}
+
+function parseSnapshotText(text, fileName) {
+    if (/\.html?$/i.test(fileName) || /^\s*<!doctype html/i.test(text)) {
+        const documentFromFile = new DOMParser().parseFromString(text, "text/html");
+        const embedded = documentFromFile.getElementById("reportSnapshotData");
+
+        if (embedded) {
+            return normalizeSnapshotRows(JSON.parse(embedded.textContent));
+        }
+
+        const legacyMatch = text.match(/const\s+reportData\s*=\s*(\[[\s\S]*?\]);/);
+
+        if (legacyMatch) {
+            return normalizeSnapshotRows(JSON.parse(legacyMatch[1]));
+        }
+
+        throw new Error("No embedded inventory was found in the selected HTML report.");
+    }
+
+    return normalizeSnapshotRows(JSON.parse(text));
+}
+
+function comparableValue(item, key) {
+    if (!item) {
+        return "";
+    }
+
+    if (key === "ToolsSemanticVersion") {
+        return String(item.ToolsSemanticVersion || item.ToolsDisplayVersion || item.ToolsRawVersion || "");
+    }
+
+    return String(item[key] ?? "");
+}
+
+function compareInventories(previousRows) {
+    const previous = new Map(previousRows.map(item => [String(item.VMName || "").toLowerCase(), item]));
+    const current = new Map(reportData.map(item => [String(item.VMName || "").toLowerCase(), item]));
+    const fields = [
+        ["ToolsSemanticVersion", "Tools version"],
+        ["ToolsCategory", "Tools state"],
+        ["ToolsRunningStatus", "Tools running status"],
+        ["HardwareVersion", "Hardware version"],
+        ["ScheduledHWUpgrade", "HW upgrade policy"],
+        ["ScheduledHWTarget", "HW upgrade target"]
+    ];
+    const changes = [];
+    const changedVms = new Set();
+    let added = 0;
+    let removed = 0;
+
+    for (const [key, currentItem] of current) {
+        const previousItem = previous.get(key);
+
+        if (!previousItem) {
+            added++;
+            changes.push({ vm: currentItem.VMName, type: "Added", field: "Inventory", before: "", after: "Present" });
+            continue;
+        }
+
+        for (const [field, label] of fields) {
+            const before = comparableValue(previousItem, field);
+            const after = comparableValue(currentItem, field);
+
+            if (before !== after) {
+                changedVms.add(key);
+                changes.push({ vm: currentItem.VMName, type: "Changed", field: label, before, after });
+            }
+        }
+    }
+
+    for (const [key, previousItem] of previous) {
+        if (!current.has(key)) {
+            removed++;
+            changes.push({ vm: previousItem.VMName, type: "Removed", field: "Inventory", before: "Present", after: "" });
+        }
+    }
+
+    changes.sort((left, right) =>
+        left.vm.localeCompare(right.vm, undefined, { numeric: true }) || left.field.localeCompare(right.field)
+    );
+
+    renderComparison({
+        previousCount: previousRows.length,
+        currentCount: reportData.length,
+        added,
+        removed,
+        changedVmCount: changedVms.size,
+        changes
+    });
+}
+
+function renderComparison(result) {
+    comparisonSummary.innerHTML = [
+        ["Previous servers", result.previousCount],
+        ["Current servers", result.currentCount],
+        ["Added / removed", `${result.added} / ${result.removed}`],
+        ["Changed servers", result.changedVmCount]
+    ].map(([label, value]) => `
+        <div class="comparison-metric"><span>${htmlEncode(label)}</span><strong>${htmlEncode(value)}</strong></div>
+    `).join("");
+
+    comparisonBody.innerHTML = result.changes.length > 0
+        ? result.changes.map(change => `
+            <tr>
+                <td><strong>${htmlEncode(change.vm)}</strong></td>
+                <td>${htmlEncode(change.type)}</td>
+                <td>${htmlEncode(change.field)}</td>
+                <td>${htmlEncode(change.before || "-")}</td>
+                <td>${htmlEncode(change.after || "-")}</td>
+            </tr>
+        `).join("")
+        : '<tr><td colspan="5">No tracked inventory changes were found.</td></tr>';
+
+    comparisonOverlay.hidden = false;
+    comparisonModal.hidden = false;
+    updateOverlayState();
+    document.getElementById("closeComparisonButton").focus();
+}
+
+function closeComparison() {
+    comparisonOverlay.hidden = true;
+    comparisonModal.hidden = true;
+    updateOverlayState();
+}
+
+async function importComparisonFile(file) {
+    try {
+        const previousRows = parseSnapshotText(await file.text(), file.name);
+        compareInventories(previousRows);
+    }
+    catch (error) {
+        alert(`Unable to compare the selected report: ${error.message}`);
+    }
+    finally {
+        compareFileInput.value = "";
+    }
 }
 
 function activateDashboardFilter(control) {
-    document.querySelectorAll("[data-filter]").forEach(item => item.classList.remove("active"));
-    control.classList.add("active");
-    activeCardFilter = control.dataset.filter;
+    setDashboardFilter(control.dataset.filter);
     renderTable();
 }
 
@@ -1511,9 +2546,21 @@ document.querySelectorAll("[data-filter]").forEach(control => {
 });
 
 columnsButton.addEventListener("click", () => {
-    const shouldOpen = columnsMenu.hidden;
-    columnsMenu.hidden = !shouldOpen;
-    columnsButton.setAttribute("aria-expanded", String(shouldOpen));
+    toggleMenu(columnsMenu, columnsButton);
+});
+
+viewsButton.addEventListener("click", () => {
+    renderSavedViews();
+    toggleMenu(viewsMenu, viewsButton);
+});
+
+exportButton.addEventListener("click", () => toggleMenu(exportMenu, exportButton));
+
+document.getElementById("saveViewButton").addEventListener("click", saveCurrentView);
+savedViewName.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+        saveCurrentView();
+    }
 });
 
 document.getElementById("showAllColumnsButton").addEventListener("click", () => {
@@ -1533,19 +2580,72 @@ document.getElementById("resetColumnsButton").addEventListener("click", () => {
 });
 
 document.addEventListener("click", event => {
-    if (!columnControl.contains(event.target)) {
-        columnsMenu.hidden = true;
-        columnsButton.setAttribute("aria-expanded", "false");
+    if (!columnControl.contains(event.target) &&
+        !viewsControl.contains(event.target) &&
+        !exportControl.contains(event.target)) {
+        closeMenus();
     }
 });
 
 document.addEventListener("keydown", event => {
-    if (event.key === "Escape" && !columnsMenu.hidden) {
-        columnsMenu.hidden = true;
-        columnsButton.setAttribute("aria-expanded", "false");
-        columnsButton.focus();
+    if (event.key !== "Escape") {
+        return;
+    }
+
+    if (!comparisonModal.hidden) {
+        closeComparison();
+    }
+    else if (!detailDrawer.hidden) {
+        closeVmDetails();
+    }
+    else {
+        closeMenus();
     }
 });
+
+document.querySelectorAll("[data-insight-key]").forEach(tab => {
+    tab.addEventListener("click", () => {
+        activeInsightKey = tab.dataset.insightKey;
+        activeGroupFilter = null;
+
+        document.querySelectorAll("[data-insight-key]").forEach(item => {
+            const isActive = item === tab;
+            item.classList.toggle("active", isActive);
+            item.setAttribute("aria-selected", String(isActive));
+        });
+
+        renderTable();
+    });
+});
+
+function openDetailsFromRow(row) {
+    const item = reportData.find(candidate => candidate.VMName === row.dataset.vmName);
+    openVmDetails(item);
+}
+
+tableBody.addEventListener("click", event => {
+    const row = event.target.closest("tr[data-vm-name]");
+
+    if (row) {
+        openDetailsFromRow(row);
+    }
+});
+
+tableBody.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+        const row = event.target.closest("tr[data-vm-name]");
+
+        if (row) {
+            event.preventDefault();
+            openDetailsFromRow(row);
+        }
+    }
+});
+
+document.getElementById("closeDetailButton").addEventListener("click", closeVmDetails);
+drawerOverlay.addEventListener("click", closeVmDetails);
+document.getElementById("closeComparisonButton").addEventListener("click", closeComparison);
+comparisonOverlay.addEventListener("click", closeComparison);
 
 function updateScrollbarDock() {
     refreshTableWidth();
@@ -1603,18 +2703,35 @@ document.getElementById("clearButton").addEventListener("click", () => {
     searchBox.value = "";
     clusterFilter.value = "";
     powerFilter.value = "";
-    activeCardFilter = "all";
-
-    document.querySelectorAll("[data-filter]").forEach(item => item.classList.remove("active"));
-    document.querySelector('.card[data-filter="all"]').classList.add("active");
+    activeGroupFilter = null;
+    setDashboardFilter("all");
 
     renderTable();
 });
 
-document.getElementById("csvButton").addEventListener("click", exportFilteredCsv);
+document.getElementById("visibleCsvButton").addEventListener("click", () => {
+    exportVisibleCsv();
+    closeMenus();
+});
+document.getElementById("fullCsvButton").addEventListener("click", () => {
+    exportFullCsv();
+    closeMenus();
+});
+document.getElementById("snapshotButton").addEventListener("click", () => {
+    exportSnapshot();
+    closeMenus();
+});
+document.getElementById("compareButton").addEventListener("click", () => compareFileInput.click());
+compareFileInput.addEventListener("change", () => {
+    if (compareFileInput.files && compareFileInput.files[0]) {
+        importComparisonFile(compareFileInput.files[0]);
+    }
+});
+document.getElementById("printButton").addEventListener("click", () => window.print());
 
 loadColumnPreferences();
 populateClusterFilter();
+renderSavedViews();
 buildTableColumns();
 </script>
 </body>
