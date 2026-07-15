@@ -17,8 +17,8 @@ $ErrorActionPreference = 'Stop'
 
 $OutputPath = "C:\Temp\VMwareTools-WindowsServer-$((Get-Date).ToString('yyyyMMdd-HHmmss')).html"
 
-# Minimum VMware Tools major version. For vCenter numeric Tools versions,
-# 13 maps to a threshold of 13000.
+# Minimum VMware Tools major version. The vCenter internal Tools version is
+# decoded into major, minor, and patch components before this is evaluated.
 $MinimumToolsMajorVersion = 13
 
 # Automatically open the HTML report when finished.
@@ -27,6 +27,44 @@ $OpenReport = $true
 # ==========================================================
 # END SETTINGS
 # ==========================================================
+
+function ConvertFrom-ToolsInternalVersion {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [string]$RawVersion
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RawVersion) -or $RawVersion -eq '0') {
+        return $null
+    }
+
+    $numericVersion = [uint32]0
+
+    if (-not [uint32]::TryParse($RawVersion, [ref]$numericVersion) -or
+        $numericVersion -eq 0 -or
+        $numericVersion -eq [int]::MaxValue) {
+
+        return $null
+    }
+
+    # VMware encodes x.y.z as (x * 1024) + (y * 32) + z.
+    $major = [int]($numericVersion -shr 10)
+    $minor = [int](($numericVersion -shr 5) -band 0x1f)
+    $patch = [int]($numericVersion -band 0x1f)
+
+    if ($major -lt 1 -or $major -gt 99) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        InternalVersion = $numericVersion
+        Major           = $major
+        Minor           = $minor
+        Patch           = $patch
+        VersionString   = "$major.$minor.$patch"
+    }
+}
 
 function ConvertTo-ToolsDisplayVersion {
     [CmdletBinding()]
@@ -39,19 +77,17 @@ function ConvertTo-ToolsDisplayVersion {
         return 'Unknown'
     }
 
-    if ($RawVersion -match '^\d+$') {
-        $numericVersion = [int]$RawVersion
-
-        if ($numericVersion -ge 10000) {
-            $major = [math]::Floor($numericVersion / 1000)
-            $remainder = $numericVersion % 1000
-            $minor = [math]::Floor($remainder / 100)
-
-            return "$major.$minor generation ($RawVersion)"
-        }
+    if ($RawVersion -eq [string][int]::MaxValue) {
+        return "Unmanaged ($RawVersion)"
     }
 
-    return $RawVersion
+    $versionInfo = ConvertFrom-ToolsInternalVersion -RawVersion $RawVersion
+
+    if ($null -eq $versionInfo) {
+        return "Internal version $RawVersion"
+    }
+
+    return "$($versionInfo.VersionString) ($RawVersion)"
 }
 
 function Get-ToolsCategory {
@@ -66,7 +102,10 @@ function Get-ToolsCategory {
         [AllowNull()]
         [string]$RawVersion,
 
-        [int]$MinimumVersionNumber
+        [AllowNull()]
+        [object]$VersionInfo,
+
+        [int]$MinimumMajorVersion
     )
 
     if ([string]::IsNullOrWhiteSpace($RawVersion) -or
@@ -80,7 +119,7 @@ function Get-ToolsCategory {
         return 'Not Running'
     }
 
-    if ($RawVersion -match '^\d+$' -and [int]$RawVersion -lt $MinimumVersionNumber) {
+    if ($null -ne $VersionInfo -and $VersionInfo.Major -lt $MinimumMajorVersion) {
         return 'Below Minimum'
     }
 
@@ -134,8 +173,6 @@ $connectedServers = @($global:DefaultVIServers | Where-Object { $_.IsConnected }
 if ($connectedServers.Count -eq 0) {
     throw 'No active vCenter connection was found. Run Connect-VIServer first.'
 }
-
-$minimumToolsNumber = $MinimumToolsMajorVersion * 1000
 
 Write-Host 'Retrieving VM inventory from vCenter...' -ForegroundColor Cyan
 
@@ -209,12 +246,14 @@ $reportData = foreach ($vmView in $windowsServerVMs) {
     $rawToolsVersion = [string]$vmView.Guest.ToolsVersion
     $toolsStatus = [string]$vmView.Guest.ToolsVersionStatus2
     $runningStatus = [string]$vmView.Guest.ToolsRunningStatus
+    $toolsVersionInfo = ConvertFrom-ToolsInternalVersion -RawVersion $rawToolsVersion
 
     $category = Get-ToolsCategory `
         -VersionStatus $toolsStatus `
         -RunningStatus $runningStatus `
         -RawVersion $rawToolsVersion `
-        -MinimumVersionNumber $minimumToolsNumber
+        -VersionInfo $toolsVersionInfo `
+        -MinimumMajorVersion $MinimumToolsMajorVersion
 
     $scheduledUpgrade = $vmView.Config.ScheduledHardwareUpgradeInfo
 
@@ -242,6 +281,12 @@ $reportData = foreach ($vmView in $windowsServerVMs) {
         ESXiHost             = [string]$hostName
         HardwareVersion      = [string]$vmView.Config.Version
         ToolsRawVersion      = [string]$rawToolsVersion
+        ToolsSemanticVersion = if ($null -ne $toolsVersionInfo) {
+            [string]$toolsVersionInfo.VersionString
+        }
+        else {
+            ''
+        }
         ToolsDisplayVersion  = ConvertTo-ToolsDisplayVersion -RawVersion $rawToolsVersion
         ToolsCategory        = [string]$category
         ToolsVersionStatus   = [string]$toolsStatus
@@ -249,8 +294,8 @@ $reportData = foreach ($vmView in $windowsServerVMs) {
         ToolsInstallType     = [string]$vmView.Guest.ToolsInstallType
         ToolsUpgradePolicy   = [string]$vmView.Config.Tools.ToolsUpgradePolicy
         MeetsMinimumTools    = (
-            $rawToolsVersion -match '^\d+$' -and
-            [int]$rawToolsVersion -ge $minimumToolsNumber
+            $null -ne $toolsVersionInfo -and
+            $toolsVersionInfo.Major -ge $MinimumToolsMajorVersion
         )
         ScheduledHWUpgrade   = if ($null -ne $scheduledUpgrade) {
             [string]$scheduledUpgrade.UpgradePolicy
