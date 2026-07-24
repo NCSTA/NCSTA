@@ -44,7 +44,7 @@ $SmtpCredential = $null
 $PSRemotingCredential = $null
 $PSRemotingAuthentication = 'Default'
 $EmailDetailRowLimit = 5
-$TcpSourceComputerExclusionList = @(
+$TcpComputerExclusionList = @(
     '10.10.20.30',
     'scanner01.contoso.com',
     'pentest-*'
@@ -68,7 +68,7 @@ $PSRemotingAuthentication = 'Default'
 
 The authentication value is passed to both `Test-WSMan` and `Invoke-Command`. `Default` is usually correct for domain-joined Windows servers; use `Kerberos`, `Negotiate`, or another supported option only if your WinRM policy requires it.
 
-Use `$TcpSourceComputerExclusionList` to suppress noisy TCP connections from known scanners or internal pen-testing systems. Entries can be exact IP addresses, FQDNs, short hostnames, or PowerShell wildcard patterns.
+Use `$TcpComputerExclusionList` to suppress noisy TCP connections from known scanners, domain controllers, or internal pen-testing systems. Entries can be exact IP addresses, FQDNs, short hostnames, or PowerShell wildcard patterns.
 
 ## Running The Audit
 
@@ -126,5 +126,5 @@ The log records CSV import, WinRM connectivity, remote audit execution, dependen
 - WinRM must be enabled and reachable on each target server.
 - The account running the script must have permission to query TCP connections, SMB sessions, SMB open files, and process owner details on target servers.
 - Native management agent processes are excluded by `$NativeProcessExclusionList`.
-- Known scanner source computers can be excluded from the Active Processes and TCP Connections section by `$TcpSourceComputerExclusionList`.
+- Known scanner computers, domain controllers, or other expected infrastructure peers can be excluded from the Active Processes and TCP Connections section by `$TcpComputerExclusionList`.
 - The script exits with code `0` when processing completes without errors, `1` for fatal startup errors, and `2` when one or more server-level errors occur.
