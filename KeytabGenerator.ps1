@@ -16,25 +16,12 @@ $domainComboBox = New-Object Windows.Forms.ComboBox
 $domainComboBox.Location = New-Object Drawing.Point(120, 10)
 $domainComboBox.Size = New-Object Drawing.Size(250, 20)
 $domainComboBox.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
-# Discover domains before selecting an item. Selecting index 0 on an empty
-# ComboBox throws ArgumentOutOfRangeException and prevents the form from opening.
-$availableDomains = @()
-try {
-    $availableDomains = @(Get-ADForest -Current LocalComputer -ErrorAction Stop |
-            Select-Object -ExpandProperty Domains)
-}
-catch {
-    # A workstation may not be able to contact a GC during startup. The current
-    # logon domain is still a useful fallback and avoids a one-time GUI failure.
-    if (-not [string]::IsNullOrWhiteSpace($env:USERDNSDOMAIN)) {
-        $availableDomains = @($env:USERDNSDOMAIN)
-    }
-}
-$availableDomains = @($availableDomains |
-        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-        Sort-Object -Unique)
-if ($availableDomains.Count -gt 0) {
-    [void]$domainComboBox.Items.AddRange([object[]]$availableDomains)
+# Add the approved domains here in the order they should appear in the dropdown.
+# Keep environment-specific domain names out of the public repository.
+$domains = @(
+)
+if ($domains.Count -gt 0) {
+    [void]$domainComboBox.Items.AddRange([object[]]$domains)
     $domainComboBox.SelectedIndex = 0
 }
 # ----SAMAccountName----
