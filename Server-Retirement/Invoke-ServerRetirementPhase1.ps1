@@ -53,9 +53,9 @@ $NativeProcessExclusionList = @(
     'venPlatformHandler'
 )
 
-# Exclude noisy TCP source computers by IP, FQDN, short hostname, or wildcard.
+# Exclude noisy TCP computers by IP, FQDN, short hostname, or wildcard.
 # Example: @('10.10.20.30', 'scanner01.contoso.com', 'scanner02', 'pentest-*')
-$TcpSourceComputerExclusionList = @()
+$TcpComputerExclusionList = @()
 
 $ExcludedSmbShareNamePatterns = @(
     '^ADMIN\$$',
@@ -346,7 +346,7 @@ function Invoke-ServerRetirementAudit {
 
         [Parameter(Mandatory = $true)]
         [AllowEmptyCollection()]
-        [string[]]$TcpSourceComputerExclusionList,
+        [string[]]$TcpComputerExclusionList,
 
         [Parameter(Mandatory = $true)]
         [string[]]$ExcludedSmbShareNamePatterns,
@@ -365,7 +365,7 @@ function Invoke-ServerRetirementAudit {
     $remoteAuditScript = {
         param(
             [string[]]$NativeProcessExclusionList,
-            [string[]]$TcpSourceComputerExclusionList,
+            [string[]]$TcpComputerExclusionList,
             [string[]]$ExcludedSmbShareNamePatterns
         )
 
@@ -413,7 +413,7 @@ function Invoke-ServerRetirementAudit {
             return 'Unknown'
         }
 
-        function Get-TcpSourceComparisonValue {
+        function Get-TcpComputerComparisonValue {
             [CmdletBinding()]
             param(
                 [AllowNull()]
@@ -436,42 +436,42 @@ function Invoke-ServerRetirementAudit {
             return @($values | Select-Object -Unique)
         }
 
-        function Test-IsExcludedTcpSource {
+        function Test-IsExcludedTcpComputer {
             [CmdletBinding()]
             param(
                 [AllowNull()]
                 [string]$RemoteAddress,
 
                 [AllowNull()]
-                [string]$SourceComputer,
+                [string]$Computer,
 
-                [string[]]$TcpSourceComputerExclusionList
+                [string[]]$TcpComputerExclusionList
             )
 
-            if ($null -eq $TcpSourceComputerExclusionList -or $TcpSourceComputerExclusionList.Count -eq 0) {
+            if ($null -eq $TcpComputerExclusionList -or $TcpComputerExclusionList.Count -eq 0) {
                 return $false
             }
 
-            $sourceValues = @(
-                Get-TcpSourceComparisonValue -Value $RemoteAddress
-                Get-TcpSourceComparisonValue -Value $SourceComputer
+            $computerValues = @(
+                Get-TcpComputerComparisonValue -Value $RemoteAddress
+                Get-TcpComputerComparisonValue -Value $Computer
             ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
 
-            foreach ($excludedSource in @($TcpSourceComputerExclusionList)) {
-                if ([string]::IsNullOrWhiteSpace($excludedSource)) {
+            foreach ($excludedComputer in @($TcpComputerExclusionList)) {
+                if ([string]::IsNullOrWhiteSpace($excludedComputer)) {
                     continue
                 }
 
-                $excludedValues = Get-TcpSourceComparisonValue -Value $excludedSource
-                $hasWildcard = [System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($excludedSource)
+                $excludedValues = Get-TcpComputerComparisonValue -Value $excludedComputer
+                $hasWildcard = [System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($excludedComputer)
 
-                foreach ($sourceValue in $sourceValues) {
-                    if ($hasWildcard -and $sourceValue -like $excludedSource) {
+                foreach ($computerValue in $computerValues) {
+                    if ($hasWildcard -and $computerValue -like $excludedComputer) {
                         return $true
                     }
 
                     foreach ($excludedValue in $excludedValues) {
-                        if ($sourceValue -ieq $excludedValue) {
+                        if ($computerValue -ieq $excludedValue) {
                             return $true
                         }
                     }
@@ -507,7 +507,7 @@ function Invoke-ServerRetirementAudit {
             [CmdletBinding()]
             param(
                 [string[]]$NativeProcessExclusionList,
-                [string[]]$TcpSourceComputerExclusionList,
+                [string[]]$TcpComputerExclusionList,
                 [string[]]$ExcludedSmbShareNamePatterns
             )
 
@@ -571,8 +571,8 @@ function Invoke-ServerRetirementAudit {
                         }
 
                         $remoteAddress = [string]$connection.RemoteAddress
-                        $sourceComputer = Resolve-RemoteHostName -NameOrAddress $remoteAddress
-                        if (Test-IsExcludedTcpSource -RemoteAddress $remoteAddress -SourceComputer $sourceComputer -TcpSourceComputerExclusionList $TcpSourceComputerExclusionList) {
+                        $computer = Resolve-RemoteHostName -NameOrAddress $remoteAddress
+                        if (Test-IsExcludedTcpComputer -RemoteAddress $remoteAddress -Computer $computer -TcpComputerExclusionList $TcpComputerExclusionList) {
                             continue
                         }
 
@@ -580,7 +580,7 @@ function Invoke-ServerRetirementAudit {
                             ProcessName    = $processName
                             ProcessId      = $processId
                             UserId         = Get-ProcessOwnerName -ProcessId $processId
-                            SourceComputer = $sourceComputer
+                            Computer       = $computer
                             RemoteAddress  = $remoteAddress
                             RemotePort     = $connection.RemotePort
                             LocalAddress   = [string]$connection.LocalAddress
@@ -660,7 +660,7 @@ function Invoke-ServerRetirementAudit {
                     Get-SmbOpenFile -ErrorAction Stop |
                         ForEach-Object {
                             [PSCustomObject]@{
-                                SourceComputer    = Resolve-RemoteHostName -NameOrAddress ([string]$_.ClientComputerName)
+                                Computer          = Resolve-RemoteHostName -NameOrAddress ([string]$_.ClientComputerName)
                                 FilePath          = $_.Path
                                 ShareRelativePath = $_.ShareRelativePath
                                 UserId            = $_.ClientUserName
@@ -692,7 +692,7 @@ function Invoke-ServerRetirementAudit {
 
         Test-ServerRetirementEligibility `
             -NativeProcessExclusionList $NativeProcessExclusionList `
-            -TcpSourceComputerExclusionList $TcpSourceComputerExclusionList `
+            -TcpComputerExclusionList $TcpComputerExclusionList `
             -ExcludedSmbShareNamePatterns $ExcludedSmbShareNamePatterns
     }
 
@@ -700,7 +700,7 @@ function Invoke-ServerRetirementAudit {
     $invokeParams = @{
         ComputerName  = $ServerName
         ScriptBlock   = $remoteAuditScript
-        ArgumentList  = $NativeProcessExclusionList, $TcpSourceComputerExclusionList, $ExcludedSmbShareNamePatterns
+        ArgumentList  = $NativeProcessExclusionList, $TcpComputerExclusionList, $ExcludedSmbShareNamePatterns
         SessionOption = $sessionOption
         ErrorAction   = 'Stop'
     }
@@ -1022,7 +1022,7 @@ try {
             $auditResult = Invoke-ServerRetirementAudit `
                 -ServerName $serverName `
                 -NativeProcessExclusionList $NativeProcessExclusionList `
-                -TcpSourceComputerExclusionList $TcpSourceComputerExclusionList `
+                -TcpComputerExclusionList $TcpComputerExclusionList `
                 -ExcludedSmbShareNamePatterns $ExcludedSmbShareNamePatterns `
                 -Credential $PSRemotingCredential `
                 -Authentication $PSRemotingAuthentication `
