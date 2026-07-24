@@ -53,6 +53,10 @@ $NativeProcessExclusionList = @(
     'venPlatformHandler'
 )
 
+# Exclude noisy TCP source computers by IP, FQDN, short hostname, or wildcard.
+# Example: @('10.10.20.30', 'scanner01.contoso.com', 'scanner02', 'pentest-*')
+$TcpSourceComputerExclusionList = @()
+
 $ExcludedSmbShareNamePatterns = @(
     '^ADMIN\$$',
     '^IPC\$$',
@@ -341,6 +345,10 @@ function Invoke-ServerRetirementAudit {
         [string[]]$NativeProcessExclusionList,
 
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$TcpSourceComputerExclusionList,
+
+        [Parameter(Mandatory = $true)]
         [string[]]$ExcludedSmbShareNamePatterns,
 
         [AllowNull()]
@@ -357,6 +365,7 @@ function Invoke-ServerRetirementAudit {
     $remoteAuditScript = {
         param(
             [string[]]$NativeProcessExclusionList,
+            [string[]]$TcpSourceComputerExclusionList,
             [string[]]$ExcludedSmbShareNamePatterns
         )
 
@@ -404,6 +413,74 @@ function Invoke-ServerRetirementAudit {
             return 'Unknown'
         }
 
+        function Get-TcpSourceComparisonValue {
+            [CmdletBinding()]
+            param(
+                [AllowNull()]
+                [string]$Value
+            )
+
+            $text = ([string]$Value).Trim()
+            if ([string]::IsNullOrWhiteSpace($text)) {
+                return @()
+            }
+
+            $values = [System.Collections.Generic.List[string]]::new()
+            $values.Add($text)
+
+            [System.Net.IPAddress]$ipAddress = $null
+            if (-not [System.Net.IPAddress]::TryParse($text, [ref]$ipAddress) -and $text -like '*.*') {
+                $values.Add(($text -split '\.')[0])
+            }
+
+            return @($values | Select-Object -Unique)
+        }
+
+        function Test-IsExcludedTcpSource {
+            [CmdletBinding()]
+            param(
+                [AllowNull()]
+                [string]$RemoteAddress,
+
+                [AllowNull()]
+                [string]$SourceComputer,
+
+                [string[]]$TcpSourceComputerExclusionList
+            )
+
+            if ($null -eq $TcpSourceComputerExclusionList -or $TcpSourceComputerExclusionList.Count -eq 0) {
+                return $false
+            }
+
+            $sourceValues = @(
+                Get-TcpSourceComparisonValue -Value $RemoteAddress
+                Get-TcpSourceComparisonValue -Value $SourceComputer
+            ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+
+            foreach ($excludedSource in @($TcpSourceComputerExclusionList)) {
+                if ([string]::IsNullOrWhiteSpace($excludedSource)) {
+                    continue
+                }
+
+                $excludedValues = Get-TcpSourceComparisonValue -Value $excludedSource
+                $hasWildcard = [System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($excludedSource)
+
+                foreach ($sourceValue in $sourceValues) {
+                    if ($hasWildcard -and $sourceValue -like $excludedSource) {
+                        return $true
+                    }
+
+                    foreach ($excludedValue in $excludedValues) {
+                        if ($sourceValue -ieq $excludedValue) {
+                            return $true
+                        }
+                    }
+                }
+            }
+
+            return $false
+        }
+
         function Test-IsExcludedSmbShareName {
             [CmdletBinding()]
             param(
@@ -430,6 +507,7 @@ function Invoke-ServerRetirementAudit {
             [CmdletBinding()]
             param(
                 [string[]]$NativeProcessExclusionList,
+                [string[]]$TcpSourceComputerExclusionList,
                 [string[]]$ExcludedSmbShareNamePatterns
             )
 
@@ -492,12 +570,18 @@ function Invoke-ServerRetirementAudit {
                             continue
                         }
 
+                        $remoteAddress = [string]$connection.RemoteAddress
+                        $sourceComputer = Resolve-RemoteHostName -NameOrAddress $remoteAddress
+                        if (Test-IsExcludedTcpSource -RemoteAddress $remoteAddress -SourceComputer $sourceComputer -TcpSourceComputerExclusionList $TcpSourceComputerExclusionList) {
+                            continue
+                        }
+
                         [PSCustomObject]@{
                             ProcessName    = $processName
                             ProcessId      = $processId
                             UserId         = Get-ProcessOwnerName -ProcessId $processId
-                            SourceComputer = Resolve-RemoteHostName -NameOrAddress ([string]$connection.RemoteAddress)
-                            RemoteAddress  = [string]$connection.RemoteAddress
+                            SourceComputer = $sourceComputer
+                            RemoteAddress  = $remoteAddress
                             RemotePort     = $connection.RemotePort
                             LocalAddress   = [string]$connection.LocalAddress
                             LocalPort      = $connection.LocalPort
@@ -608,6 +692,7 @@ function Invoke-ServerRetirementAudit {
 
         Test-ServerRetirementEligibility `
             -NativeProcessExclusionList $NativeProcessExclusionList `
+            -TcpSourceComputerExclusionList $TcpSourceComputerExclusionList `
             -ExcludedSmbShareNamePatterns $ExcludedSmbShareNamePatterns
     }
 
@@ -615,7 +700,7 @@ function Invoke-ServerRetirementAudit {
     $invokeParams = @{
         ComputerName  = $ServerName
         ScriptBlock   = $remoteAuditScript
-        ArgumentList  = $NativeProcessExclusionList, $ExcludedSmbShareNamePatterns
+        ArgumentList  = $NativeProcessExclusionList, $TcpSourceComputerExclusionList, $ExcludedSmbShareNamePatterns
         SessionOption = $sessionOption
         ErrorAction   = 'Stop'
     }
@@ -937,6 +1022,7 @@ try {
             $auditResult = Invoke-ServerRetirementAudit `
                 -ServerName $serverName `
                 -NativeProcessExclusionList $NativeProcessExclusionList `
+                -TcpSourceComputerExclusionList $TcpSourceComputerExclusionList `
                 -ExcludedSmbShareNamePatterns $ExcludedSmbShareNamePatterns `
                 -Credential $PSRemotingCredential `
                 -Authentication $PSRemotingAuthentication `
