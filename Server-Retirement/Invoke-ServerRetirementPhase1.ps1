@@ -9,7 +9,7 @@
     are detected.
 
     Required CSV columns:
-    Servername,change,Distro,datetoretire
+    Servername,change,Distro,datetoretire,alias
 
     HTML email color palette:
     - Teal/Primary Accent: #007b86
@@ -64,7 +64,7 @@ $ExcludedSmbShareNamePatterns = @(
     '^[A-Z]\$$'
 )
 
-$RequiredCsvColumns = @('Servername', 'change', 'Distro', 'datetoretire')
+$RequiredCsvColumns = @('Servername', 'change', 'Distro', 'datetoretire', 'alias')
 
 # ==========================================
 # HELPER FUNCTIONS
@@ -235,6 +235,33 @@ function ConvertTo-HtmlEncodedString {
     return [System.Net.WebUtility]::HtmlEncode([string]$Value)
 }
 
+function ConvertTo-RetirementAliasRows {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [string]$AliasText
+    )
+
+    $aliases = @(
+        ([string]$AliasText) -split '[,;\r\n]+' |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Sort-Object -Unique
+    )
+
+    if ($aliases.Count -eq 0) {
+        return [PSCustomObject]@{
+            Alias = 'No aliases provided in CSV'
+        }
+    }
+
+    foreach ($alias in $aliases) {
+        [PSCustomObject]@{
+            Alias = $alias
+        }
+    }
+}
+
 function ConvertTo-RetirementHtmlTable {
     [CmdletBinding()]
     param(
@@ -245,7 +272,7 @@ function ConvertTo-RetirementHtmlTable {
         [string]$Title,
 
         [Parameter()]
-        [ValidateRange(1, 100)]
+        [ValidateRange(0, 1000)]
         [int]$MaxRows = 5
     )
 
@@ -261,14 +288,26 @@ function ConvertTo-RetirementHtmlTable {
         return ''
     }
 
-    $displayRows = @($rows | Select-Object -First $MaxRows)
+    $displayRows = if ($MaxRows -eq 0) {
+        @($rows)
+    }
+    else {
+        @($rows | Select-Object -First $MaxRows)
+    }
+
     $properties = @($displayRows[0].PSObject.Properties | Select-Object -ExpandProperty Name)
     if ($properties.Count -eq 0) {
         return ''
     }
 
     $encodedTitle = ConvertTo-HtmlEncodedString -Value $Title
-    $encodedRowSummary = ConvertTo-HtmlEncodedString -Value ("Showing first {0} of {1}" -f $displayRows.Count, $rows.Count)
+    $rowSummary = if ($MaxRows -eq 0) {
+        "Showing all $($displayRows.Count)"
+    }
+    else {
+        "Showing first $($displayRows.Count) of $($rows.Count)"
+    }
+    $encodedRowSummary = ConvertTo-HtmlEncodedString -Value $rowSummary
     $builder = [System.Text.StringBuilder]::new()
 
     [void]$builder.AppendLine("<h3 style='Margin:26px 0 8px 0;margin:26px 0 8px 0;font-family:Segoe UI,Arial,sans-serif;font-size:16px;line-height:22px;color:#007b86;'>$encodedTitle</h3>")
@@ -726,6 +765,10 @@ function New-RetirementEmailBody {
         [string]$RetireDate,
 
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$ServerAliases,
+
+        [Parameter(Mandatory = $true)]
         [object]$AuditResult
     )
 
@@ -739,6 +782,8 @@ function New-RetirementEmailBody {
     $openFileSessionCount = Get-CollectionCount -InputObject $AuditResult.OpenFileSessions
     $customSmbShareCount = Get-CollectionCount -InputObject $AuditResult.CustomSmbShares
 
+    $serverAliasRows = ConvertTo-RetirementAliasRows -AliasText $ServerAliases
+    $serverAliasTable = ConvertTo-RetirementHtmlTable -InputObject $serverAliasRows -Title 'Server Aliases' -MaxRows 0
     $externalConnectionTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.ExternalConnections -Title 'Active Processes and TCP Connections' -MaxRows $EmailDetailRowLimit
     $customSmbShareTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.CustomSmbShares -Title 'SMB Shares' -MaxRows $EmailDetailRowLimit
     $openSmbSessionTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.OpenSmbSessions -Title 'Open SMB Sessions' -MaxRows $EmailDetailRowLimit
@@ -814,6 +859,8 @@ function New-RetirementEmailBody {
                                         </td>
                                     </tr>
                                 </table>
+
+                                $serverAliasTable
 
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:18px 0;background-color:#ffffff;">
                                     <tr>
@@ -994,6 +1041,7 @@ try {
         $distroGroup = Get-RequiredTextValue -Value $row.Distro -Fallback ''
         $changeTicket = Get-RequiredTextValue -Value $row.change -Fallback 'Not provided'
         $retireDate = Get-RequiredTextValue -Value $row.datetoretire -Fallback 'Not provided'
+        $serverAliases = Get-RequiredTextValue -Value $row.alias -Fallback ''
 
         if ([string]::IsNullOrWhiteSpace($serverName) -or [string]::IsNullOrWhiteSpace($distroGroup)) {
             $skippedCount++
@@ -1066,6 +1114,7 @@ try {
                 -ServerName $serverName `
                 -ChangeTicket $changeTicket `
                 -RetireDate $retireDate `
+                -ServerAliases $serverAliases `
                 -AuditResult $auditResult
 
             $subject = "ACTION REQUIRED: Dependencies Detected on Retirement Target ($serverName) - $changeTicket"
