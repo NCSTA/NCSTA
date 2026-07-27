@@ -20,8 +20,8 @@ Servers with no active external TCP connections, no open SMB sessions, and no op
 Create `server_retirement.csv` in this project folder with these columns:
 
 ```csv
-Servername,change,Distro,datetoretire
-filesrv01.contoso.com,CHG0123456,server-owners@contoso.com,06/15/2026
+Servername,change,Distro,datetoretire,alias
+filesrv01.contoso.com,CHG0123456,server-owners@contoso.com,06/15/2026,files.contoso.com;finance-files.contoso.com;legacy-share.contoso.com
 ```
 
 Column details:
@@ -30,6 +30,7 @@ Column details:
 - `change` - change control ticket number.
 - `Distro` - email address or distribution group for the owning team.
 - `datetoretire` - planned power-off date. The email displays this as `MM/dd/yyyy`.
+- `alias` - manually entered BlueCat alias records for the server. Use semicolons between aliases, for example `files.contoso.com;legacy-share.contoso.com`.
 
 ## Configuration
 
@@ -99,6 +100,7 @@ The email subject identifies the server and change ticket. The email header is f
 Each email includes:
 
 - Server name, change ticket, and power-off date.
+- Server aliases provided in the CSV.
 - Total counts for active TCP connections, SMB shares, open SMB sessions, and open file sessions.
 - Up to five rows per detail section, controlled by `$EmailDetailRowLimit`.
 - A `Showing first X of Y` line above each capped detail table.
