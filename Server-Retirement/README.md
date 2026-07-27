@@ -40,6 +40,7 @@ Open `Invoke-ServerRetirementPhase1.ps1` and review the variables near the top:
 $SMTPServer = ''
 $SMTPPort = 25
 $EmailFrom = 'server-retirement@yourcompany.com'
+$EmailCc = ''
 $EmailUseSsl = $false
 $SmtpCredential = $null
 $PSRemotingCredential = $null
@@ -58,7 +59,7 @@ $ExcludedSmbShareNamePatterns = @(
 )
 ```
 
-Set `$SMTPServer` before production use. Leave `$PSRemotingCredential` as `$null` to use the current user context, or assign a credential object if the orchestration server requires alternate credentials.
+Set `$SMTPServer` before production use. Set `$EmailCc` to one or more CC recipients if needed, separated by commas or semicolons. Leave `$EmailCc` blank to send no CC. Leave `$PSRemotingCredential` as `$null` to use the current user context, or assign a credential object if the orchestration server requires alternate credentials.
 
 If you use prompted credentials, set the credential like this:
 
