@@ -30,7 +30,7 @@ Column details:
 - `change` - change control ticket number.
 - `Distro` - email address or distribution group for the owning team.
 - `datetoretire` - planned power-off date. The email displays this as `MM/dd/yyyy`.
-- `alias` - manually entered BlueCat alias records for the server. Use semicolons between aliases, for example `files.contoso.com;legacy-share.contoso.com`.
+- `alias` - manually entered BlueCat alias records for the server. Use semicolons between aliases, for example `files.contoso.com;legacy-share.contoso.com`. Leave blank when no aliases exist; the email omits the Server Aliases section when this value is blank.
 
 ## Configuration
 
@@ -101,7 +101,7 @@ The email subject identifies the server and change ticket. The email header is f
 Each email includes:
 
 - Server name, change ticket, and power-off date.
-- Server aliases provided in the CSV.
+- Server aliases provided in the CSV, when the `alias` column is populated.
 - Total counts for active TCP connections, SMB shares, open SMB sessions, and open file sessions.
 - Up to five rows per detail section, controlled by `$EmailDetailRowLimit`.
 - A `Showing first X of Y` line above each capped detail table.
