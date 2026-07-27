@@ -31,6 +31,7 @@ $LogFile       = Join-Path -Path $LogDirectory -ChildPath ("Retirement_Phase1_{0
 $SMTPServer    = ''
 $SMTPPort      = 25
 $EmailFrom     = 'server-retirement@yourcompany.com'
+$EmailCc       = ''
 $EmailUseSsl   = $false
 $SmtpCredential = $null
 $EmailDetailRowLimit = 5
@@ -233,6 +234,22 @@ function ConvertTo-HtmlEncodedString {
     }
 
     return [System.Net.WebUtility]::HtmlEncode([string]$Value)
+}
+
+function ConvertTo-MailAddressList {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object]$Addresses
+    )
+
+    @(
+        foreach ($address in @($Addresses)) {
+            ([string]$address) -split '[;,]' |
+                ForEach-Object { $_.Trim() } |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        }
+    )
 }
 
 function ConvertTo-RetirementAliasRows {
@@ -917,6 +934,10 @@ function Send-RetirementEmail {
         [Parameter(Mandatory = $true)]
         [string]$To,
 
+        [Parameter()]
+        [AllowEmptyString()]
+        [string]$Cc = '',
+
         [Parameter(Mandatory = $true)]
         [string]$From,
 
@@ -944,11 +965,8 @@ function Send-RetirementEmail {
         throw 'SMTP server is blank. Populate $SMTPServer before enabling production notifications.'
     }
 
-    $recipients = @(
-        $To -split '[;,]' |
-            ForEach-Object { $_.Trim() } |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    )
+    $recipients = @(ConvertTo-MailAddressList -Addresses $To)
+    $ccRecipients = @(ConvertTo-MailAddressList -Addresses $Cc)
 
     if ($recipients.Count -eq 0) {
         throw 'No valid recipient address was provided.'
@@ -961,6 +979,10 @@ function Send-RetirementEmail {
         $message.From = [System.Net.Mail.MailAddress]::new($From)
         foreach ($recipient in $recipients) {
             $message.To.Add($recipient)
+        }
+
+        foreach ($ccRecipient in $ccRecipients) {
+            $message.CC.Add($ccRecipient)
         }
 
         $message.Subject = $Subject
@@ -1122,6 +1144,7 @@ try {
             Write-RetirementLog "Sending dependency notification for $serverName to $distroGroup."
             Send-RetirementEmail `
                 -To $distroGroup `
+                -Cc $EmailCc `
                 -From $EmailFrom `
                 -Subject $subject `
                 -BodyHtml $bodyHtml `
