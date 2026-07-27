@@ -267,9 +267,7 @@ function ConvertTo-RetirementAliasRows {
     )
 
     if ($aliases.Count -eq 0) {
-        return [PSCustomObject]@{
-            Alias = 'No aliases provided in CSV'
-        }
+        return
     }
 
     foreach ($alias in $aliases) {
@@ -877,8 +875,6 @@ function New-RetirementEmailBody {
                                     </tr>
                                 </table>
 
-                                $serverAliasTable
-
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:18px 0;background-color:#ffffff;">
                                     <tr>
                                         <td width="25%" valign="top" bgcolor="#f4f4f4" style="width:25%;background-color:#f4f4f4;padding:14px;border:6px solid #ffffff;font-family:Segoe UI,Arial,sans-serif;mso-line-height-rule:exactly;">
@@ -899,6 +895,8 @@ function New-RetirementEmailBody {
                                         </td>
                                     </tr>
                                 </table>
+
+                                $serverAliasTable
 
                                 $externalConnectionTable
                                 $customSmbShareTable
