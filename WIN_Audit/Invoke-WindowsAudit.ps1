@@ -1,8 +1,8 @@
 [CmdletBinding(DefaultParameterSetName = 'Collect')]
 param(
-    [Parameter(Mandatory, ParameterSetName = 'Collect')]
+    [Parameter(ParameterSetName = 'Collect')]
     [ValidateNotNullOrEmpty()]
-    [string]$ClientName,
+    [string]$ClientName = $env:COMPUTERNAME,
 
     [Parameter(ParameterSetName = 'Collect')]
     [ValidateNotNullOrEmpty()]
