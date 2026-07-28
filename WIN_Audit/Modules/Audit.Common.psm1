@@ -16,7 +16,8 @@ function New-AuditContext {
     param(
         [Parameter(Mandatory)][string]$ClientName,
         [Parameter(Mandatory)][string]$OutputRoot,
-        [Parameter(Mandatory)][hashtable]$Targets
+        [Parameter(Mandatory)][hashtable]$Targets,
+        [bool]$IncludeGpoBackup = $false
     )
 
     if (-not (Test-Path -LiteralPath $OutputRoot -PathType Container)) {
@@ -70,6 +71,7 @@ function New-AuditContext {
         Paths = $paths
         Targets = $Targets
         IsDomainController = $false
+        IncludeGpoBackup = $IncludeGpoBackup
     }
 }
 
