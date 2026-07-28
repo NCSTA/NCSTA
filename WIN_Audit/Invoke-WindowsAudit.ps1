@@ -11,6 +11,9 @@ param(
     [Parameter(ParameterSetName = 'Collect')]
     [string]$ConfigPath = (Join-Path $PSScriptRoot 'Config\AuditTargets.psd1'),
 
+    [Parameter(ParameterSetName = 'Collect')]
+    [switch]$IncludeGpoBackup,
+
     [Parameter(Mandatory, ParameterSetName = 'Verify')]
     [switch]$Verify,
 
@@ -42,7 +45,7 @@ if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
 
 $context = $null
 $targets = Import-PowerShellDataFile -LiteralPath $ConfigPath
-$context = New-AuditContext -ClientName $ClientName -OutputRoot $OutputRoot -Targets $targets
+$context = New-AuditContext -ClientName $ClientName -OutputRoot $OutputRoot -Targets $targets -IncludeGpoBackup:$IncludeGpoBackup
 
 try {
     Initialize-AuditReports -Context $context

@@ -15,4 +15,10 @@ Use `-Verify` to verify the SHA-256 manifest produced with a completed audit:
 .\Invoke-WindowsAudit.ps1 -Verify -VerifyPath 'D:\AuditOutput\SERVER-Monday, July 28, 2026 09.30.00 AM'
 ```
 
+GPO backup is disabled by default. On a domain controller, add `-IncludeGpoBackup` only when the audit scope requires a `Backup-GPO` export:
+
+```powershell
+.\Invoke-WindowsAudit.ps1 -ClientName 'Example Client' -OutputRoot 'D:\AuditOutput' -IncludeGpoBackup
+```
+
 See [the developer guide](docs/WindowsAudit-Developer-Guide.md) for the collector index, compatibility decisions, configuration points, prerequisites, and validation process.

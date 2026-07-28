@@ -330,7 +330,12 @@ function Invoke-AuditDomainControllerCollectors {
     Write-AuditReport -Context $Context -Report AdministrativeAccounts -Text (Get-AdministrativeAccountReportText -Context $Context)
     Initialize-AuditAdTrustReport -Context $Context
     Write-AuditReport -Context $Context -Report ADTrusts -Text (Get-ADTrustReportText -Context $Context)
-    Invoke-AuditGpoBackup -Context $Context
+    if ($Context.IncludeGpoBackup) {
+        Invoke-AuditGpoBackup -Context $Context
+    }
+    else {
+        Write-AuditError -Context $Context -Message 'INFO: GPO backup skipped; run with -IncludeGpoBackup to create it.'
+    }
 }
 
 function Get-ADUserReportText {
@@ -495,7 +500,7 @@ function Get-ADTrustReportText {
 }
 
 function Invoke-AuditGpoBackup {
-    <# Backup-GPO is supported and avoids copying live SYSVOL content as an unstructured snapshot. #>
+    <# Runs only when -IncludeGpoBackup is explicitly requested on a domain controller. #>
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Context)
 
