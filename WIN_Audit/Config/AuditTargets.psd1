@@ -5,6 +5,24 @@
     MissingPatchesMode = 'Disabled' # Disabled | OfflineScanPackage
     OfflineScanCabPath = 'C:\temp\wsusscn2.cab'
 
+    # Standard privileged groups evaluated on a domain controller. Add approved
+    # organization-specific administrative groups here before an audit run.
+    PrivilegedGroupNames = @(
+        'Administrators',
+        'Domain Admins',
+        'Enterprise Admins',
+        'Schema Admins',
+        'Account Operators',
+        'Backup Operators',
+        'Server Operators',
+        'Print Operators',
+        'Group Policy Creator Owners',
+        'DNSAdmins',
+        'DHCP Administrators',
+        'Key Admins',
+        'Enterprise Key Admins'
+    )
+
     RegistryKeys = @(
         'HKCU:\Control Panel\Desktop',
         'HKLM:\SOFTWARE\Microsoft',
