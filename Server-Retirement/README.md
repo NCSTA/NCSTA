@@ -4,9 +4,9 @@
 
 This project supports Phase 1 of a Windows Server retirement workflow. It helps infrastructure teams verify whether a target Windows server still has active dependencies before the server is powered off.
 
-The script reads a CSV of retirement targets, checks WinRM connectivity, runs a remote audit against each server, logs all actions locally, and sends an Outlook-compatible HTML email to the owning team when active dependencies are detected.
+The script reads a CSV of retirement targets, checks WinRM connectivity, runs a remote audit against each server, logs all actions locally, and sends an Outlook-compatible HTML email to the owning team when active dependencies are detected or when manually supplied BlueCat aliases need review.
 
-Servers with no active external TCP connections, no open SMB sessions, and no open SMB file sessions are logged as clear. SMB shares are collected for visibility, but shares with zero active sessions do not trigger an email by themselves.
+Servers with no active external TCP connections, no open SMB sessions, no open SMB file sessions, and no CSV aliases are logged as clear. SMB shares are collected for visibility, but shares with zero active sessions do not trigger an email by themselves.
 
 ## Files
 
@@ -22,6 +22,8 @@ Create `server_retirement.csv` in this project folder with these columns:
 ```csv
 Servername,change,Distro,datetoretire,alias
 filesrv01.contoso.com,CHG0123456,server-owners@contoso.com,06/15/2026,files.contoso.com;finance-files.contoso.com;legacy-share.contoso.com
+filesrv02.contoso.com,CHG0123457,server-owners@contoso.com,06/20/2026,
+filesrv03.contoso.com,CHG0123458,server-owners@contoso.com,06/25/2026,"app-files.contoso.com,legacy-app-files.contoso.com"
 ```
 
 Column details:
@@ -30,7 +32,7 @@ Column details:
 - `change` - change control ticket number.
 - `Distro` - email address or distribution group for the owning team.
 - `datetoretire` - planned power-off date. The email displays this as `MM/dd/yyyy`.
-- `alias` - manually entered BlueCat alias records for the server. Use semicolons between aliases, for example `files.contoso.com;legacy-share.contoso.com`. Leave blank when no aliases exist; the email omits the Server Aliases section when this value is blank.
+- `alias` - manually entered BlueCat alias records for the server. Use semicolons between aliases, for example `files.contoso.com;legacy-share.contoso.com`. If commas are used between aliases, wrap the entire alias field in quotes because commas are also the CSV column delimiter. Leave blank when no aliases exist; the email omits the Server Aliases section when this value is blank.
 
 ## Configuration
 
@@ -86,9 +88,9 @@ The script performs these steps for each CSV row:
 1. Validates required CSV columns.
 2. Checks WinRM connectivity with `Test-WSMan`.
 3. Runs the remote `Test-ServerRetirementEligibility` audit.
-4. Counts active TCP connections, SMB shares, SMB sessions, and open SMB files.
-5. Logs clear servers without sending email.
-6. Sends one HTML email per server when dependencies are detected.
+4. Counts active TCP connections, SMB shares, SMB sessions, open SMB files, and CSV-provided aliases.
+5. Logs clear servers without sending email only when there are no active dependencies and no CSV aliases.
+6. Sends one HTML email per server when dependencies are detected or when aliases are supplied for DNS/IPAM review.
 
 ## Email Behavior
 
@@ -106,6 +108,8 @@ Each email includes:
 - Up to five rows per detail section, controlled by `$EmailDetailRowLimit`.
 - A `Showing first X of Y` line above each capped detail table.
 
+Aliases are a notification trigger. If a server has zero active TCP connections, zero open SMB sessions, and zero open file sessions but the CSV `alias` column is populated, the script still sends a server-specific email so the owning team can review or remove those BlueCat alias records before retirement.
+
 Default administrative shares are excluded from the SMB share section by `$ExcludedSmbShareNamePatterns`. The defaults exclude `ADMIN$`, `IPC$`, `print$`, and drive administrative shares such as `C$` and `D$`.
 
 The HTML template is table-based with inline styles for Outlook compatibility and uses only these colors:
@@ -122,7 +126,7 @@ Logs are written under:
 .\Logs\Retirement_Phase1_yyyyMMdd_HHmmss.log
 ```
 
-The log records CSV import, WinRM connectivity, remote audit execution, dependency counts, clear-server skips, email success or failure, and script errors.
+The log records CSV import, WinRM connectivity, remote audit execution, dependency counts, alias notification counts, clear-server skips, email success or failure, and script errors.
 
 ## Operational Notes
 
