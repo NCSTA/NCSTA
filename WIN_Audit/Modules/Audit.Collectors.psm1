@@ -326,6 +326,8 @@ function Invoke-AuditDomainControllerCollectors {
     Import-Module ActiveDirectory -ErrorAction Stop
     Write-AuditReport -Context $Context -Report Users -Text (Get-ADUserReportText -Context $Context)
     Write-AuditReport -Context $Context -Report Groups -Text (Get-ADGroupReportText -Context $Context)
+    Initialize-AdministrativeAccountsReport -Context $Context
+    Write-AuditReport -Context $Context -Report AdministrativeAccounts -Text (Get-AdministrativeAccountReportText -Context $Context)
     Initialize-AuditAdTrustReport -Context $Context
     Write-AuditReport -Context $Context -Report ADTrusts -Text (Get-ADTrustReportText -Context $Context)
     Invoke-AuditGpoBackup -Context $Context
@@ -355,6 +357,114 @@ function Get-ADGroupReportText {
         catch { Write-AuditError -Context $Context -Message "AD group membership $($group.Name) failed: $($_.Exception.Message)" }
         $lines += ''
     }
+    return ($lines -join "`r`n")
+}
+
+function Initialize-AdministrativeAccountsReport {
+    <# Creates the DC-only privileged-account report with the standard confidentiality header. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Context)
+
+    $header = "{0}: Security Assessment: Confidential for {1} use only`r`n`r`n" -f $Context.Version, $Context.ClientName
+    [System.IO.File]::WriteAllText($Context.Paths.AdministrativeAccounts, $header, (Get-ReportTextEncoding -Context $Context))
+}
+
+function Get-AdministrativeAccountReportText {
+    <#
+    Produces one record per recursively resolved member of each configured
+    privileged AD group. It intentionally reports source groups, not inferred
+    privileges from arbitrary ACLs, GPO preferences, or delegated rights.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Context)
+
+    $header = 'Account Name','Display Name','SID','Object Type','Privileged Group(s)','Password Last Changed','Account Disabled','Account Locked','Account Expiration Date','Distinguished Name'
+    $lines = @(($header | ForEach-Object { ConvertTo-AuditQuotedField $_ }) -join "`t")
+    $accounts = @{}
+
+    foreach ($groupName in $Context.Targets.PrivilegedGroupNames) {
+        try {
+            $group = Get-ADGroup -Identity $groupName -ErrorAction Stop
+            $members = @(Get-ADGroupMember -Identity $group.DistinguishedName -Recursive -ErrorAction Stop)
+        }
+        catch {
+            Write-AuditError -Context $Context -Message "Privileged group $groupName could not be resolved: $($_.Exception.Message)"
+            continue
+        }
+
+        foreach ($member in $members) {
+            $key = if ($member.SID) { $member.SID.Value } else { $member.DistinguishedName }
+            if (-not $accounts.ContainsKey($key)) {
+                $accounts[$key] = [pscustomobject]@{
+                    DistinguishedName = $member.DistinguishedName
+                    ObjectClass = $member.objectClass
+                    SourceGroups = New-Object 'System.Collections.Generic.List[string]'
+                }
+            }
+            if (-not $accounts[$key].SourceGroups.Contains($group.Name)) {
+                $accounts[$key].SourceGroups.Add($group.Name)
+            }
+        }
+    }
+
+    foreach ($record in $accounts.Values | Sort-Object DistinguishedName) {
+        $accountName = ''
+        $displayName = ''
+        $sid = ''
+        $passwordLastSet = ''
+        $disabled = ''
+        $locked = ''
+        $expiration = ''
+
+        try {
+            switch ($record.ObjectClass) {
+                'user' {
+                    $account = Get-ADUser -Identity $record.DistinguishedName -Properties DisplayName, SID, PasswordLastSet, Enabled, LockedOut, AccountExpirationDate -ErrorAction Stop
+                    $accountName = $account.SamAccountName
+                    $displayName = $account.DisplayName
+                    $sid = $account.SID
+                    $passwordLastSet = $account.PasswordLastSet
+                    $disabled = -not $account.Enabled
+                    $locked = $account.LockedOut
+                    $expiration = $account.AccountExpirationDate
+                }
+                'computer' {
+                    $account = Get-ADComputer -Identity $record.DistinguishedName -Properties SID, PasswordLastSet, Enabled -ErrorAction Stop
+                    $accountName = $account.SamAccountName
+                    $displayName = $account.Name
+                    $sid = $account.SID
+                    $passwordLastSet = $account.PasswordLastSet
+                    $disabled = -not $account.Enabled
+                }
+                default {
+                    $account = Get-ADObject -Identity $record.DistinguishedName -Properties objectSid, Name -ErrorAction Stop
+                    $accountName = $account.Name
+                    $displayName = $account.Name
+                    $sid = $account.objectSid
+                }
+            }
+        }
+        catch {
+            Write-AuditError -Context $Context -Message "Privileged member $($record.DistinguishedName) could not be read: $($_.Exception.Message)"
+            $accountName = $record.DistinguishedName
+        }
+
+        $values = @(
+            $accountName,
+            $displayName,
+            $sid,
+            $record.ObjectClass,
+            ($record.SourceGroups -join '; '),
+            $passwordLastSet,
+            $disabled,
+            $locked,
+            $expiration,
+            $record.DistinguishedName
+        )
+        $lines += ($values | ForEach-Object { ConvertTo-AuditQuotedField $_ }) -join "`t"
+    }
+
+    if ($accounts.Count -eq 0) { $lines += '"No members were resolved from the configured privileged groups."' }
     return ($lines -join "`r`n")
 }
 
