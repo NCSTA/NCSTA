@@ -20,6 +20,7 @@ Use this as the change index. Start with the named module or configuration item 
 ## Design rules
 
 - Require elevation and run only locally. The script does not remediate configuration.
+- Default `ClientName` to the local computer name; allow `-ClientName` to override the report-header label for a client or engagement.
 - Continue after collector-level failures and record them in `ErrorLog.txt`; a startup or unrecoverable failure stops the run.
 - Keep report filenames, confidentiality header, tab-delimited layout, and legacy `.xls` suffixes unless an auditor-approved change says otherwise.
 - Keep values on one logical TSV row. `ConvertTo-AuditField` strips tabs and line breaks; quote escaping is handled by `ConvertTo-AuditQuotedField`.
