@@ -6,7 +6,7 @@ Use this as the change index. Start with the named module or configuration item 
 
 | Need to change | Start here | Notes |
 |---|---|---|
-| Command-line options or run sequencing | `Invoke-WindowsAudit.ps1` | Collect and manifest-verification entry points. |
+| Command-line options or run sequencing | `Invoke-WindowsAudit.ps1` | Collect and manifest-verification entry points; `-IncludeGpoBackup` is opt-in. |
 | Output folder, filenames, headers, text encoding, errors, hashing | `Modules/Audit.Common.psm1` | These form the auditor-facing compatibility contract. |
 | System, native-command, services, updates, drives, log settings | `Invoke-AuditSystemCollectors` | In `Modules/Audit.Collectors.psm1`. |
 | ACLs, file/folder scope, shares | `Invoke-AuditPermissionCollectors` | Target lists are in `Config/AuditTargets.psd1`. |
@@ -42,7 +42,8 @@ The baseline output set is intentionally close to the VBS. `.xls` files are tab-
 | `(host)gpresult.txt` and HTML | `gpresult.exe` | HTML is written beside the text report. |
 | `(host)AuditPolicy.txt`, `(host)DetailedAuditSettings.txt` | `auditpol.exe` | Category and subcategory views. |
 | `(host)EventLogPermissions.txt`, `(host)Netstat.txt` | `icacls.exe`, `netstat.exe` | Existing auditor-readable style. |
-| `(host)ADTrusts.xls`, `GPOBackup` | AD/GroupPolicy on DCs | DC-only. |
+| `(host)ADTrusts.xls` | ActiveDirectory on DCs | DC-only. |
+| `GPOBackup` | GroupPolicy | DC-only and created only with `-IncludeGpoBackup`. |
 | `AuditandUserRights.txt` | `secedit.exe /export` | Replaces the legacy invalid/opaque `secedit` flow. |
 | `ErrorLog.txt`, `SHA256SUMS.txt` | Shared utilities | SHA-256 replaces the bundled MD5 executable. |
 
@@ -55,7 +56,7 @@ These are safety or correctness fixes, not report redesigns:
 3. Server paths use `$env:windir` / `$env:SystemDrive`, rather than hard-coded `C:\Windows`.
 4. SHA-256 manifest verification replaces MD5 and `md5.exe`.
 5. `secedit /export` produces a readable policy artifact. The legacy `secedit /analyze` / `export` path had inconsistent input/output files.
-6. GPOs are backed up with `Backup-GPO` rather than an unstructured copy of live SYSVOL.
+6. GPO backup is disabled by default. When `-IncludeGpoBackup` is specified on a DC, the script uses `Backup-GPO` rather than an unstructured copy of live SYSVOL.
 7. Offline missing-patch scanning is disabled by default. Enable it only after the audit owner confirms that the supplied scan package is current and the method is approved for the target operating systems.
 8. `AdministrativeAccounts.xls` reports recursively resolved membership of the configured standard privileged AD groups. Add organization-specific privileged groups to `PrivilegedGroupNames`; ACL delegation, GPO preference-based local-group membership, and arbitrary user-right assignments are not inferred.
 
