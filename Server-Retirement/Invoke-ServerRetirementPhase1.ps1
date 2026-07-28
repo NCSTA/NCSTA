@@ -6,7 +6,7 @@
     Imports server_retirement.csv, validates WinRM connectivity to each target
     server, runs Test-ServerRetirementEligibility remotely, logs every major
     action, and sends one HTML notification per server when active dependencies
-    are detected.
+    are detected or manually supplied aliases require DNS/IPAM review.
 
     Required CSV columns:
     Servername,change,Distro,datetoretire,alias
@@ -797,7 +797,34 @@ function New-RetirementEmailBody {
     $openFileSessionCount = Get-CollectionCount -InputObject $AuditResult.OpenFileSessions
     $customSmbShareCount = Get-CollectionCount -InputObject $AuditResult.CustomSmbShares
 
-    $serverAliasRows = ConvertTo-RetirementAliasRows -AliasText $ServerAliases
+    $serverAliasRows = @(ConvertTo-RetirementAliasRows -AliasText $ServerAliases)
+    $serverAliasCount = Get-CollectionCount -InputObject $serverAliasRows
+    $hasActiveDependencies = ($externalConnectionCount -gt 0 -or $openSmbSessionCount -gt 0 -or $openFileSessionCount -gt 0)
+    $aliasRecordText = if ($serverAliasCount -eq 1) {
+        '1 server alias record'
+    }
+    else {
+        "$serverAliasCount server alias records"
+    }
+    $aliasProvidedVerb = if ($serverAliasCount -eq 1) { 'was' } else { 'were' }
+    $aliasReviewVerb = if ($serverAliasCount -eq 1) { 'requires' } else { 'require' }
+
+    if ($hasActiveDependencies) {
+        $preheaderText = "Active dependencies were detected for $ServerName before the scheduled retirement date."
+        $findingParagraphHtml = "<p style='Margin:0 0 18px 0;margin:0 0 18px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;'>However, the following active dependencies or open sessions were detected during the Phase 1 retirement audit. Please review and remediate these connections before the retirement date to avoid service interruption.</p>"
+        $statusText = 'Status: Active dependencies detected. Production owners should validate the rows below before approving power-off.'
+        $closingParagraphHtml = "<p style='Margin:20px 0 12px 0;margin:20px 0 12px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;'>If these connections are expected, reroute or close them before the target power-off date and update the retirement change record accordingly.</p>"
+    }
+    else {
+        $preheaderText = "$aliasRecordText $aliasProvidedVerb provided for $ServerName and $aliasReviewVerb BlueCat review before retirement."
+        $findingParagraphHtml = "<p style='Margin:0 0 18px 0;margin:0 0 18px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;'>No active dependencies or open sessions were detected during the Phase 1 retirement audit. $aliasRecordText $aliasProvidedVerb provided in the CSV and should be reviewed in BlueCat before retirement is completed.</p>"
+        $statusText = "Status: No active sessions were detected. $aliasRecordText $aliasReviewVerb DNS/IPAM review before retirement."
+        $closingParagraphHtml = "<p style='Margin:20px 0 12px 0;margin:20px 0 12px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;'>Please validate, update, or remove these aliases in BlueCat and update the retirement change record before the target power-off date.</p>"
+    }
+
+    $encodedPreheaderText = ConvertTo-HtmlEncodedString -Value $preheaderText
+    $encodedStatusText = ConvertTo-HtmlEncodedString -Value $statusText
+
     $serverAliasTable = ConvertTo-RetirementHtmlTable -InputObject $serverAliasRows -Title 'Server Aliases' -MaxRows 0
     $externalConnectionTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.ExternalConnections -Title 'Active Processes and TCP Connections' -MaxRows $EmailDetailRowLimit
     $customSmbShareTable = ConvertTo-RetirementHtmlTable -InputObject $AuditResult.CustomSmbShares -Title 'SMB Shares' -MaxRows $EmailDetailRowLimit
@@ -811,7 +838,7 @@ function New-RetirementEmailBody {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="x-ua-compatible" content="ie=edge" />
-    <title>Server Retirement Dependency Notification</title>
+    <title>Server Retirement Notification</title>
     <!--[if mso]>
     <noscript>
         <xml>
@@ -824,7 +851,7 @@ function New-RetirementEmailBody {
 </head>
 <body style="Margin:0;margin:0;padding:0;background-color:#f4f4f4;">
     <div style="display:none;font-size:1px;line-height:1px;color:#f4f4f4;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">
-        Active dependencies were detected for $encodedServerName before the scheduled retirement date.
+        $encodedPreheaderText
     </div>
     <center style="width:100%;background-color:#f4f4f4;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#f4f4f4;">
@@ -851,12 +878,12 @@ function New-RetirementEmailBody {
                         <tr>
                             <td bgcolor="#ffffff" style="background-color:#ffffff;padding:24px 28px 8px 28px;">
                                 <p style="Margin:0 0 14px 0;margin:0 0 14px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;">Hello Team, you submitted server retirement for <strong>$encodedServerName</strong> under change control <strong>$encodedChangeTicket</strong>. This server is scheduled to be powered off on <strong>$encodedRetireDate</strong>.</p>
-                                <p style="Margin:0 0 18px 0;margin:0 0 18px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;">However, the following active dependencies or open sessions were detected during the Phase 1 retirement audit. Please review and remediate these connections before the retirement date to avoid service interruption.</p>
+                                $findingParagraphHtml
 
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#f4f4f4;">
                                     <tr>
                                         <td style="padding:12px;border-left:6px solid #007b86;font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:18px;mso-line-height-rule:exactly;">
-                                            Status: Active dependencies detected. Production owners should validate the rows below before approving power-off.
+                                            $encodedStatusText
                                         </td>
                                     </tr>
                                 </table>
@@ -903,7 +930,7 @@ function New-RetirementEmailBody {
                                 $openSmbSessionTable
                                 $openFileSessionTable
 
-                                <p style="Margin:20px 0 12px 0;margin:20px 0 12px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:21px;mso-line-height-rule:exactly;">If these connections are expected, reroute or close them before the target power-off date and update the retirement change record accordingly.</p>
+                                $closingParagraphHtml
                             </td>
                         </tr>
                         <tr>
@@ -1032,6 +1059,7 @@ function Get-RequiredTextValue {
 $processedCount = 0
 $clearCount = 0
 $dependencyCount = 0
+$aliasOnlyNotificationCount = 0
 $skippedCount = 0
 $emailSentCount = 0
 $errorCount = 0
@@ -1118,17 +1146,31 @@ try {
             $openSmbSessionCount = Get-CollectionCount -InputObject $auditResult.OpenSmbSessions
             $openFileSessionCount = Get-CollectionCount -InputObject $auditResult.OpenFileSessions
             $customSmbShareCount = Get-CollectionCount -InputObject $auditResult.CustomSmbShares
+            $serverAliasRows = @(ConvertTo-RetirementAliasRows -AliasText $serverAliases)
+            $serverAliasCount = Get-CollectionCount -InputObject $serverAliasRows
+            $hasActiveDependencies = ($externalConnectionCount -gt 0 -or $openSmbSessionCount -gt 0 -or $openFileSessionCount -gt 0)
+            $hasServerAliases = ($serverAliasCount -gt 0)
 
-            Write-RetirementLog ("Audit summary for {0} -> External Connections: {1}, Open SMB Sessions: {2}, Open File Sessions: {3}, SMB Shares: {4}" -f $serverName, $externalConnectionCount, $openSmbSessionCount, $openFileSessionCount, $customSmbShareCount)
+            Write-RetirementLog ("Audit summary for {0} -> External Connections: {1}, Open SMB Sessions: {2}, Open File Sessions: {3}, SMB Shares: {4}, CSV Aliases: {5}" -f $serverName, $externalConnectionCount, $openSmbSessionCount, $openFileSessionCount, $customSmbShareCount, $serverAliasCount)
 
-            if ($externalConnectionCount -eq 0 -and $openSmbSessionCount -eq 0 -and $openFileSessionCount -eq 0) {
+            if (-not $hasActiveDependencies -and -not $hasServerAliases) {
                 $clearCount++
-                Write-RetirementLog "$serverName is clear. Zero active dependencies were detected. No email will be sent." -Level SUCCESS
+                Write-RetirementLog "$serverName is clear. Zero active dependencies and zero CSV aliases were detected. No email will be sent." -Level SUCCESS
                 continue
             }
 
-            $dependencyCount++
-            Write-RetirementLog "Dependencies detected for $serverName. Building one server-specific HTML email notification." -Level WARN
+            if ($hasActiveDependencies) {
+                $dependencyCount++
+                $subject = "ACTION REQUIRED: Dependencies Detected on Retirement Target ($serverName) - $changeTicket"
+                $notificationReason = 'dependency'
+                Write-RetirementLog "Dependencies detected for $serverName. Building one server-specific HTML email notification." -Level WARN
+            }
+            else {
+                $aliasOnlyNotificationCount++
+                $subject = "ACTION REQUIRED: Alias Records Detected on Retirement Target ($serverName) - $changeTicket"
+                $notificationReason = 'alias'
+                Write-RetirementLog "$serverName has no active dependencies, but $serverAliasCount CSV alias record(s) were provided. Building alias review notification." -Level WARN
+            }
 
             $bodyHtml = New-RetirementEmailBody `
                 -ServerName $serverName `
@@ -1137,9 +1179,7 @@ try {
                 -ServerAliases $serverAliases `
                 -AuditResult $auditResult
 
-            $subject = "ACTION REQUIRED: Dependencies Detected on Retirement Target ($serverName) - $changeTicket"
-
-            Write-RetirementLog "Sending dependency notification for $serverName to $distroGroup."
+            Write-RetirementLog "Sending $notificationReason notification for $serverName to $distroGroup."
             Send-RetirementEmail `
                 -To $distroGroup `
                 -Cc $EmailCc `
@@ -1162,7 +1202,7 @@ try {
     }
 
     Write-RetirementLog '========================================================='
-    Write-RetirementLog ("Server Retirement Phase 1 completed. Processed: {0}, Clear: {1}, Dependencies: {2}, Emails Sent: {3}, Skipped: {4}, Errors: {5}" -f $processedCount, $clearCount, $dependencyCount, $emailSentCount, $skippedCount, $errorCount)
+    Write-RetirementLog ("Server Retirement Phase 1 completed. Processed: {0}, Clear No Email: {1}, Dependencies: {2}, Alias-Only Notifications: {3}, Emails Sent: {4}, Skipped: {5}, Errors: {6}" -f $processedCount, $clearCount, $dependencyCount, $aliasOnlyNotificationCount, $emailSentCount, $skippedCount, $errorCount)
     Write-RetirementLog '========================================================='
 
     if ($errorCount -gt 0) {
