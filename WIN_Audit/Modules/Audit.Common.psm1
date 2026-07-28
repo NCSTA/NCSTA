@@ -50,6 +50,7 @@ function New-AuditContext {
         Shares                = "($computerName)Shares.xls"
         Drives                = "($computerName)Drives.xls"
         ADTrusts              = "($computerName)ADTrusts.xls"
+        AdministrativeAccounts = "($computerName)AdministrativeAccounts.xls"
         Gpresult              = "($computerName)gpresult.txt"
         AuditPolicy           = "($computerName)AuditPolicy.txt"
         DetailedAuditSettings = "($computerName)DetailedAuditSettings.txt"
@@ -79,7 +80,7 @@ function Initialize-AuditReports {
 
     $header = "{0}: Security Assessment: Confidential for {1} use only`r`n`r`n" -f $Context.Version, $Context.ClientName
     foreach ($name in $Context.Paths.Keys) {
-        if ($name -eq 'ErrorLog' -or $name -eq 'ADTrusts') { continue }
+        if ($name -eq 'ErrorLog' -or $name -in @('ADTrusts', 'AdministrativeAccounts')) { continue }
         [System.IO.File]::WriteAllText($Context.Paths[$name], $header, (Get-ReportTextEncoding -Context $Context))
     }
     [System.IO.File]::WriteAllText($Context.Paths.ErrorLog, ("{0} started: {1:o}`r`n" -f $Context.Version, $Context.Started), (Get-ReportTextEncoding -Context $Context))
