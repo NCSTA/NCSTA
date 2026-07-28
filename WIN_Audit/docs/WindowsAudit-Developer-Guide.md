@@ -36,7 +36,7 @@ The baseline output set is intentionally close to the VBS. `.xls` files are tab-
 |---|---|---|
 | `(host)SystemInfo.xls` | CIM + `systeminfo.exe` | System, OS, IP, domain, and current identity. |
 | `(host)Users.xls`, `(host)Groups.xls` | CIM or ActiveDirectory | Local on member servers; domain data on DCs. |
-| `(host)AdministrativeAccounts.xls` | ActiveDirectory | DC-only, recursive members of configured privileged groups with password-last-changed data. |
+| `(host)AdministrativeAccounts.xls` | ActiveDirectory | DC-only, recursive members of configured privileged groups with password-last-changed data, queried from each account's home domain. |
 | `(host)Services.xls`, `(host)HotFixes.xls`, `(host)Drives.xls` | CIM | Maintains tabular text layout. |
 | `(host)RegistryValues.xls`, `(host)LogSettings.xls` | Registry provider | Scope defined in configuration. |
 | `(host)FilePermissions.xls`, `(host)DirectoryPermissions.xls`, `(host)Shares.xls` | `Get-Acl`, CIM, SMB cmdlets | Includes missing-target and access errors in report/error log. |
@@ -60,6 +60,7 @@ These are safety or correctness fixes, not report redesigns:
 6. GPO backup is disabled by default. When `-IncludeGpoBackup` is specified on a DC, the script uses `Backup-GPO` rather than an unstructured copy of live SYSVOL.
 7. Offline missing-patch scanning is disabled by default. Enable it only after the audit owner confirms that the supplied scan package is current and the method is approved for the target operating systems.
 8. `AdministrativeAccounts.xls` reports recursively resolved membership of the configured standard privileged AD groups. Add organization-specific privileged groups to `PrivilegedGroupNames`; ACL delegation, GPO preference-based local-group membership, and arbitrary user-right assignments are not inferred.
+9. Privileged accounts in another reachable domain are queried through a domain controller in that account's own domain. Foreign security principals or inaccessible domains remain in the report with an explicit `Resolution Status`, rather than being omitted.
 
 ## Requirements and operation
 

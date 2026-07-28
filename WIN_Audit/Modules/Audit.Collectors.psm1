@@ -374,6 +374,16 @@ function Initialize-AdministrativeAccountsReport {
     [System.IO.File]::WriteAllText($Context.Paths.AdministrativeAccounts, $header, (Get-ReportTextEncoding -Context $Context))
 }
 
+function Get-DomainNameFromDistinguishedName {
+    <# Returns a DNS domain name from a DN while preserving escaped commas in CN values. #>
+    [CmdletBinding()]
+    param([AllowEmptyString()][string]$DistinguishedName)
+
+    $domainComponents = [regex]::Matches($DistinguishedName, '(?i)(?:^|(?<!\\),)DC=([^,]+)')
+    if ($domainComponents.Count -eq 0) { return $null }
+    return (@($domainComponents | ForEach-Object { $_.Groups[1].Value }) -join '.')
+}
+
 function Get-AdministrativeAccountReportText {
     <#
     Produces one record per recursively resolved member of each configured
@@ -383,9 +393,10 @@ function Get-AdministrativeAccountReportText {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Context)
 
-    $header = 'Account Name','Display Name','SID','Object Type','Privileged Group(s)','Password Last Changed','Account Disabled','Account Locked','Account Expiration Date','Distinguished Name'
+    $header = 'Account Name','Display Name','SID','Object Type','Account Domain','Privileged Group(s)','Password Last Changed','Account Disabled','Account Locked','Account Expiration Date','Resolution Status','Distinguished Name'
     $lines = @(($header | ForEach-Object { ConvertTo-AuditQuotedField $_ }) -join "`t")
     $accounts = @{}
+    $domainControllers = @{}
 
     foreach ($groupName in $Context.Targets.PrivilegedGroupNames) {
         try {
@@ -398,11 +409,13 @@ function Get-AdministrativeAccountReportText {
         }
 
         foreach ($member in $members) {
-            $key = if ($member.SID) { $member.SID.Value } else { $member.DistinguishedName }
+            $key = if ($member.SID) { [string]$member.SID } else { $member.DistinguishedName }
             if (-not $accounts.ContainsKey($key)) {
                 $accounts[$key] = [pscustomobject]@{
                     DistinguishedName = $member.DistinguishedName
                     ObjectClass = $member.objectClass
+                    MemberSid = $member.SID
+                    AccountDomain = Get-DomainNameFromDistinguishedName -DistinguishedName $member.DistinguishedName
                     SourceGroups = New-Object 'System.Collections.Generic.List[string]'
                 }
             }
@@ -420,11 +433,26 @@ function Get-AdministrativeAccountReportText {
         $disabled = ''
         $locked = ''
         $expiration = ''
+        $resolutionStatus = 'Resolved'
 
         try {
+            if ($record.ObjectClass -eq 'foreignSecurityPrincipal') {
+                $accountName = $record.DistinguishedName
+                $sid = $record.MemberSid
+                $resolutionStatus = 'Not resolved - foreign security principal'
+                throw 'Foreign security principal has no queryable home-domain distinguished name.'
+            }
+            if (-not $record.AccountDomain) {
+                throw 'The member distinguished name does not contain a domain component.'
+            }
+            if (-not $domainControllers.ContainsKey($record.AccountDomain)) {
+                $domainControllers[$record.AccountDomain] = (Get-ADDomainController -Discover -DomainName $record.AccountDomain -Writable -ErrorAction Stop).HostName
+            }
+            $server = $domainControllers[$record.AccountDomain]
+
             switch ($record.ObjectClass) {
                 'user' {
-                    $account = Get-ADUser -Identity $record.DistinguishedName -Properties DisplayName, SID, PasswordLastSet, Enabled, LockedOut, AccountExpirationDate -ErrorAction Stop
+                    $account = Get-ADUser -Identity $record.DistinguishedName -Server $server -Properties DisplayName, SID, PasswordLastSet, Enabled, LockedOut, AccountExpirationDate -ErrorAction Stop
                     $accountName = $account.SamAccountName
                     $displayName = $account.DisplayName
                     $sid = $account.SID
@@ -434,7 +462,7 @@ function Get-AdministrativeAccountReportText {
                     $expiration = $account.AccountExpirationDate
                 }
                 'computer' {
-                    $account = Get-ADComputer -Identity $record.DistinguishedName -Properties SID, PasswordLastSet, Enabled -ErrorAction Stop
+                    $account = Get-ADComputer -Identity $record.DistinguishedName -Server $server -Properties SID, PasswordLastSet, Enabled -ErrorAction Stop
                     $accountName = $account.SamAccountName
                     $displayName = $account.Name
                     $sid = $account.SID
@@ -442,7 +470,7 @@ function Get-AdministrativeAccountReportText {
                     $disabled = -not $account.Enabled
                 }
                 default {
-                    $account = Get-ADObject -Identity $record.DistinguishedName -Properties objectSid, Name -ErrorAction Stop
+                    $account = Get-ADObject -Identity $record.DistinguishedName -Server $server -Properties objectSid, Name -ErrorAction Stop
                     $accountName = $account.Name
                     $displayName = $account.Name
                     $sid = $account.objectSid
@@ -450,8 +478,10 @@ function Get-AdministrativeAccountReportText {
             }
         }
         catch {
-            Write-AuditError -Context $Context -Message "Privileged member $($record.DistinguishedName) could not be read: $($_.Exception.Message)"
-            $accountName = $record.DistinguishedName
+            if (-not $accountName) { $accountName = $record.DistinguishedName }
+            if (-not $sid) { $sid = $record.MemberSid }
+            if ($resolutionStatus -eq 'Resolved') { $resolutionStatus = 'Not resolved - unable to query account domain' }
+            Write-AuditError -Context $Context -Message "Privileged member $($record.DistinguishedName) under $($record.AccountDomain) could not be read: $($_.Exception.Message)"
         }
 
         $values = @(
@@ -459,11 +489,13 @@ function Get-AdministrativeAccountReportText {
             $displayName,
             $sid,
             $record.ObjectClass,
+            $record.AccountDomain,
             ($record.SourceGroups -join '; '),
             $passwordLastSet,
             $disabled,
             $locked,
             $expiration,
+            $resolutionStatus,
             $record.DistinguishedName
         )
         $lines += ($values | ForEach-Object { ConvertTo-AuditQuotedField $_ }) -join "`t"
@@ -523,7 +555,7 @@ function Invoke-AuditSecurityPolicyCollector {
     param([Parameter(Mandatory)]$Context)
 
     $outputPath = Join-Path $Context.OutputDirectory 'AuditandUserRights.txt'
-    $result = Invoke-AuditNative -Context $Context -FilePath (Join-Path $env:windir 'System32\secedit.exe') -ArgumentList @('/export', '/cfg', $outputPath, '/areas', 'SECURITYPOLICY', 'USER_RIGHTS', 'AUDITPOLICY')
+    $result = Invoke-AuditNative -Context $Context -FilePath (Join-Path $env:windir 'System32\secedit.exe') -ArgumentList @('/export', '/cfg', $outputPath, '/areas', 'SECURITYPOLICY', 'USER_RIGHTS')
     if (-not (Test-Path -LiteralPath $outputPath)) {
         Write-AuditError -Context $Context -Message "Security policy export did not create $outputPath. Output: $($result -join ' ')"
     }
