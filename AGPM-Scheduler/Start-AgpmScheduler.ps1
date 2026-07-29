@@ -578,7 +578,8 @@ $scheduleButton.Add_Click({
             [ref]$parsedTime)) {
             throw "Enter a valid time, such as '09:00 PM'."
         }
-        $scheduledAt = $scheduleDate.SelectedDate.Value.Date.Add($parsedTime.TimeOfDay)
+        $selectedDate = [datetime]$scheduleDate.SelectedDate
+        $scheduledAt = $selectedDate.Date.Add($parsedTime.TimeOfDay)
 
         if (-not $testModeToggle.IsChecked) {
             $answer = [Windows.MessageBox]::Show(
