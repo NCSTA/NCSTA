@@ -150,6 +150,8 @@ function New-AgpmDeploymentJob {
         Status         = 'Pending'
         ScheduledAt    = $ScheduledAt.ToString('o')
         CreatedAt      = (Get-Date).ToString('o')
+        StartedAt      = $null
+        CompletedAt    = $null
         RequestedBy    = $RequestedBy
         ChangeTicket   = $ChangeTicket
         Comment        = $Comment
@@ -504,7 +506,8 @@ function Invoke-AgpmDeploymentQueue {
             }
 
             $job.Results = @($results)
-            $job.CompletedAt = (Get-Date).ToString('o')
+            Add-Member -InputObject $job -NotePropertyName CompletedAt `
+                -NotePropertyValue (Get-Date).ToString('o') -Force
             $failureCount = @($results | Where-Object Status -eq 'Failed').Count
             $jobWhatIf = if ($null -ne $job.PSObject.Properties['WhatIf']) {
                 [bool]$job.WhatIf
