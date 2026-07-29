@@ -1,0 +1,35 @@
+{
+  "SchemaVersion": 1,
+  "Paths": {
+    "DataRoot": "C:\\ProgramData\\AGPMScheduler"
+  },
+  "Runner": {
+    "PollMinutes": 1,
+    "ContinueOnError": true,
+    "DelayBetweenGposSeconds": 2,
+    "VerificationRetryCount": 4,
+    "VerificationRetryDelaySeconds": 15,
+    "WhatIf": true
+  },
+  "Domains": [
+    {
+      "Name": "example.com",
+      "DisplayName": "Example domain",
+      "Enabled": true
+    }
+  ],
+  "Email": {
+    "Enabled": false,
+    "SmtpServer": "smtp.example.com",
+    "Port": 25,
+    "UseSsl": false,
+    "From": "agpm-scheduler@example.com",
+    "DefaultTo": [
+      "gpo-operations@example.com"
+    ]
+  },
+  "ScheduledTask": {
+    "TaskName": "AGPM Scheduled Deployment Runner",
+    "TaskPath": "\\AGPM\\"
+  }
+}
