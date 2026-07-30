@@ -265,6 +265,19 @@ function Write-AgpmEvent {
     Write-AgpmAuditRecord -Paths $Paths -Record $record
 }
 
+function Format-AgpmDisplayDate {
+    param([Parameter()] $Value)
+
+    if ($null -eq $Value -or [string]::IsNullOrWhiteSpace([string]$Value)) {
+        return ''
+    }
+    try {
+        return ([datetime]$Value).ToString('M/d/yyyy h:mm:ss tt')
+    } catch {
+        return [string]$Value
+    }
+}
+
 function Send-AgpmJobEmail {
     param(
         [Parameter(Mandatory)] [psobject] $Config,
@@ -310,6 +323,10 @@ function Send-AgpmJobEmail {
     $encodedJobId = [Net.WebUtility]::HtmlEncode([string]$Job.JobId)
     $encodedRequester = [Net.WebUtility]::HtmlEncode([string]$Job.RequestedBy)
     $encodedComment = [Net.WebUtility]::HtmlEncode([string]$Job.Comment)
+    $formattedScheduledAt = [Net.WebUtility]::HtmlEncode(
+        (Format-AgpmDisplayDate -Value $Job.ScheduledAt))
+    $formattedCompletedAt = [Net.WebUtility]::HtmlEncode(
+        (Format-AgpmDisplayDate -Value $Job.CompletedAt))
     $mode = if ($null -ne $Job.PSObject.Properties['WhatIf'] -and $Job.WhatIf) {
         'Test simulation'
     } else {
@@ -344,8 +361,8 @@ function Send-AgpmJobEmail {
 <tr><td width="150" style="padding:9px 12px;color:#637083;font-size:12px;">Change ticket</td><td style="padding:9px 12px;font-size:13px;font-weight:600;">$encodedTicket</td></tr>
 <tr><td style="padding:9px 12px;color:#637083;font-size:12px;border-top:1px solid #e4e9ef;">Job ID</td><td style="padding:9px 12px;font-size:12px;border-top:1px solid #e4e9ef;font-family:Consolas,monospace;">$encodedJobId</td></tr>
 <tr><td style="padding:9px 12px;color:#637083;font-size:12px;border-top:1px solid #e4e9ef;">Requested by</td><td style="padding:9px 12px;font-size:13px;border-top:1px solid #e4e9ef;">$encodedRequester</td></tr>
-<tr><td style="padding:9px 12px;color:#637083;font-size:12px;border-top:1px solid #e4e9ef;">Scheduled</td><td style="padding:9px 12px;font-size:13px;border-top:1px solid #e4e9ef;">$($Job.ScheduledAt)</td></tr>
-<tr><td style="padding:9px 12px;color:#637083;font-size:12px;border-top:1px solid #e4e9ef;">Completed</td><td style="padding:9px 12px;font-size:13px;border-top:1px solid #e4e9ef;">$($Job.CompletedAt)</td></tr>
+<tr><td style="padding:9px 12px;color:#637083;font-size:12px;border-top:1px solid #e4e9ef;">Scheduled</td><td style="padding:9px 12px;font-size:13px;border-top:1px solid #e4e9ef;">$formattedScheduledAt</td></tr>
+<tr><td style="padding:9px 12px;color:#637083;font-size:12px;border-top:1px solid #e4e9ef;">Completed</td><td style="padding:9px 12px;font-size:13px;border-top:1px solid #e4e9ef;">$formattedCompletedAt</td></tr>
 <tr><td style="padding:9px 12px;color:#637083;font-size:12px;border-top:1px solid #e4e9ef;">Mode</td><td style="padding:9px 12px;font-size:13px;border-top:1px solid #e4e9ef;">$mode</td></tr>
 <tr><td style="padding:9px 12px;color:#637083;font-size:12px;border-top:1px solid #e4e9ef;">Comment</td><td style="padding:9px 12px;font-size:13px;border-top:1px solid #e4e9ef;">$encodedComment</td></tr>
 </table>
@@ -397,13 +414,16 @@ function Invoke-AgpmGpoDeployment {
 
     $started = Get-Date
     $result = [ordered]@{
-        Domain    = [string]$Item.Domain
-        Name      = [string]$Item.Name
-        GpoId     = [string]$Item.GpoId
-        StartedAt = $started.ToString('o')
-        EndedAt   = $null
-        Status    = 'Failed'
-        Message   = $null
+        Domain              = [string]$Item.Domain
+        Name                = [string]$Item.Name
+        GpoId               = [string]$Item.GpoId
+        StartedAt           = $started.ToString('o')
+        EndedAt             = $null
+        Status              = 'Failed'
+        Message             = $null
+        DeployedBefore      = $null
+        DeployedAfter       = $null
+        VerificationAttempts = 0
     }
 
     try {
@@ -428,6 +448,18 @@ function Invoke-AgpmGpoDeployment {
             [int]$gpo.UserVersion -ne [int]$Item.ExpectedUserVersion) {
             throw 'The AGPM user or computer version changed after scheduling.'
         }
+        if ($null -eq $gpo.PSObject.Properties['Deployed']) {
+            throw "The AGPM controlled GPO object does not expose a 'Deployed' timestamp."
+        }
+        $deployedBefore = if ($null -eq $gpo.Deployed -or
+            [string]::IsNullOrWhiteSpace([string]$gpo.Deployed)) {
+            $null
+        } else {
+            [datetime]$gpo.Deployed
+        }
+        if ($null -ne $deployedBefore) {
+            $result.DeployedBefore = $deployedBefore.ToString('o')
+        }
 
         $comment = '{0} | Job {1} | Requested by {2} | {3}' -f
             $Job.ChangeTicket, $Job.JobId, $Job.RequestedBy, $Job.Comment
@@ -448,22 +480,49 @@ function Invoke-AgpmGpoDeployment {
             $publishParameters.WhatIf = $true
         }
 
+        $publishStartedAt = Get-Date
         Microsoft.Agpm\Publish-ControlledGpo @publishParameters | Out-Null
 
         if ($jobWhatIf) {
             $result.Status = 'WhatIf'
             $result.Message = 'Validation succeeded; deployment was simulated.'
         } else {
-            Import-Module GroupPolicy -ErrorAction Stop
             $verified = $false
-            $production = $null
+            $deployedAfter = $null
+            $refreshedGpo = $null
             $attempts = [Math]::Max(1, [int]$Config.Runner.VerificationRetryCount + 1)
             for ($attempt = 1; $attempt -le $attempts; $attempt++) {
-                $production = Get-GPO -Guid ([guid]$Item.GpoId) -Domain $Item.Domain `
-                    -ErrorAction Stop
-                $verified =
-                    [int]$production.Computer.DSVersion -eq [int]$gpo.ComputerVersion -and
-                    [int]$production.User.DSVersion -eq [int]$gpo.UserVersion
+                $result.VerificationAttempts = $attempt
+                $refreshedGpo = Get-AgpmControlledGpo -Domain $Item.Domain |
+                    Where-Object {
+                        (ConvertTo-NormalizedGuidString $_.ID) -eq
+                            (ConvertTo-NormalizedGuidString $Item.GpoId)
+                    } |
+                    Select-Object -First 1
+                if (-not $refreshedGpo) {
+                    throw "The controlled GPO disappeared during deployment verification."
+                }
+                if ((ConvertTo-NormalizedGuidString $refreshedGpo.BackupID) -ne
+                    (ConvertTo-NormalizedGuidString $Item.ExpectedBackupId)) {
+                    throw 'The AGPM archive revision changed during deployment verification.'
+                }
+                if ($null -eq $refreshedGpo.PSObject.Properties['Deployed']) {
+                    throw "The refreshed AGPM controlled GPO does not expose a 'Deployed' timestamp."
+                }
+                $deployedAfter = if ($null -eq $refreshedGpo.Deployed -or
+                    [string]::IsNullOrWhiteSpace([string]$refreshedGpo.Deployed)) {
+                    $null
+                } else {
+                    [datetime]$refreshedGpo.Deployed
+                }
+                if ($null -ne $deployedAfter) {
+                    $result.DeployedAfter = $deployedAfter.ToString('o')
+                }
+                $isNewDeployment = $null -ne $deployedAfter -and
+                    ($null -eq $deployedBefore -or $deployedAfter -gt $deployedBefore)
+                $isFromThisRun = $null -ne $deployedAfter -and
+                    $deployedAfter -ge $publishStartedAt.AddMinutes(-2)
+                $verified = $isNewDeployment -and $isFromThisRun
                 if ($verified) {
                     break
                 }
@@ -472,13 +531,32 @@ function Invoke-AgpmGpoDeployment {
                 }
             }
             if (-not $verified) {
-                throw ('Publish returned, but production versions did not match AGPM after ' +
-                    "$attempts verification attempt(s). " +
-                    "AGPM C/U=$($gpo.ComputerVersion)/$($gpo.UserVersion); " +
-                    "production C/U=$($production.Computer.DSVersion)/$($production.User.DSVersion).")
+                $beforeText = if ($null -eq $deployedBefore) {
+                    '<never>'
+                } else {
+                    Format-AgpmDisplayDate -Value $deployedBefore
+                }
+                $afterText = if ($null -eq $deployedAfter) {
+                    '<not set>'
+                } else {
+                    Format-AgpmDisplayDate -Value $deployedAfter
+                }
+                throw ('Publish returned, but the AGPM Deployed timestamp did not advance ' +
+                    "after $attempts verification attempt(s). " +
+                    "Before=$beforeText; After=$afterText; " +
+                    "PublishStarted=$(Format-AgpmDisplayDate -Value $publishStartedAt); " +
+                    "BackupID=$($Item.ExpectedBackupId).")
             }
             $result.Status = 'Success'
-            $result.Message = 'Published and production user/computer versions verified.'
+            $deployedBeforeDisplay = if ($null -eq $deployedBefore) {
+                '<never>'
+            } else {
+                Format-AgpmDisplayDate -Value $deployedBefore
+            }
+            $deployedAfterDisplay = Format-AgpmDisplayDate -Value $deployedAfter
+            $result.Message = ('Published and verified in AGPM. Deployed timestamp advanced ' +
+                "from $deployedBeforeDisplay to $deployedAfterDisplay " +
+                "after $($result.VerificationAttempts) attempt(s).")
         }
     } catch {
         $result.Status = 'Failed'
