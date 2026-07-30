@@ -16,5 +16,12 @@ if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
 $modulePath = Join-Path $scriptDirectory '..\modules\AgpmScheduler\AgpmScheduler.psd1'
 Import-Module $modulePath -Force
 
-$config = Get-AgpmSchedulerConfig -Path $ConfigPath
-Invoke-AgpmDeploymentQueue -Config $config
+try {
+    $config = Get-AgpmSchedulerConfig -Path $ConfigPath
+    Invoke-AgpmDeploymentQueue -Config $config
+    exit 0
+} catch {
+    Write-Error ("AGPM scheduled deployment runner failed: {0}`n{1}" -f
+        $_.Exception.Message, $_.ScriptStackTrace)
+    exit 1
+}

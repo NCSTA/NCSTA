@@ -233,7 +233,36 @@ function Write-AgpmAuditRecord {
 
     $path = Join-Path $Paths.Logs ('AGPMScheduler-{0}.jsonl' -f (Get-Date -Format 'yyyy-MM'))
     $line = $Record | ConvertTo-Json -Depth 10 -Compress
-    Add-Content -LiteralPath $path -Value $line -Encoding UTF8
+    Add-Content -LiteralPath $path -Value $line -Encoding UTF8 -ErrorAction Stop
+}
+
+function Write-AgpmEvent {
+    param(
+        [Parameter(Mandatory)] [psobject] $Paths,
+        [Parameter(Mandatory)] [string] $Event,
+        [Parameter()] $Job,
+        [Parameter()] [string] $Message,
+        [Parameter()] $Details
+    )
+
+    $record = [ordered]@{
+        Timestamp    = (Get-Date).ToString('o')
+        Event        = $Event
+        ProcessId    = $PID
+        ComputerName = $env:COMPUTERNAME
+        RunAs        = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    }
+    if ($null -ne $Job) {
+        $record.JobId = [string]$Job.JobId
+        $record.ChangeTicket = [string]$Job.ChangeTicket
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Message)) {
+        $record.Message = $Message
+    }
+    if ($null -ne $Details) {
+        $record.Details = $Details
+    }
+    Write-AgpmAuditRecord -Paths $Paths -Record $record
 }
 
 function Send-AgpmJobEmail {
@@ -243,7 +272,10 @@ function Send-AgpmJobEmail {
     )
 
     if (-not $Config.Email.Enabled) {
-        return
+        return [pscustomobject]@{
+            Status = 'SkippedDisabled'
+            Recipients = @()
+        }
     }
 
     $recipients = @($Job.NotifyTo) + @($Config.Email.DefaultTo)
@@ -251,7 +283,10 @@ function Send-AgpmJobEmail {
         -not [string]::IsNullOrWhiteSpace([string]$_)
     } | Select-Object -Unique)
     if (-not $recipients) {
-        return
+        return [pscustomobject]@{
+            Status = 'SkippedNoRecipients'
+            Recipients = @()
+        }
     }
 
     $rows = foreach ($result in $Job.Results) {
@@ -294,7 +329,7 @@ function Send-AgpmJobEmail {
 <tr><td align="center" style="padding:30px 14px;">
 <table role="presentation" width="760" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:760px;background:#ffffff;border:1px solid #d8e0ea;">
 <tr><td style="padding:24px 28px;background:#17324d;color:#ffffff;">
-<div style="font-size:22px;font-weight:600;">AGPM Deployment Scheduler</div>
+<div style="font-size:22px;font-weight:600;">AGPM Deployment</div>
 <div style="padding-top:6px;color:#c9d8e8;font-size:13px;">Scheduled Group Policy deployment report</div>
 </td></tr>
 <tr><td style="padding:24px 28px 10px 28px;">
@@ -347,6 +382,10 @@ This message was generated automatically by the AGPM Deployment Scheduler. Revie
         ErrorAction = 'Stop'
     }
     Send-MailMessage @parameters
+    return [pscustomobject]@{
+        Status = 'Sent'
+        Recipients = @($recipients)
+    }
 }
 
 function Invoke-AgpmGpoDeployment {
@@ -464,80 +503,160 @@ function Invoke-AgpmDeploymentQueue {
     try {
         $hasMutex = $mutex.WaitOne(0)
         if (-not $hasMutex) {
+            Write-AgpmEvent -Paths $paths -Event 'RunnerSkippedMutex' `
+                -Message 'Another queue runner is already active.'
             Write-Verbose 'Another queue runner is already active.'
             return
         }
 
+        Write-AgpmEvent -Paths $paths -Event 'RunnerStarted' -Details ([ordered]@{
+            ConfigPath = [string]$Config.ConfigPath
+        })
         $now = Get-Date
         $dueJobs = @(Get-AgpmDeploymentJob -Config $Config -Status Pending |
             Where-Object { [datetime]$_.ScheduledAt -le $now } |
             Sort-Object { [datetime]$_.ScheduledAt })
+        Write-AgpmEvent -Paths $paths -Event 'QueueScanned' -Details ([ordered]@{
+            DueJobCount = $dueJobs.Count
+        })
 
         foreach ($pendingJob in $dueJobs) {
             $runningPath = Join-Path $paths.Running "$($pendingJob.JobId).json"
             try {
                 Move-Item -LiteralPath $pendingJob.QueuePath -Destination $runningPath -ErrorAction Stop
             } catch {
+                Write-AgpmEvent -Paths $paths -Event 'JobClaimFailed' -Job $pendingJob `
+                    -Message $_.Exception.Message
                 continue
             }
 
-            $job = Get-Content -LiteralPath $runningPath -Raw | ConvertFrom-Json
-            $job.Status = 'Running'
-            Add-Member -InputObject $job -NotePropertyName StartedAt -NotePropertyValue (Get-Date).ToString('o') -Force
-            Write-AgpmJsonAtomic -Value $job -Path $runningPath
-
+            $job = $null
             $results = [System.Collections.ArrayList]::new()
-            foreach ($item in $job.Gpos) {
-                $result = Invoke-AgpmGpoDeployment -Config $Config -Item $item -Job $job
-                [void]$results.Add($result)
-                Write-AgpmAuditRecord -Paths $paths -Record ([ordered]@{
-                    Timestamp = (Get-Date).ToString('o')
-                    JobId = $job.JobId
-                    ChangeTicket = $job.ChangeTicket
-                    Result = $result
-                })
-
-                if ($result.Status -eq 'Failed' -and -not [bool]$Config.Runner.ContinueOnError) {
-                    break
-                }
-                if ([int]$Config.Runner.DelayBetweenGposSeconds -gt 0) {
-                    Start-Sleep -Seconds ([int]$Config.Runner.DelayBetweenGposSeconds)
-                }
-            }
-
-            $job.Results = @($results)
-            Add-Member -InputObject $job -NotePropertyName CompletedAt `
-                -NotePropertyValue (Get-Date).ToString('o') -Force
-            $failureCount = @($results | Where-Object Status -eq 'Failed').Count
-            $jobWhatIf = if ($null -ne $job.PSObject.Properties['WhatIf']) {
-                [bool]$job.WhatIf
-            } else {
-                [bool]$Config.Runner.WhatIf
-            }
-            $job.Status = if ($failureCount -eq 0) {
-                if ($jobWhatIf) { 'WhatIfCompleted' } else { 'Completed' }
-            } elseif ($failureCount -eq $results.Count) {
-                'Failed'
-            } else {
-                'CompletedWithErrors'
-            }
-
-            $destinationFolder = if ($failureCount -eq 0) { $paths.Completed } else { $paths.Failed }
-            $destinationPath = Join-Path $destinationFolder "$($job.JobId).json"
-            Write-AgpmJsonAtomic -Value $job -Path $destinationPath
-            Remove-Item -LiteralPath $runningPath -Force
-
             try {
-                Send-AgpmJobEmail -Config $Config -Job $job
-            } catch {
-                Write-AgpmAuditRecord -Paths $paths -Record ([ordered]@{
-                    Timestamp = (Get-Date).ToString('o')
-                    JobId = $job.JobId
-                    Event = 'EmailFailed'
-                    Message = $_.Exception.Message
+                $job = Get-Content -LiteralPath $runningPath -Raw -ErrorAction Stop |
+                    ConvertFrom-Json -ErrorAction Stop
+                Write-AgpmEvent -Paths $paths -Event 'JobClaimed' -Job $job -Details ([ordered]@{
+                    RunningPath = $runningPath
                 })
+                $job.Status = 'Running'
+                Add-Member -InputObject $job -NotePropertyName StartedAt `
+                    -NotePropertyValue (Get-Date).ToString('o') -Force
+                Write-AgpmJsonAtomic -Value $job -Path $runningPath
+                Write-AgpmEvent -Paths $paths -Event 'JobStarted' -Job $job -Details ([ordered]@{
+                    GpoCount = @($job.Gpos).Count
+                    WhatIf = [bool]$job.WhatIf
+                })
+
+                foreach ($item in $job.Gpos) {
+                    Write-AgpmEvent -Paths $paths -Event 'GpoProcessingStarted' -Job $job `
+                        -Details ([ordered]@{
+                            Domain = [string]$item.Domain
+                            Name = [string]$item.Name
+                            GpoId = [string]$item.GpoId
+                        })
+                    $result = Invoke-AgpmGpoDeployment -Config $Config -Item $item -Job $job
+                    [void]$results.Add($result)
+                    Write-AgpmEvent -Paths $paths -Event 'GpoProcessingCompleted' -Job $job `
+                        -Message ([string]$result.Message) -Details $result
+
+                    if ($result.Status -eq 'Failed' -and -not [bool]$Config.Runner.ContinueOnError) {
+                        break
+                    }
+                    if ([int]$Config.Runner.DelayBetweenGposSeconds -gt 0) {
+                        Start-Sleep -Seconds ([int]$Config.Runner.DelayBetweenGposSeconds)
+                    }
+                }
+
+                Write-AgpmEvent -Paths $paths -Event 'JobFinalizationStarted' -Job $job
+                $job.Results = @($results)
+                Add-Member -InputObject $job -NotePropertyName CompletedAt `
+                    -NotePropertyValue (Get-Date).ToString('o') -Force
+                $failureCount = @($results | Where-Object Status -eq 'Failed').Count
+                $jobWhatIf = if ($null -ne $job.PSObject.Properties['WhatIf']) {
+                    [bool]$job.WhatIf
+                } else {
+                    [bool]$Config.Runner.WhatIf
+                }
+                $job.Status = if ($failureCount -eq 0) {
+                    if ($jobWhatIf) { 'WhatIfCompleted' } else { 'Completed' }
+                } elseif ($failureCount -eq $results.Count) {
+                    'Failed'
+                } else {
+                    'CompletedWithErrors'
+                }
+
+                $destinationFolder = if ($failureCount -eq 0) {
+                    $paths.Completed
+                } else {
+                    $paths.Failed
+                }
+                $destinationPath = Join-Path $destinationFolder "$($job.JobId).json"
+                Write-AgpmJsonAtomic -Value $job -Path $destinationPath
+                Remove-Item -LiteralPath $runningPath -Force -ErrorAction Stop
+                Write-AgpmEvent -Paths $paths -Event 'JobFinalized' -Job $job -Details ([ordered]@{
+                    Status = [string]$job.Status
+                    DestinationPath = $destinationPath
+                    ResultCount = @($results).Count
+                    FailureCount = $failureCount
+                })
+            } catch {
+                $processingError = $_
+                $auditJob = if ($null -ne $job) { $job } else { $pendingJob }
+                Write-AgpmEvent -Paths $paths -Event 'JobProcessingFailed' -Job $auditJob `
+                    -Message $processingError.Exception.Message -Details ([ordered]@{
+                        ScriptStackTrace = $processingError.ScriptStackTrace
+                        RunningPath = $runningPath
+                    })
+
+                if ($null -ne $job -and (Test-Path -LiteralPath $runningPath)) {
+                    $job.Results = @($results)
+                    $job.Status = 'ProcessingFailed'
+                    Add-Member -InputObject $job -NotePropertyName CompletedAt `
+                        -NotePropertyValue (Get-Date).ToString('o') -Force
+                    Add-Member -InputObject $job -NotePropertyName ProcessingError `
+                        -NotePropertyValue $processingError.Exception.Message -Force
+                    $failedPath = Join-Path $paths.Failed "$($job.JobId).json"
+                    try {
+                        Write-AgpmJsonAtomic -Value $job -Path $failedPath
+                        Remove-Item -LiteralPath $runningPath -Force -ErrorAction Stop
+                        Write-AgpmEvent -Paths $paths -Event 'FailedJobArchived' -Job $job `
+                            -Details ([ordered]@{ DestinationPath = $failedPath })
+                    } catch {
+                        Write-AgpmEvent -Paths $paths -Event 'FailedJobArchiveFailed' -Job $job `
+                            -Message $_.Exception.Message
+                    }
+                }
+            }
+
+            if ($null -ne $job) {
+                try {
+                    Write-AgpmEvent -Paths $paths -Event 'EmailSendStarted' -Job $job
+                    $emailResult = Send-AgpmJobEmail -Config $Config -Job $job
+                    Write-AgpmEvent -Paths $paths -Event $emailResult.Status -Job $job `
+                        -Details ([ordered]@{
+                            Recipients = @($emailResult.Recipients)
+                            SmtpServer = [string]$Config.Email.SmtpServer
+                            Port = [int]$Config.Email.Port
+                            UseSsl = [bool]$Config.Email.UseSsl
+                        })
+                } catch {
+                    Write-AgpmEvent -Paths $paths -Event 'EmailFailed' -Job $job `
+                        -Message $_.Exception.Message -Details ([ordered]@{
+                            ScriptStackTrace = $_.ScriptStackTrace
+                            SmtpServer = [string]$Config.Email.SmtpServer
+                            Port = [int]$Config.Email.Port
+                            UseSsl = [bool]$Config.Email.UseSsl
+                        })
+                }
             }
         }
+        Write-AgpmEvent -Paths $paths -Event 'RunnerCompleted' -Details ([ordered]@{
+            ProcessedJobCount = $dueJobs.Count
+        })
+    } catch {
+        Write-AgpmEvent -Paths $paths -Event 'RunnerFailed' -Message $_.Exception.Message `
+            -Details ([ordered]@{ ScriptStackTrace = $_.ScriptStackTrace })
+        throw
     } finally {
         if ($hasMutex) {
             [void]$mutex.ReleaseMutex()

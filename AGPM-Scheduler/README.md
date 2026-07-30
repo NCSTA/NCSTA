@@ -78,6 +78,16 @@ The first version supports an internal SMTP relay through the `Email` section
 of the configuration. When email is disabled or fails, deployment processing
 continues and the failure is written to the audit log.
 
+The monthly JSONL audit log records the complete scheduled-runner lifecycle,
+including queue scans, job claims, each GPO operation, job finalization, and
+email delivery. A delivered notification produces `EmailSendStarted` followed
+by `Sent`. Configuration-based skips produce `SkippedDisabled` or
+`SkippedNoRecipients`; SMTP failures produce `EmailFailed` with the exception
+message and connection settings. Any error after a job is claimed produces
+`JobProcessingFailed`; the runner then preserves the results and moves the job
+to `Failed` with status `ProcessingFailed` instead of leaving it stranded in
+`Running`.
+
 ## Queue layout
 
 The runner creates the following below `Paths.DataRoot`:

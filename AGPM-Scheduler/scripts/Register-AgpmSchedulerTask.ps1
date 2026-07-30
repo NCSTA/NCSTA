@@ -27,12 +27,14 @@ $runner = (Resolve-Path (Join-Path $scriptDirectory 'Invoke-AgpmDeploymentRunner
 $resolvedConfig = (Resolve-Path $ConfigPath).Path
 $arguments = '-NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File "{0}" -ConfigPath "{1}"' -f
     $runner, $resolvedConfig
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments `
+    -WorkingDirectory (Split-Path -Parent $runner)
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
     -RepetitionInterval (New-TimeSpan -Minutes ([int]$config.Runner.PollMinutes)) `
     -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew `
-    -ExecutionTimeLimit (New-TimeSpan -Hours 4)
+    -ExecutionTimeLimit (New-TimeSpan -Hours 4) `
+    -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 
 if ($UseGmsa) {
     if ([string]::IsNullOrWhiteSpace($RunAsAccount) -or -not $RunAsAccount.EndsWith('$')) {
