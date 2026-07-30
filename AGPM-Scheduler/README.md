@@ -15,10 +15,11 @@ fresh AGPM object and refuses to publish it if:
 - its `BackupID` changed;
 - its user or computer version changed.
 
-Live deployments are verified against the production GPO's AD versions using
-the `GroupPolicy` module. Verification is retried to accommodate domain
-controller replication visibility. Multiple GPOs are processed sequentially
-and recorded individually.
+Live deployments are verified through AGPM by confirming that the controlled
+GPO's `Deployed` timestamp advances after publishing and that its scheduled
+archive `BackupID` remains unchanged. Verification is retried to accommodate
+AGPM refresh latency. Multiple GPOs are processed sequentially and recorded
+individually.
 
 ## Requirements
 
