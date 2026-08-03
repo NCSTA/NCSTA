@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Configuration>
+  <ViewDefinitions>
+    <View>
+      <Name>ServerProtocolAudit.Summary.Table</Name>
+      <ViewSelectedBy>
+        <TypeName>ServerProtocolAudit.Summary</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Computer</Label><Width>24</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Action</Label><Width>8</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Enabled (explicit)</Label><Width>22</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Disabled (explicit)</Label><Width>22</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Defaults</Label><Width>8</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Ciphers</Label><Width>8</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Weak</Label><Width>6</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Review</Label><Width>7</Width><Alignment>Right</Alignment></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem><PropertyName>ComputerName</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>ActionRequired</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>EnabledProtocols</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>DisabledProtocols</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>OSDefaultCount</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>CipherCount</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>WeakCiphers</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>ReviewCiphers</PropertyName></TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+  </ViewDefinitions>
+</Configuration>
