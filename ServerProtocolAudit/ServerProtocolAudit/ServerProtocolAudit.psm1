@@ -227,15 +227,32 @@ function Get-Cipher {
     Audits TLS/SSL protocols and cipher-suite order on one or more Windows servers.
 
     .DESCRIPTION
-    Runs a read-only SCHANNEL audit locally or through PowerShell remoting. Results
-    are simple objects with a ComputerName property for filtering and export.
+    Runs a read-only SCHANNEL audit locally or through PowerShell remoting.
+
+    By default, Get-Cipher returns one compact summary row per computer. Use the
+    View parameter to return detailed protocol records, cipher-suite records, or
+    all available records. Every result includes ComputerName for filtering,
+    grouping, and export.
+
+    Remote computers require PowerShell remoting (WinRM) and appropriate access.
 
     .PARAMETER ComputerName
-    One or more Windows computer names. Accepts pipeline input. Use localhost, a
-    dot, or the local computer name to run without PowerShell remoting.
+    One or more Windows computer names, FQDNs, or IP addresses.
+
+    Accepts strings from the pipeline and objects whose property is named
+    ComputerName, CN, Server, or Name. Use localhost, a dot, or the local computer
+    name to run without PowerShell remoting.
 
     .PARAMETER View
-    Selects all results, protocol status only, or cipher suites only.
+    Controls the type of information returned:
+
+    Summary     One compact row per computer. This is the default.
+    Protocol    SSL/TLS client and server protocol configuration.
+    CipherSuite Effective cipher-suite preference order and assessments.
+    All         Every protocol and cipher-suite record.
+
+    .PARAMETER IncludeStrongCrypto
+    Includes the .NET Framework SchUseStrongCrypto registry status.
 
     .PARAMETER Credential
     Optional credential used for remote PowerShell sessions.
@@ -243,11 +260,63 @@ function Get-Cipher {
     .EXAMPLE
     Get-Cipher server1.domain.com
 
+    Displays the default summary for one remote server.
+
     .EXAMPLE
     Get-Cipher server1.domain.com, server2.domain.com
 
+    Displays one summary row for each server supplied as an array.
+
+    .EXAMPLE
+    $servers = @('server1.domain.com', 'server2.domain.com')
+    $servers | Get-Cipher
+
+    Sends an array of server names to Get-Cipher through the pipeline.
+
     .EXAMPLE
     'server1.domain.com', 'server2.domain.com' | Get-Cipher -View CipherSuite
+
+    Returns the detailed cipher-suite order for each server.
+
+    .EXAMPLE
+    Import-Csv .\servers.csv | Get-Cipher -View Protocol
+
+    Audits objects imported from a CSV containing a ComputerName column.
+
+    .EXAMPLE
+    Get-Cipher server1.domain.com -IncludeStrongCrypto
+
+    Includes .NET Framework strong-cryptography settings with the audit.
+
+    .EXAMPLE
+    Get-Cipher server1.domain.com -Credential (Get-Credential)
+
+    Uses alternate credentials for the remote PowerShell connection.
+
+    .INPUTS
+    System.String
+
+    You can pipe computer-name strings to this command.
+
+    System.Management.Automation.PSObject
+
+    You can pipe objects containing a ComputerName, CN, Server, or Name property.
+
+    .OUTPUTS
+    ServerProtocolAudit.Summary
+    ServerProtocolAudit.Protocol
+    ServerProtocolAudit.CipherSuite
+    ServerProtocolAudit.StrongCrypto
+
+    .NOTES
+    Discover command usage with:
+
+    Get-Help Get-Cipher
+    Get-Help Get-Cipher -Examples
+    Get-Help Get-Cipher -Full
+    Get-Command Get-Cipher -Syntax
+
+    The command is read-only and does not modify protocols or cipher suites.
     #>
     [CmdletBinding()]
     param(
