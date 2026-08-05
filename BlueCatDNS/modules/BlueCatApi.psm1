@@ -138,7 +138,13 @@ function Invoke-BlueCatApi {
         [hashtable]$ExtraHeaders = @{}
     )
 
-    $uri = if ($Endpoint.StartsWith('http')) { $Endpoint } else { "$($script:BamUrl)/api/v2/$Endpoint" }
+    $uri = if ($Endpoint.StartsWith('http')) {
+        $Endpoint
+    } elseif ($Endpoint.StartsWith('/')) {
+        "$($script:BamUrl)$Endpoint"
+    } else {
+        "$($script:BamUrl)/api/v2/$Endpoint"
+    }
 
     $merged = @{}
     foreach ($k in $script:Headers.Keys) { $merged[$k] = $script:Headers[$k] }
@@ -312,6 +318,60 @@ function Get-BlueCatResourceRecord {
     )
     $result = Invoke-BlueCatApi -Endpoint "resourceRecords/$Id"
     return $result
+}
+
+function Get-BlueCatResourceLinkHref {
+    param(
+        [object]$Resource,
+        [Parameter(Mandatory)][string]$LinkName
+    )
+
+    if ($null -eq $Resource) { return $null }
+
+    $linksProperty = $Resource.PSObject.Properties['_links']
+    if (-not $linksProperty -or $null -eq $linksProperty.Value) { return $null }
+
+    $linkProperty = $linksProperty.Value.PSObject.Properties[$LinkName]
+    if (-not $linkProperty -or $null -eq $linkProperty.Value) { return $null }
+
+    $hrefProperty = $linkProperty.Value.PSObject.Properties['href']
+    if ($hrefProperty -and $hrefProperty.Value) {
+        return $hrefProperty.Value.ToString()
+    }
+
+    return $null
+}
+
+function Get-BlueCatResourceRecordAddresses {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][int]$Id
+    )
+
+    $directError = $null
+    try {
+        $result = Invoke-BlueCatApi -Endpoint "resourceRecords/$Id/addresses"
+        $addresses = @(Get-BlueCatResponseData $result)
+        if ($addresses.Count -gt 0) {
+            return $addresses
+        }
+    }
+    catch {
+        $directError = $_
+    }
+
+    $record = Get-BlueCatResourceRecord -Id $Id
+    $addressHref = Get-BlueCatResourceLinkHref -Resource $record -LinkName 'addresses'
+    if ($addressHref) {
+        $result = Invoke-BlueCatApi -Endpoint $addressHref
+        return Get-BlueCatResponseData $result
+    }
+
+    if ($directError) {
+        throw $directError
+    }
+
+    return @()
 }
 
 function New-BlueCatResourceRecord {
@@ -557,18 +617,79 @@ function Get-BlueCatDeploymentStatus {
     return $result
 }
 
+function Get-BlueCatEvent {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][int]$EventId
+    )
+
+    $result = Invoke-BlueCatApi -Endpoint "events/$EventId"
+    return $result
+}
+
+function Get-BlueCatEvents {
+    [CmdletBinding()]
+    param(
+        [int]$Limit = 100,
+        [string]$Filter,
+        [string]$OrderBy = 'desc(id)'
+    )
+
+    $query = New-Object System.Collections.ArrayList
+    [void]$query.Add("limit=$Limit")
+    if ($OrderBy) {
+        [void]$query.Add("orderBy=$([uri]::EscapeDataString($OrderBy))")
+    }
+    if ($Filter) {
+        [void]$query.Add("filter=$([uri]::EscapeDataString($Filter))")
+    }
+
+    $endpoint = "events?$($query -join '&')"
+    $result = Invoke-BlueCatApi -Endpoint $endpoint
+    return Get-BlueCatResponseData $result
+}
+
+function Get-BlueCatDeploymentEvents {
+    [CmdletBinding()]
+    param(
+        [int]$Limit = 100
+    )
+
+    $events = @(Get-BlueCatEvents -Limit $Limit -OrderBy 'desc(id)')
+    return @($events | Where-Object {
+        $text = @(
+            $_.category,
+            $_.eventCategory,
+            $_.type,
+            $_.eventType,
+            $_.source,
+            $_.eventSource,
+            $_.message,
+            $_.description
+        ) -join ' '
+
+        $text -match 'deployment'
+    })
+}
+
 function Get-BlueCatDeployments {
     [CmdletBinding()]
     param(
         [int]$Limit = 20,
-        [string]$Filter
+        [string]$Filter,
+        [string]$OrderBy = 'desc(id)'
     )
 
-    $endpoint = "deployments?limit=$Limit"
+    $query = New-Object System.Collections.ArrayList
+    [void]$query.Add("limit=$Limit")
+    if ($OrderBy) {
+        [void]$query.Add("orderBy=$([uri]::EscapeDataString($OrderBy))")
+    }
     if ($Filter) {
-        $endpoint += "&filter=$([uri]::EscapeDataString($Filter))"
+        [void]$query.Add("filter=$([uri]::EscapeDataString($Filter))")
     }
 
+    $endpoint = "deployments?$($query -join '&')"
     $result = Invoke-BlueCatApi -Endpoint $endpoint
     return Get-BlueCatResponseData $result
 }
@@ -631,8 +752,9 @@ function Get-BlueCatRecordTypeApiName {
 Export-ModuleMember -Function Connect-BlueCat, Disconnect-BlueCat, Get-BlueCatCurrentUser,
     Get-BlueCatConfigurations, Set-BlueCatContext, Get-BlueCatConfigId, Get-BlueCatViewId,
     Get-BlueCatViews, Get-BlueCatZones, Find-BlueCatZone, Get-BlueCatSubZones,
-    Get-BlueCatResourceRecords, Get-BlueCatResourceRecord,
+    Get-BlueCatResourceRecords, Get-BlueCatResourceRecord, Get-BlueCatResourceRecordAddresses,
     New-BlueCatResourceRecord, Update-BlueCatResourceRecord, Remove-BlueCatResourceRecord,
     Invoke-BlueCatSelectiveDeploy, Invoke-BlueCatQuickDeploy, Invoke-BlueCatServerDeploy,
-    Get-BlueCatDeploymentStatus, Get-BlueCatDeployments, Get-BlueCatServers, Test-BlueCatConnection,
+    Get-BlueCatDeploymentStatus, Get-BlueCatEvent, Get-BlueCatEvents, Get-BlueCatDeploymentEvents,
+    Get-BlueCatDeployments, Get-BlueCatServers, Test-BlueCatConnection,
     Get-BlueCatRecordTypeDisplayName, Get-BlueCatRecordTypeApiName

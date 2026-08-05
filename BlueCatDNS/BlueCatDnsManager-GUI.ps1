@@ -419,13 +419,13 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                         </StackPanel>
                     </GroupBox>
 
-                    <GroupBox Header="Deployment Status Check">
+                    <GroupBox Header="Deployment Status / Events">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <Label Content="Deployment ID:"/>
+                                <Label Content="Event / Deployment ID:"/>
                                 <TextBox x:Name="txtCheckDeployId" Width="150" Margin="0,0,10,0"/>
-                                <Button x:Name="btnCheckDeploy" Content="Check Status"/>
-                                <Button x:Name="btnRecentDeployments" Content="Recent Deployments" Margin="10,0,0,0"/>
+                                <Button x:Name="btnCheckDeploy" Content="Check ID"/>
+                                <Button x:Name="btnRecentDeployments" Content="Recent Events" Margin="10,0,0,0"/>
                             </StackPanel>
                             <DataGrid x:Name="dgDeployments" AutoGenerateColumns="False"
                                       IsReadOnly="True" Height="220"
@@ -434,12 +434,12 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Time" Binding="{Binding time}" Width="145"/>
                                     <DataGridTextColumn Header="ID" Binding="{Binding id}" Width="70"/>
-                                    <DataGridTextColumn Header="Type" Binding="{Binding deploymentType}" Width="135"/>
-                                    <DataGridTextColumn Header="Name" Binding="{Binding name}" Width="190"/>
+                                    <DataGridTextColumn Header="Category" Binding="{Binding category}" Width="135"/>
+                                    <DataGridTextColumn Header="Source" Binding="{Binding source}" Width="120"/>
+                                    <DataGridTextColumn Header="Name / Target" Binding="{Binding name}" Width="170"/>
                                     <DataGridTextColumn Header="Action" Binding="{Binding action}" Width="105"/>
                                     <DataGridTextColumn Header="State" Binding="{Binding state}" Width="85"/>
                                     <DataGridTextColumn Header="Status" Binding="{Binding status}" Width="85"/>
-                                    <DataGridTextColumn Header="Done" Binding="{Binding percentComplete}" Width="60"/>
                                     <DataGridTextColumn Header="User" Binding="{Binding user}" Width="95"/>
                                     <DataGridTextColumn Header="Message" Binding="{Binding message}" Width="*"/>
                                 </DataGrid.Columns>
@@ -820,19 +820,6 @@ function Get-DeploymentIdFromResponse {
     return $null
 }
 
-function Get-RecordDisplayValue {
-    param($record)
-    if ($record.rdata) { return $record.rdata }
-    if ($record.text) { return $record.text }
-    if ($record.addresses) {
-        return ($record.addresses | ForEach-Object { $_.address }) -join ', '
-    }
-    if ($record.linkedRecord -and $record.linkedRecord.absoluteName) {
-        return $record.linkedRecord.absoluteName
-    }
-    return ''
-}
-
 function Get-ObjectPropertyValue {
     param(
         [object]$InputObject,
@@ -847,6 +834,236 @@ function Get-ObjectPropertyValue {
         }
     }
     return $null
+}
+
+function Get-RecordPropertyValue {
+    param(
+        [object]$InputObject,
+        [string[]]$Names
+    )
+
+    if ($null -eq $InputObject) { return $null }
+
+    foreach ($name in $Names) {
+        if ($InputObject -is [System.Collections.IDictionary] -and $InputObject.Contains($name)) {
+            return $InputObject[$name]
+        }
+
+        $property = $InputObject.PSObject.Properties[$name]
+        if ($property -and $null -ne $property.Value) {
+            return $property.Value
+        }
+    }
+
+    return $null
+}
+
+function Test-ScalarRecordValue {
+    param([object]$Value)
+
+    if ($null -eq $Value) { return $false }
+    if ($Value -is [string]) { return ($Value.Trim() -ne '') }
+    if ($Value -is [System.ValueType]) { return $true }
+    return $false
+}
+
+function Test-IpAddressText {
+    param([string]$Value)
+
+    if (-not $Value) { return $false }
+    return ($Value -match '^\d{1,3}(\.\d{1,3}){3}$' -or $Value -match ':')
+}
+
+function Add-RecordAddressTextValues {
+    param(
+        [System.Collections.ArrayList]$Accumulator,
+        [string]$Text
+    )
+
+    if (-not $Text) { return }
+    foreach ($part in ($Text -split ',')) {
+        $value = $part.Trim()
+        if ($value) {
+            [void]$Accumulator.Add($value)
+        }
+    }
+}
+
+function Add-RecordAddressValuesFromProperties {
+    param(
+        [System.Collections.ArrayList]$Accumulator,
+        [string]$Properties
+    )
+
+    if (-not $Properties) { return }
+    foreach ($pattern in @('(?i)(?:^|\|)addresses?=([^|;]+)', '(?i)(?:^|\|)ipAddress=([^|;]+)')) {
+        $match = [regex]::Match($Properties, $pattern)
+        if ($match.Success) {
+            Add-RecordAddressTextValues -Accumulator $Accumulator -Text $match.Groups[1].Value
+        }
+    }
+}
+
+function Add-RecordAddressValues {
+    param(
+        [System.Collections.ArrayList]$Accumulator,
+        [object]$Value
+    )
+
+    if ($null -eq $Value) { return }
+
+    if ($Value -is [string]) {
+        $text = $Value.Trim()
+        if ($text) { Add-RecordAddressTextValues -Accumulator $Accumulator -Text $text }
+        return
+    }
+
+    if ($Value -is [System.Array]) {
+        foreach ($item in @($Value)) {
+            Add-RecordAddressValues -Accumulator $Accumulator -Value $item
+        }
+        return
+    }
+
+    $directAddress = Get-RecordPropertyValue -InputObject $Value -Names @('address','ipAddress','ip4Address','ip6Address')
+    if (Test-ScalarRecordValue -Value $directAddress) {
+        Add-RecordAddressTextValues -Accumulator $Accumulator -Text $directAddress.ToString()
+        return
+    }
+
+    $recordType = Get-RecordPropertyValue -InputObject $Value -Names @('type','recordType')
+    $nameValue = Get-RecordPropertyValue -InputObject $Value -Names @('name')
+    if (Test-ScalarRecordValue -Value $nameValue -and $recordType -and $recordType.ToString() -match 'Address') {
+        $nameText = $nameValue.ToString()
+        if (Test-IpAddressText -Value $nameText) {
+            Add-RecordAddressTextValues -Accumulator $Accumulator -Text $nameText
+            return
+        }
+    }
+
+    $properties = Get-RecordPropertyValue -InputObject $Value -Names @('properties')
+    if (Test-ScalarRecordValue -Value $properties) {
+        Add-RecordAddressValuesFromProperties -Accumulator $Accumulator -Properties $properties.ToString()
+    }
+
+    foreach ($collectionName in @('addresses','data')) {
+        $nested = Get-RecordPropertyValue -InputObject $Value -Names @($collectionName)
+        if ($nested) {
+            Add-RecordAddressValues -Accumulator $Accumulator -Value $nested
+        }
+    }
+
+    $_embedded = Get-RecordPropertyValue -InputObject $Value -Names @('_embedded','embedded')
+    if ($_embedded) {
+        foreach ($embeddedName in @('addresses','data')) {
+            $nested = Get-RecordPropertyValue -InputObject $_embedded -Names @($embeddedName)
+            if ($nested) {
+                Add-RecordAddressValues -Accumulator $Accumulator -Value $nested
+            }
+        }
+    }
+}
+
+function ConvertTo-RecordAddressText {
+    param([object]$Addresses)
+
+    $values = New-Object System.Collections.ArrayList
+    Add-RecordAddressValues -Accumulator $values -Value $Addresses
+    return (($values | Select-Object -Unique) -join ', ')
+}
+
+function Get-RecordLinkedTargetName {
+    param($Record)
+
+    foreach ($name in @('linkedRecordName','target','targetName','serverName')) {
+        $value = Get-RecordPropertyValue -InputObject $Record -Names @($name)
+        if (Test-ScalarRecordValue -Value $value) {
+            return $value.ToString().TrimEnd('.')
+        }
+    }
+
+    $linkedRecord = Get-RecordPropertyValue -InputObject $Record -Names @('linkedRecord','linkedResource','resourceRecord')
+    if ($linkedRecord) {
+        foreach ($name in @('absoluteName','name','fqdn')) {
+            $value = Get-RecordPropertyValue -InputObject $linkedRecord -Names @($name)
+            if (Test-ScalarRecordValue -Value $value) {
+                return $value.ToString().TrimEnd('.')
+            }
+        }
+    }
+
+    return ''
+}
+
+function Get-RecordDisplayValue {
+    param(
+        [object]$Record,
+        [switch]$SkipApiLookup
+    )
+
+    if (-not $Record) { return '' }
+
+    foreach ($name in @('rdata','text','txt','recordData','dataValue')) {
+        $value = Get-RecordPropertyValue -InputObject $Record -Names @($name)
+        if (Test-ScalarRecordValue -Value $value) {
+            return $value.ToString()
+        }
+    }
+
+    $addresses = Get-RecordPropertyValue -InputObject $Record -Names @('addresses')
+    $addressText = ConvertTo-RecordAddressText -Addresses $addresses
+    if ($addressText) { return $addressText }
+
+    $_embedded = Get-RecordPropertyValue -InputObject $Record -Names @('_embedded','embedded')
+    if ($_embedded) {
+        $embeddedAddresses = Get-RecordPropertyValue -InputObject $_embedded -Names @('addresses')
+        $addressText = ConvertTo-RecordAddressText -Addresses $embeddedAddresses
+        if ($addressText) { return $addressText }
+    }
+
+    $recordType = Get-ObjectPropertyValue -InputObject $Record -Names @('type','recordType')
+    $recordId = Get-ObjectPropertyValue -InputObject $Record -Names @('id')
+    if (-not $SkipApiLookup -and $recordType -eq 'HostRecord' -and $recordId) {
+        try {
+            $linkedAddresses = Get-BlueCatResourceRecordAddresses -Id ([int]$recordId)
+            $addressText = ConvertTo-RecordAddressText -Addresses $linkedAddresses
+            if ($addressText) { return $addressText }
+        }
+        catch {}
+    }
+
+    $linkedTarget = Get-RecordLinkedTargetName -Record $Record
+    if ($recordType -eq 'MXRecord') {
+        $priority = Get-ObjectPropertyValue -InputObject $Record -Names @('priority')
+        if ($priority -and $linkedTarget) { return "$priority $linkedTarget" }
+    }
+    elseif ($recordType -eq 'SRVRecord') {
+        $priority = Get-ObjectPropertyValue -InputObject $Record -Names @('priority')
+        $weight = Get-ObjectPropertyValue -InputObject $Record -Names @('weight')
+        $port = Get-ObjectPropertyValue -InputObject $Record -Names @('port')
+        $parts = @($priority, $weight, $port, $linkedTarget) | Where-Object {
+            $null -ne $_ -and $_.ToString().Trim() -ne ''
+        }
+        if ($parts.Count -gt 0) {
+            return (($parts | ForEach-Object { $_.ToString() }) -join ' ')
+        }
+    }
+    elseif ($linkedTarget) {
+        return $linkedTarget
+    }
+
+    if (-not $SkipApiLookup -and $recordId) {
+        try {
+            $fullRecord = Get-BlueCatResourceRecord -Id ([int]$recordId)
+            if ($fullRecord) {
+                $fullValue = Get-RecordDisplayValue -Record $fullRecord -SkipApiLookup
+                if ($fullValue) { return $fullValue }
+            }
+        }
+        catch {}
+    }
+
+    return ''
 }
 
 function Add-ListItem {
@@ -1008,6 +1225,10 @@ function Get-DeploymentDateValue {
     param($Deployment)
 
     return Get-ObjectPropertyValue -InputObject $Deployment -Names @(
+        'date',
+        'eventDate',
+        'eventDateTime',
+        'createdDate',
         'creationDateTime',
         'startDateTime',
         'completionDateTime',
@@ -1045,7 +1266,14 @@ function Get-DeploymentSortDate {
 function Get-DeploymentUserName {
     param($Deployment)
 
-    $user = Get-ObjectPropertyValue -InputObject $Deployment -Names @('user','createdBy','owner')
+    $user = Get-ObjectPropertyValue -InputObject $Deployment -Names @(
+        'user',
+        'username',
+        'userName',
+        'createdBy',
+        'owner',
+        'actor'
+    )
     if ($null -eq $user) { return '' }
 
     $name = Get-ObjectPropertyValue -InputObject $user -Names @('name','username','userName')
@@ -1062,7 +1290,9 @@ function Get-DeploymentDisplayName {
         'absoluteName',
         'entityName',
         'resourceName',
-        'serverName'
+        'serverName',
+        'target',
+        'targetName'
     )
     if ($name) { return $name.ToString() }
 
@@ -1084,7 +1314,7 @@ function ConvertTo-DeploymentRows {
     foreach ($deployment in @(Get-DeploymentObjects -InputObject $InputObject)) {
         if (-not $deployment) { continue }
 
-        $method = Get-ObjectPropertyValue -InputObject $deployment -Names @('method','action')
+        $method = Get-ObjectPropertyValue -InputObject $deployment -Names @('method','action','operation')
         $service = Get-ObjectPropertyValue -InputObject $deployment -Names @('service')
         $actionParts = @($method, $service) | Where-Object {
             $null -ne $_ -and $_.ToString().Trim() -ne ''
@@ -1102,12 +1332,14 @@ function ConvertTo-DeploymentRows {
         $dateValue = Get-DeploymentDateValue -Deployment $deployment
         [void]$rows.Add([PSCustomObject]@{
             time            = Format-DeploymentDateValue -Value $dateValue
-            id              = (Get-ObjectPropertyValue -InputObject $deployment -Names @('id','deploymentId','deploymentID','taskId'))
+            id              = (Get-ObjectPropertyValue -InputObject $deployment -Names @('id','eventId','eventID','deploymentId','deploymentID','taskId'))
+            category        = (Get-ObjectPropertyValue -InputObject $deployment -Names @('category','eventCategory','type','deploymentType'))
+            source          = (Get-ObjectPropertyValue -InputObject $deployment -Names @('eventSource','source','serverName'))
             deploymentType  = (Get-ObjectPropertyValue -InputObject $deployment -Names @('type','deploymentType'))
             name            = Get-DeploymentDisplayName -Deployment $deployment
             action          = (($actionParts | ForEach-Object { $_.ToString() }) -join ' ')
             state           = (Get-ObjectPropertyValue -InputObject $deployment -Names @('state'))
-            status          = (Get-ObjectPropertyValue -InputObject $deployment -Names @('status'))
+            status          = (Get-ObjectPropertyValue -InputObject $deployment -Names @('status','level','severity'))
             percentComplete = $percentText
             user            = Get-DeploymentUserName -Deployment $deployment
             message         = (Get-ObjectPropertyValue -InputObject $deployment -Names @('message','description'))
@@ -1832,51 +2064,95 @@ $btnQuickDeploy.Add_Click({
 $btnCheckDeploy.Add_Click({
     if (-not $script:IsConnected) { Show-Error 'Error' 'Not connected.'; return }
 
-    $deployId = $txtCheckDeployId.Text.Trim()
-    if (-not $deployId -or $deployId -notmatch '^\d+$') {
-        Show-Error 'Validation' 'Enter a valid deployment ID.'
+    $lookupId = $txtCheckDeployId.Text.Trim()
+    if (-not $lookupId -or $lookupId -notmatch '^\d+$') {
+        Show-Error 'Validation' 'Enter a valid event or deployment ID.'
         return
     }
 
+    $eventLookupError = $null
     try {
-        $result = Get-BlueCatDeploymentStatus -DeploymentId ([int]$deployId)
-        [void](Set-DeploymentResults -InputObject $result -Summary "Deployment $deployId status retrieved.")
-        Write-AppLog -Level INFO -Action 'DeploymentStatus' -Message "Retrieved status for deployment $deployId" -Details @{
-            DeploymentId = [int]$deployId
+        try {
+            $result = Get-BlueCatEvent -EventId ([int]$lookupId)
+            [void](Set-DeploymentResults -InputObject $result -Summary "Event $lookupId retrieved from the BAM event list.")
+            Write-AppLog -Level INFO -Action 'DeploymentEventStatus' -Message "Retrieved event $lookupId" -Details @{
+                EventId = [int]$lookupId
+                Response = $result
+            }
+            Set-Status "Event $lookupId retrieved"
+            return
+        }
+        catch {
+            $eventLookupError = Get-ExceptionMessage $_
+        }
+
+        $result = Get-BlueCatDeploymentStatus -DeploymentId ([int]$lookupId)
+        [void](Set-DeploymentResults -InputObject $result -Summary "Deployment $lookupId status retrieved. Event-list lookup was not available for this ID.")
+        Write-AppLog -Level INFO -Action 'DeploymentStatus' -Message "Retrieved status for deployment $lookupId" -Details @{
+            DeploymentId = [int]$lookupId
+            EventLookupError = $eventLookupError
             Response = $result
         }
-        Set-Status "Deployment $deployId status retrieved"
+        Set-Status "Deployment $lookupId status retrieved"
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
-        Set-DeploymentError -Message "Checking deployment ID ${deployId}: $errMsg. This usually means the value is not a deployment/task ID. Use the ID returned in the selective or quick deploy response, not the DNS record/entity ID."
-        Write-AppLog -Level ERROR -Action 'DeploymentStatus' -Message $errMsg -Details @{
-            DeploymentId = [int]$deployId
+        $combinedMessage = "Checking event/deployment ID ${lookupId}: $errMsg"
+        if ($eventLookupError) {
+            $combinedMessage += "`n`nEvent-list lookup failed first:`n$eventLookupError"
         }
-        Set-Status 'Status check failed' '#f38ba8'
+        $combinedMessage += "`n`nUse an Event ID from Administration > Tracking > Deployment Status > Events List, or a deployment/task ID returned by selective/quick deploy."
+        Set-DeploymentError -Message $combinedMessage
+        Write-AppLog -Level ERROR -Action 'DeploymentStatus' -Message $combinedMessage -Details @{
+            DeploymentId = [int]$lookupId
+            EventLookupError = $eventLookupError
+        }
+        Set-Status 'ID check failed' '#f38ba8'
     }
 })
 
 $btnRecentDeployments.Add_Click({
     if (-not $script:IsConnected) { Show-Error 'Error' 'Not connected.'; return }
 
-    Set-Status 'Loading recent deployments...' '#f9e2af'
+    Set-Status 'Loading recent deployment events...' '#f9e2af'
+    $eventListError = $null
     try {
-        $result = Get-BlueCatDeployments -Limit 20
-        $rows = Set-DeploymentResults -InputObject $result -Summary 'Recent deployments loaded. Rows are sorted newest first.'
+        try {
+            $result = Get-BlueCatDeploymentEvents -Limit 100
+            $rows = Set-DeploymentResults -InputObject $result -Summary 'Recent deployment events loaded from the BAM event list. Rows are sorted newest first.'
+            if ($rows.Count -gt 0 -and $rows[0].id) {
+                $txtCheckDeployId.Text = $rows[0].id.ToString()
+            }
+            Write-AppLog -Level INFO -Action 'RecentDeploymentEvents' -Message 'Retrieved recent deployment events' -Details @{
+                Events = $result
+            }
+            Set-Status 'Recent deployment events loaded' '#a6e3a1'
+            return
+        }
+        catch {
+            $eventListError = Get-ExceptionMessage $_
+        }
+
+        $result = Get-BlueCatDeployments -Limit 20 -OrderBy 'desc(id)'
+        $rows = Set-DeploymentResults -InputObject $result -Summary "Recent deployment tasks loaded. BAM event-list endpoint was not available, so this is the v2 deployments fallback."
         if ($rows.Count -gt 0 -and $rows[0].id) {
             $txtCheckDeployId.Text = $rows[0].id.ToString()
         }
         Write-AppLog -Level INFO -Action 'RecentDeployments' -Message 'Retrieved recent deployments' -Details @{
+            EventListError = $eventListError
             Deployment = $result
         }
-        Set-Status 'Recent deployments loaded' '#a6e3a1'
+        Set-Status 'Recent deployment tasks loaded' '#a6e3a1'
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
-        Set-DeploymentError -Message "Loading recent deployments: $errMsg"
-        Write-AppLog -Level ERROR -Action 'RecentDeployments' -Message $errMsg
-        Set-Status 'Recent deployments failed' '#f38ba8'
+        $combinedMessage = "Loading recent deployment events/tasks: $errMsg"
+        if ($eventListError) {
+            $combinedMessage += "`n`nEvent-list lookup failed first:`n$eventListError"
+        }
+        Set-DeploymentError -Message $combinedMessage
+        Write-AppLog -Level ERROR -Action 'RecentDeployments' -Message $combinedMessage
+        Set-Status 'Recent events failed' '#f38ba8'
     }
 })
 
