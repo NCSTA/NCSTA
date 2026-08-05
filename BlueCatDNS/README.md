@@ -81,6 +81,7 @@ BlueCatDNS/
 | List Zones | `GET /api/v2/views/{id}/zones` |
 | Find Zone | `GET /api/v2/zones?filter=...` |
 | List Records | `GET /api/v2/zones/{id}/resourceRecords` |
+| Record Addresses | `GET /api/v2/resourceRecords/{id}/addresses` |
 | Create Record | `POST /api/v2/zones/{id}/resourceRecords` |
 | Update Record | `PUT /api/v2/resourceRecords/{id}` |
 | Delete Record | `DELETE /api/v2/resourceRecords/{id}` |
@@ -89,6 +90,8 @@ BlueCatDNS/
 | Server Deploy | `POST /api/v2/servers/{id}/deployments` |
 | Recent Deployments | `GET /api/v2/deployments` |
 | Deploy Status | `GET /api/v2/deployments/{id}` |
+| Event List | `GET /api/v2/events` when available |
+| Event Detail | `GET /api/v2/events/{id}` when available |
 
 ## Troubleshooting
 

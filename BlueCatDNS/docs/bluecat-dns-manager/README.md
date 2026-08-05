@@ -13,7 +13,7 @@ The application is a Windows PowerShell 5.1 WPF client for the BlueCat Address M
 3. Search, create, modify, or delete DNS resource records.
 4. Optionally deploy a create or modify with selective deployment.
 5. Optionally deploy a deletion with zone quick deployment.
-6. Review recent deployment requests and local JSONL activity logs.
+6. Review deployment-service events, deployment task fallback data, and local JSONL activity logs.
 
 There is no local staging database or scheduled deployment worker. The schedule controls remain visible but disabled so the removal is explicit to operators.
 
@@ -102,6 +102,8 @@ The GUI builds one of two filters:
 
 `Get-BlueCatResourceRecords` currently requests at most 100 records. Pagination is not implemented.
 
+Host record IP values might not be present on the zone record collection response. When the collection row does not include an address, the GUI follows the record's address subcollection through `GET /api/v2/resourceRecords/{id}/addresses`.
+
 ### Create and Modify
 
 Create and modify operations accept these GUI record types:
@@ -134,12 +136,12 @@ If immediate deployment is selected, the GUI uses zone quick deploy because the 
 | Deploy after delete | Zone quick deployment | All pending changes in the selected zone |
 | Selective Deploy tool | Selective deployment | Entered record entity ID |
 | Quick Deploy tool | Zone quick deployment | All pending changes in the selected zone |
-| Recent Deployments | Deployment list | Most recent 20 deployment objects |
-| Check Status | Deployment lookup | One deployment ID |
+| Recent Events | Event list first, deployment list fallback | Deployment-service events when available; otherwise newest deployment objects |
+| Check ID | Event lookup first, deployment lookup fallback | One event or deployment ID |
 
 Quick deploy is broader than the selected record. The confirmation text must continue to warn that it can push all pending changes in the selected zone.
 
-The GUI displays deployment responses but does not currently expose server deployment, even though `Invoke-BlueCatServerDeploy` is available in the API module.
+The GUI displays deployment responses and deployment-service events. It does not currently expose server deployment, even though `Invoke-BlueCatServerDeploy` is available in the API module.
 
 ## API Module Reference
 
@@ -172,6 +174,7 @@ The GUI displays deployment responses but does not currently expose server deplo
 |---|---|---|
 | `Get-BlueCatResourceRecords` | Lists/filter records in a zone | Yes |
 | `Get-BlueCatResourceRecord` | Loads one record by ID | Indirectly |
+| `Get-BlueCatResourceRecordAddresses` | Loads address resources linked to a host record | Yes |
 | `New-BlueCatResourceRecord` | Builds a type-specific create payload | Yes |
 | `Update-BlueCatResourceRecord` | Reloads and replaces a record with `PUT` | Yes |
 | `Remove-BlueCatResourceRecord` | Deletes a record with optional change comment | Yes |
@@ -186,6 +189,9 @@ The GUI displays deployment responses but does not currently expose server deplo
 | `Invoke-BlueCatQuickDeploy` | Starts a zone quick deployment | Yes |
 | `Invoke-BlueCatServerDeploy` | Starts a DNS/DHCP/DHCPv6/TFTP server deployment | Module/console |
 | `Get-BlueCatDeploymentStatus` | Loads one deployment by ID | Yes |
+| `Get-BlueCatEvent` | Loads one BAM event-list entry by ID when available | Yes |
+| `Get-BlueCatEvents` | Loads recent BAM event-list entries when available | Module/console |
+| `Get-BlueCatDeploymentEvents` | Filters recent event-list entries to deployment-service events | Yes |
 | `Get-BlueCatDeployments` | Lists recent/filterable deployments | Yes |
 
 ### Internal Helpers
@@ -316,7 +322,7 @@ Get-Command -Module BlueCatApi | Sort-Object Name
 4. Modify the test record and confirm its change-control comment.
 5. Exercise selective deployment in an environment with deployable DNS roles.
 6. Delete the test record and confirm before using zone quick deploy.
-7. Load recent deployments and check a returned deployment ID.
+7. Load recent deployment events and check a returned event ID.
 8. Close the window and verify the BAM session is logged out.
 
 ## Integrity v26 Roadmap
