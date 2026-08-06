@@ -1470,6 +1470,7 @@ $btnConnect.Add_Click({
             $pnlConfig.Visibility = [System.Windows.Visibility]::Visible
         }
         if ($configs.Count -gt 0) {
+            $script:IsConnected = $true
             $cboConfig.SelectedIndex = 0
         }
 
@@ -1497,7 +1498,6 @@ $cboConfig.Add_SelectionChanged({
         }
 
         Set-BlueCatContext -ConfigurationId ([int]$configId) -ViewId 0
-        Populate-DeploymentServers
         $views = @(ConvertTo-ItemList -InputObject (Get-BlueCatViews -ConfigurationId ([int]$configId)))
         $cboView.ItemsSource = $views
         if ($views.Count -le 1) {
@@ -1508,6 +1508,17 @@ $cboConfig.Add_SelectionChanged({
         }
         if ($views.Count -gt 0) {
             $cboView.SelectedIndex = 0
+        }
+
+        try {
+            Populate-DeploymentServers
+        }
+        catch {
+            $cboDeploymentServer.ItemsSource = @()
+            $txtDeployResult.Text = "Server list was not loaded automatically: $(Get-ExceptionMessage $_)`nClick Recent Server Deployments to retry."
+            Write-AppLog -Level WARN -Action 'LoadDeploymentServers' -Message (Get-ExceptionMessage $_) -Details @{
+                ConfigurationId = [int]$configId
+            }
         }
     }
     catch {
@@ -2163,6 +2174,9 @@ $btnRecentDeployments.Add_Click({
 
     Set-Status 'Loading server deployment history...' '#f9e2af'
     try {
+        if (-not $cboDeploymentServer.SelectedItem) {
+            Populate-DeploymentServers
+        }
         $targetServer = $cboDeploymentServer.SelectedItem
         if (-not $targetServer) {
             throw 'Select a server before loading deployment history.'

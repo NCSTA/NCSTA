@@ -95,6 +95,13 @@ function Connect-BlueCat {
         if ($_.ErrorDetails.Message) {
             $errMsg = $_.ErrorDetails.Message
         }
+        if ($errMsg -match '(?is)<!DOCTYPE|<html|<style|<body|body\s*\{') {
+            $statusText = ''
+            if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+                $statusText = " HTTP $([int]$_.Exception.Response.StatusCode)."
+            }
+            $errMsg = "Address Manager returned an HTML page instead of a REST API response.$statusText Verify the BAM address, API availability, and any proxy or SSO redirect."
+        }
         throw "Failed to connect to BlueCat: $errMsg"
     }
 }
@@ -184,7 +191,14 @@ function Invoke-BlueCatApi {
                     $reader = New-Object System.IO.StreamReader($stream)
                     $responseBody = $reader.ReadToEnd()
                     $reader.Dispose()
-                    if ($responseBody) { [void]$messages.Add($responseBody) }
+                    if ($responseBody) {
+                        if ($responseBody -match '(?is)<!DOCTYPE|<html|<style|<body|body\s*\{') {
+                            [void]$messages.Add('Address Manager returned an HTML page instead of REST JSON. Verify the endpoint, API permissions, and any proxy or SSO redirect.')
+                        }
+                        else {
+                            [void]$messages.Add($responseBody)
+                        }
+                    }
                 }
             }
             catch {}
