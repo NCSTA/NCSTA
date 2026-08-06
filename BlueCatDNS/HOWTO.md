@@ -230,9 +230,9 @@ Use **Refresh Logs** to reload entries, **Clear View** to clear only the visible
 
 Immediate deployment uses selective deploy for create/modify actions. Delete with immediate deploy uses quick deploy on the selected zone.
 
-In **Deploy Tools**, **Recent Events** attempts to load deployment-service entries from the BAM event list, matching the information operators see under **Administration > Tracking > Deployment Status > Events List**. Use the Event ID from that list, such as `477869`, in **Event / Deployment ID** and click **Check ID**.
+In **Deploy Tools**, select a server from the **Server** list and click **Recent Server Deployments**. The tool loads its newest 50 deployment records, matching the information shown in Integrity under **Servers > [server] > Deployments**. The server list is refreshed whenever the selected configuration changes.
 
-If the BAM REST API does not expose event-list records to the current account or version, the tool falls back to the RESTful v2 deployment task list sorted by newest ID first.
+The application account requires permission to read deployment history. Use a returned deployment ID in **Event / Deployment ID** and click **Check ID** to retrieve its current details.
 
 In development BAM environments, deployment may return `400 Bad Request` if no deployable DNS servers or deployment roles exist there. Record create/modify/delete can still be valid in that case; check the **Logs** tab for the detailed BlueCat error response.
 

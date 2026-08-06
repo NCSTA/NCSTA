@@ -88,7 +88,7 @@ BlueCatDNS/
 | Selective Deploy | `POST /api/v2/deployments` |
 | Quick Deploy (Zone) | `POST /api/v2/zones/{id}/deployments` |
 | Server Deploy | `POST /api/v2/servers/{id}/deployments` |
-| Recent Deployments | `GET /api/v2/deployments` |
+| Recent Server Deployments | `GET /api/v2/servers/{id}/deployments` |
 | Deploy Status | `GET /api/v2/deployments/{id}` |
 | Event List | `GET /api/v2/events` when available |
 | Event Detail | `GET /api/v2/events/{id}` when available |
