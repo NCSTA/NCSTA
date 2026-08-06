@@ -419,18 +419,13 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                         </StackPanel>
                     </GroupBox>
 
-                    <GroupBox Header="Server Deployment History">
+                    <GroupBox Header="Deployment Status / Events">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <Label Content="Server:"/>
-                                <ComboBox x:Name="cboDeploymentServer" Width="360" Margin="0,0,10,0"
-                                          DisplayMemberPath="displayName"/>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <Label Content="Deployment ID:"/>
+                                <Label Content="Event / Deployment ID:"/>
                                 <TextBox x:Name="txtCheckDeployId" Width="150" Margin="0,0,10,0"/>
                                 <Button x:Name="btnCheckDeploy" Content="Check ID"/>
-                                <Button x:Name="btnRecentDeployments" Content="Recent Server Deployments" Margin="10,0,0,0"/>
+                                <Button x:Name="btnRecentDeployments" Content="Recent Events" Margin="10,0,0,0"/>
                             </StackPanel>
                             <DataGrid x:Name="dgDeployments" AutoGenerateColumns="False"
                                       IsReadOnly="True" Height="220"
@@ -567,7 +562,6 @@ $btnQuickDeploy     = $controls['btnQuickDeploy']
 $txtCheckDeployId   = $controls['txtCheckDeployId']
 $btnCheckDeploy     = $controls['btnCheckDeploy']
 $btnRecentDeployments = $controls['btnRecentDeployments']
-$cboDeploymentServer = $controls['cboDeploymentServer']
 
 
 $dgDeployments      = $controls['dgDeployments']
@@ -741,46 +735,6 @@ function Populate-ZoneCombos {
     if ($script:ZoneCache.Count -gt 0) {
         $cboZone.SelectedIndex = 0
     }
-}
-
-function Populate-DeploymentServers {
-    $selectedId = $null
-    if ($cboDeploymentServer.SelectedItem) {
-        $selectedId = Get-ObjectPropertyValue -InputObject $cboDeploymentServer.SelectedItem -Names @('id')
-    }
-
-    $serverRows = New-Object System.Collections.ArrayList
-    foreach ($server in @(ConvertTo-ItemList -InputObject (Get-BlueCatServers))) {
-        if (-not $server -or -not $server.id) { continue }
-
-        $serverName = Get-ObjectPropertyValue -InputObject $server -Names @('name','absoluteName','hostName')
-        if (-not $serverName) { $serverName = "Server ID $($server.id)" }
-
-        [void]$serverRows.Add([PSCustomObject]@{
-            id          = [int]$server.id
-            name        = $serverName.ToString()
-            displayName = "$serverName (ID $($server.id))"
-            source      = $server
-        })
-    }
-
-    $servers = @($serverRows | Sort-Object name)
-    $cboDeploymentServer.ItemsSource = $servers
-    if ($servers.Count -eq 0) {
-        $cboDeploymentServer.SelectedIndex = -1
-        return
-    }
-
-    $selectionIndex = 0
-    if ($null -ne $selectedId) {
-        for ($index = 0; $index -lt $servers.Count; $index++) {
-            if ([int]$servers[$index].id -eq [int]$selectedId) {
-                $selectionIndex = $index
-                break
-            }
-        }
-    }
-    $cboDeploymentServer.SelectedIndex = $selectionIndex
 }
 
 function Add-ZonesRecursive {
@@ -1497,7 +1451,6 @@ $cboConfig.Add_SelectionChanged({
         }
 
         Set-BlueCatContext -ConfigurationId ([int]$configId) -ViewId 0
-        Populate-DeploymentServers
         $views = @(ConvertTo-ItemList -InputObject (Get-BlueCatViews -ConfigurationId ([int]$configId)))
         $cboView.ItemsSource = $views
         if ($views.Count -le 1) {
@@ -2161,38 +2114,45 @@ $btnCheckDeploy.Add_Click({
 $btnRecentDeployments.Add_Click({
     if (-not $script:IsConnected) { Show-Error 'Error' 'Not connected.'; return }
 
-    Set-Status 'Loading server deployment history...' '#f9e2af'
+    Set-Status 'Loading recent deployment events...' '#f9e2af'
+    $eventListError = $null
     try {
-        $targetServer = $cboDeploymentServer.SelectedItem
-        if (-not $targetServer) {
-            throw 'Select a server before loading deployment history.'
+        try {
+            $result = Get-BlueCatDeploymentEvents -Limit 100
+            $rows = Set-DeploymentResults -InputObject $result -Summary 'Recent deployment events loaded from the BAM event list. Rows are sorted newest first.'
+            if ($rows.Count -gt 0 -and $rows[0].id) {
+                $txtCheckDeployId.Text = $rows[0].id.ToString()
+            }
+            Write-AppLog -Level INFO -Action 'RecentDeploymentEvents' -Message 'Retrieved recent deployment events' -Details @{
+                Events = $result
+            }
+            Set-Status 'Recent deployment events loaded' '#a6e3a1'
+            return
+        }
+        catch {
+            $eventListError = Get-ExceptionMessage $_
         }
 
-        $targetName = $targetServer.name
-        $result = Get-BlueCatServerDeployments -ServerId ([int]$targetServer.id) -Limit 50 -OrderBy 'desc(id)'
-        $rows = Set-DeploymentResults -InputObject $result -Summary "The newest 50 deployment records were loaded for server $targetName (ID $($targetServer.id))."
+        $result = Get-BlueCatDeployments -Limit 20 -OrderBy 'desc(id)'
+        $rows = Set-DeploymentResults -InputObject $result -Summary "Recent deployment tasks loaded. BAM event-list endpoint was not available, so this is the v2 deployments fallback."
         if ($rows.Count -gt 0 -and $rows[0].id) {
             $txtCheckDeployId.Text = $rows[0].id.ToString()
         }
-        Write-AppLog -Level INFO -Action 'ServerDeploymentHistory' -Message "Retrieved deployment history for server $targetName" -Details @{
-            ServerId = $targetServer.id
-            ServerName = $targetName
-            Deployments = $result
+        Write-AppLog -Level INFO -Action 'RecentDeployments' -Message 'Retrieved recent deployments' -Details @{
+            EventListError = $eventListError
+            Deployment = $result
         }
-        if ($rows.Count -gt 0) {
-            Set-Status "Server deployment history loaded for $targetName" '#a6e3a1'
-        }
-        else {
-            $txtDeployResult.Text = "No deployment history was returned for server $targetName. Verify the Integrity Deployment history global access right for this account."
-            Set-Status "No deployment history returned for $targetName" '#f9e2af'
-        }
+        Set-Status 'Recent deployment tasks loaded' '#a6e3a1'
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
-        $combinedMessage = "Loading server deployment history: $errMsg"
+        $combinedMessage = "Loading recent deployment events/tasks: $errMsg"
+        if ($eventListError) {
+            $combinedMessage += "`n`nEvent-list lookup failed first:`n$eventListError"
+        }
         Set-DeploymentError -Message $combinedMessage
-        Write-AppLog -Level ERROR -Action 'ServerDeploymentHistory' -Message $combinedMessage
-        Set-Status 'Server deployment history failed' '#f38ba8'
+        Write-AppLog -Level ERROR -Action 'RecentDeployments' -Message $combinedMessage
+        Set-Status 'Recent events failed' '#f38ba8'
     }
 })
 

@@ -694,29 +694,6 @@ function Get-BlueCatDeployments {
     return Get-BlueCatResponseData $result
 }
 
-function Get-BlueCatServerDeployments {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][int]$ServerId,
-        [int]$Limit = 100,
-        [string]$Filter,
-        [string]$OrderBy = 'desc(id)'
-    )
-
-    $query = New-Object System.Collections.ArrayList
-    [void]$query.Add("limit=$Limit")
-    if ($OrderBy) {
-        [void]$query.Add("orderBy=$([uri]::EscapeDataString($OrderBy))")
-    }
-    if ($Filter) {
-        [void]$query.Add("filter=$([uri]::EscapeDataString($Filter))")
-    }
-
-    $endpoint = "servers/$ServerId/deployments?$($query -join '&')"
-    $result = Invoke-BlueCatApi -Endpoint $endpoint
-    return Get-BlueCatResponseData $result
-}
-
 # ---------------------------------------------------------------------------
 # Server operations
 # ---------------------------------------------------------------------------
@@ -779,5 +756,5 @@ Export-ModuleMember -Function Connect-BlueCat, Disconnect-BlueCat, Get-BlueCatCu
     New-BlueCatResourceRecord, Update-BlueCatResourceRecord, Remove-BlueCatResourceRecord,
     Invoke-BlueCatSelectiveDeploy, Invoke-BlueCatQuickDeploy, Invoke-BlueCatServerDeploy,
     Get-BlueCatDeploymentStatus, Get-BlueCatEvent, Get-BlueCatEvents, Get-BlueCatDeploymentEvents,
-    Get-BlueCatDeployments, Get-BlueCatServerDeployments, Get-BlueCatServers, Test-BlueCatConnection,
+    Get-BlueCatDeployments, Get-BlueCatServers, Test-BlueCatConnection,
     Get-BlueCatRecordTypeDisplayName, Get-BlueCatRecordTypeApiName

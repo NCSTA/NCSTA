@@ -136,7 +136,7 @@ If immediate deployment is selected, the GUI uses zone quick deploy because the 
 | Deploy after delete | Zone quick deployment | All pending changes in the selected zone |
 | Selective Deploy tool | Selective deployment | Entered record entity ID |
 | Quick Deploy tool | Zone quick deployment | All pending changes in the selected zone |
-| Recent Server Deployments | Server deployment collection | Newest 50 selective, differential, and full deployment records for the selected server |
+| Recent Events | Event list first, deployment list fallback | Deployment-service events when available; otherwise newest deployment objects |
 | Check ID | Event lookup first, deployment lookup fallback | One event or deployment ID |
 
 Quick deploy is broader than the selected record. The confirmation text must continue to warn that it can push all pending changes in the selected zone.
@@ -191,9 +191,8 @@ The GUI displays deployment responses and deployment-service events. It does not
 | `Get-BlueCatDeploymentStatus` | Loads one deployment by ID | Yes |
 | `Get-BlueCatEvent` | Loads one BAM event-list entry by ID when available | Yes |
 | `Get-BlueCatEvents` | Loads recent BAM event-list entries when available | Module/console |
-| `Get-BlueCatDeploymentEvents` | Filters recent event-list entries to deployment-service events | Module/console |
-| `Get-BlueCatDeployments` | Lists recent/filterable global deployments | Module/console |
-| `Get-BlueCatServerDeployments` | Lists deployment history for one server | Yes |
+| `Get-BlueCatDeploymentEvents` | Filters recent event-list entries to deployment-service events | Yes |
+| `Get-BlueCatDeployments` | Lists recent/filterable deployments | Yes |
 
 ### Internal Helpers
 
