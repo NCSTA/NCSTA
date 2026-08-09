@@ -90,8 +90,34 @@ $Script:Config = @{
     GraceDays      = 30
 }
 
-# ── Store DryRun flag at script scope so all functions can read it ──
-$Script:IsDryRun = $DryRun.IsPresent
+# ═══════════════════════════════════════════════════════════════════════════════
+#  RUN CONFIGURATION — TOGGLE WHAT TO RUN, THEN PASTE INTO ISE AND HIT F5
+#  (These override the param switches when pasting into ISE script pane)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+$Script:Run = @{
+    PreFlight       = $true     # Phase 0: Scan and report
+    MirrorStructure = $true     # Phase 1: Copy folder tree only
+    MoveFiles       = $true     # Phase 2: Move files (progress bar)
+    DropNotices     = $true     # Phase 3: Place retirement notices
+    Validate        = $true     # Phase 4: Verify migration
+    DryRun          = $false    # Simulate only — no changes made
+    Rollback        = $false    # Reverse: move files from archive back to source
+}
+
+# ── Merge: param switches (if called as .ps1) override the block above ──
+if ($PreFlight -or $MirrorStructure -or $MoveFiles -or $DropNotices -or $Validate -or $RunAll -or $Rollback) {
+    # Script was called with explicit switches — use those instead
+    $Script:Run.PreFlight       = $PreFlight.IsPresent -or $RunAll.IsPresent
+    $Script:Run.MirrorStructure = $MirrorStructure.IsPresent -or $RunAll.IsPresent
+    $Script:Run.MoveFiles       = $MoveFiles.IsPresent -or $RunAll.IsPresent
+    $Script:Run.DropNotices     = $DropNotices.IsPresent -or $RunAll.IsPresent
+    $Script:Run.Validate        = $Validate.IsPresent -or $RunAll.IsPresent
+    $Script:Run.DryRun          = $DryRun.IsPresent
+    $Script:Run.Rollback        = $Rollback.IsPresent
+}
+
+$Script:IsDryRun = $Script:Run.DryRun
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  HELPER FUNCTIONS
@@ -1125,38 +1151,6 @@ function Invoke-Rollback {
 #  EXECUTION ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# ── Show usage if no switches provided ──
-$anySwitchSet = $PreFlight -or $MirrorStructure -or $MoveFiles -or $DropNotices -or $Validate -or $RunAll -or $Rollback
-
-if (-not $anySwitchSet) {
-    Write-Host ''
-    Write-Host '  Retire-PublicShare.ps1 — Public Share Migration Toolkit' -ForegroundColor White
-    Write-Host '  ─────────────────────────────────────────────────────────' -ForegroundColor DarkGray
-    Write-Host ''
-    Write-Host '  Usage (run in PowerShell ISE script pane):' -ForegroundColor Gray
-    Write-Host ''
-    Write-Host '    .\Retire-PublicShare.ps1 -PreFlight         # Phase 0: Scan and report' -ForegroundColor Cyan
-    Write-Host '    .\Retire-PublicShare.ps1 -MirrorStructure   # Phase 1: Copy folder tree only' -ForegroundColor Cyan
-    Write-Host '    .\Retire-PublicShare.ps1 -MoveFiles         # Phase 2: Move files (progress bar)' -ForegroundColor Cyan
-    Write-Host '    .\Retire-PublicShare.ps1 -DropNotices       # Phase 3: Place retirement notices' -ForegroundColor Cyan
-    Write-Host '    .\Retire-PublicShare.ps1 -Validate          # Phase 4: Verify migration' -ForegroundColor Cyan
-    Write-Host '    .\Retire-PublicShare.ps1 -RunAll            # Run all phases in sequence' -ForegroundColor Cyan
-    Write-Host ''
-    Write-Host '  Modifiers:' -ForegroundColor Gray
-    Write-Host '    -DryRun                                     # Simulate without changes' -ForegroundColor DarkYellow
-    Write-Host '    -Rollback                                   # Reverse: archive → source' -ForegroundColor DarkYellow
-    Write-Host '    -Rollback -DryRun                           # Preview rollback' -ForegroundColor DarkYellow
-    Write-Host ''
-    Write-Host '  Source:  ' -NoNewline -ForegroundColor Gray
-    Write-Host $Script:Config.SourcePath -ForegroundColor White
-    Write-Host '  Archive: ' -NoNewline -ForegroundColor Gray
-    Write-Host $Script:Config.ArchivePath -ForegroundColor White
-    Write-Host '  Logs:    ' -NoNewline -ForegroundColor Gray
-    Write-Host $Script:Config.LogFolder -ForegroundColor White
-    Write-Host ''
-    return
-}
-
 # ── Initialize logging ──
 Initialize-Logging
 
@@ -1170,44 +1164,56 @@ Write-Host '  ╚═════════════════════
 if ($Script:IsDryRun) {
     Write-Host '  ⚠  DRY RUN MODE — All operations are simulated, nothing will be changed.' -ForegroundColor Yellow
 }
+
+# ── Show what's enabled ──
+Write-Host ''
+Write-Host '  Running: ' -NoNewline -ForegroundColor Gray
+$enabledPhases = @()
+if ($Script:Run.Rollback)        { $enabledPhases += 'ROLLBACK' }
+if ($Script:Run.PreFlight)       { $enabledPhases += 'PreFlight' }
+if ($Script:Run.MirrorStructure) { $enabledPhases += 'MirrorStructure' }
+if ($Script:Run.MoveFiles)       { $enabledPhases += 'MoveFiles' }
+if ($Script:Run.DropNotices)     { $enabledPhases += 'DropNotices' }
+if ($Script:Run.Validate)        { $enabledPhases += 'Validate' }
+Write-Host ($enabledPhases -join ' → ') -ForegroundColor White
 Write-Host ''
 
 $overallStart = Get-Date
 $phaseResults = @{}
 
 # ── Rollback path (separate from forward migration) ──
-if ($Rollback) {
+if ($Script:Run.Rollback) {
     $phaseResults['Rollback'] = Invoke-Rollback
 }
 else {
     # ── Execute requested phases ──
-    if ($RunAll -or $PreFlight) {
+    if ($Script:Run.PreFlight) {
         $phaseResults['PreFlight'] = Invoke-PreFlight
-        if ($RunAll -and $phaseResults['PreFlight'] -eq $false) {
+        if ($phaseResults['PreFlight'] -eq $false) {
             Write-Step 'Pre-flight failed. Aborting remaining phases.' -Level Error
             Stop-Logging
             return
         }
     }
 
-    if ($RunAll -or $MirrorStructure) {
+    if ($Script:Run.MirrorStructure) {
         $phaseResults['MirrorStructure'] = Invoke-MirrorStructure
-        if ($RunAll -and $phaseResults['MirrorStructure'] -eq $false) {
+        if ($phaseResults['MirrorStructure'] -eq $false) {
             Write-Step 'Mirror structure failed. Aborting remaining phases.' -Level Error
             Stop-Logging
             return
         }
     }
 
-    if ($RunAll -or $MoveFiles) {
+    if ($Script:Run.MoveFiles) {
         $phaseResults['MoveFiles'] = Invoke-MoveFiles
     }
 
-    if ($RunAll -or $DropNotices) {
+    if ($Script:Run.DropNotices) {
         $phaseResults['DropNotices'] = Invoke-DropNotices
     }
 
-    if ($RunAll -or $Validate) {
+    if ($Script:Run.Validate) {
         $phaseResults['Validate'] = Invoke-Validate
     }
 }
