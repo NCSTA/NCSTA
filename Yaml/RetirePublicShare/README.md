@@ -1,4 +1,4 @@
-# Retire Public Share — Migration Toolkit
+﻿# Retire Public Share — Migration Toolkit
 
 ## Purpose
 
@@ -36,6 +36,15 @@ Retires `G:\Public` by migrating all data to `G:\Archive\Public` while preservin
 
 # Or run everything in sequence
 .\Retire-PublicShare.ps1 -RunAll
+
+# Dry run — simulate everything, change nothing
+.\Retire-PublicShare.ps1 -RunAll -DryRun
+
+# Rollback — reverse the migration (archive → source)
+.\Retire-PublicShare.ps1 -Rollback
+
+# Preview rollback without executing
+.\Retire-PublicShare.ps1 -Rollback -DryRun
 ```
 
 ## Phases
@@ -48,6 +57,14 @@ Retires `G:\Public` by migrating all data to `G:\Archive\Public` while preservin
 | 3 | `-DropNotices` | Places `_SHARE_RETIRED.txt` in root and every top-level folder with contact info |
 | 4 | `-Validate` | Compares file counts, reports any files that failed to move |
 
+## Modifiers
+
+| Switch | What it does |
+|--------|-------------|
+| `-DryRun` | Simulates all phases — robocopy runs in list-only mode (`/L`), no files moved, no notices written. Combine with any phase or `-RunAll` |
+| `-Rollback` | Reverses the migration: removes notice files from source, moves all files from archive back to source with progress bar, validates result |
+| `-Rollback -DryRun` | Preview what rollback would do without executing |
+
 ## Logging
 
 All logs are written to `G:\Archive\Logs\RetirePublicShare\`:
@@ -55,6 +72,7 @@ All logs are written to `G:\Archive\Logs\RetirePublicShare\`:
 - **Transcript** — full console output: `Transcript_<timestamp>.log`
 - **Robocopy mirror log** — Phase 1 details: `RobocopyMirror_<timestamp>.log`
 - **Robocopy move log** — Phase 2 details: `RobocopyMove_<timestamp>.log`
+- **Robocopy rollback log** — Rollback details: `RobocopyRollback_<timestamp>.log`
 - **Validation report** — Phase 4 summary: `Validation_<timestamp>.log`
 
 ## Configuration
@@ -88,3 +106,5 @@ $Script:Config = @{
 | Files remaining after move | Re-run `-MoveFiles` to retry; robocopy skips already-moved files |
 | Long paths (>260 chars) | Robocopy handles these natively; no action needed |
 | Script blocked by CB | Ensure you're running from **ISE script pane** (F5), not console |
+| Need to undo the migration | Run `-Rollback` to move all files back from archive to source |
+| Want to preview before running | Add `-DryRun` to any command to simulate |
