@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -14,6 +14,9 @@
 
     Designed to run in PowerShell ISE script pane (F5) to bypass CarbonBlack.
     Run each phase in order, or use -RunAll for the full sequence.
+
+    Use -DryRun with any phase to simulate without making changes.
+    Use -Rollback to reverse the migration (move files back from archive to source).
 
 .PARAMETER PreFlight
     Run Phase 0 only — scan and report.
@@ -33,11 +36,22 @@
 .PARAMETER RunAll
     Run all phases in sequence (0 through 4).
 
+.PARAMETER DryRun
+    Simulate all operations without making changes. Robocopy runs in list-only
+    mode (/L), notice files are not written. Combine with any phase switch.
+
+.PARAMETER Rollback
+    Reverse the migration: remove notice files from source, move all files
+    from archive back to source with progress bar, then validate.
+
 .EXAMPLE
     .\Retire-PublicShare.ps1 -PreFlight
     .\Retire-PublicShare.ps1 -MirrorStructure
     .\Retire-PublicShare.ps1 -MoveFiles
     .\Retire-PublicShare.ps1 -RunAll
+    .\Retire-PublicShare.ps1 -RunAll -DryRun
+    .\Retire-PublicShare.ps1 -Rollback
+    .\Retire-PublicShare.ps1 -Rollback -DryRun
 
 .NOTES
     Author  : NCSTA
@@ -53,7 +67,9 @@ param(
     [switch]$MoveFiles,
     [switch]$DropNotices,
     [switch]$Validate,
-    [switch]$RunAll
+    [switch]$RunAll,
+    [switch]$DryRun,
+    [switch]$Rollback
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -74,18 +90,23 @@ $Script:Config = @{
     GraceDays      = 30
 }
 
+# ── Store DryRun flag at script scope so all functions can read it ──
+$Script:IsDryRun = $DryRun.IsPresent
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  HELPER FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 function Write-Banner {
-    <# Prints a phase header banner #>
+    <# Prints a phase header banner — shows [DRY RUN] when simulating #>
     param([string]$Text)
 
+    if ($Script:IsDryRun) { $dryTag = '  ** DRY RUN — NO CHANGES WILL BE MADE **' } else { $dryTag = '' }
     $line = '=' * 80
     Write-Host ''
     Write-Host $line -ForegroundColor White
     Write-Host "  $Text" -ForegroundColor White
+    if ($dryTag) { Write-Host $dryTag -ForegroundColor Yellow }
     Write-Host "  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor DarkGray
     Write-Host $line -ForegroundColor White
     Write-Host ''
@@ -323,9 +344,14 @@ function Invoke-MirrorStructure {
     # ── Create archive root if needed ──
     $archiveParent = Split-Path $dst -Parent
     if (-not (Test-Path $archiveParent)) {
-        Write-Step "Creating archive parent: $archiveParent"
-        New-Item -ItemType Directory -Path $archiveParent -Force | Out-Null
-        Write-Step "Created $archiveParent" -Level Success
+        if ($Script:IsDryRun) {
+            Write-Step "[DRY RUN] Would create archive parent: $archiveParent" -Level Detail
+        }
+        else {
+            Write-Step "Creating archive parent: $archiveParent"
+            New-Item -ItemType Directory -Path $archiveParent -Force | Out-Null
+            Write-Step "Created $archiveParent" -Level Success
+        }
     }
 
     # ── Count source folders for reference ──
@@ -334,7 +360,8 @@ function Invoke-MirrorStructure {
     Write-Step "Source contains $($srcFolderCount.ToString('N0')) directories" -Level Detail
 
     # ── Run robocopy — directories only, no files ──
-    Write-Step 'Running robocopy to mirror directory structure (no files)...'
+    if ($Script:IsDryRun) { $dryRunLabel = ' [DRY RUN — /L list-only]' } else { $dryRunLabel = '' }
+    Write-Step "Running robocopy to mirror directory structure (no files)...$dryRunLabel"
     Write-Step "Command: robocopy `"$src`" `"$dst`" /E /XF * /DCOPY:DAT /R:3 /W:5 /V /LOG:`"$logFile`"" -Level Detail
 
     $roboArgs = @(
@@ -349,6 +376,7 @@ function Invoke-MirrorStructure {
         '/NP'           # No progress percentage (we handle our own)
         '/LOG:' + $logFile
     )
+    if ($Script:IsDryRun) { $roboArgs += '/L' }
 
     $roboProcess = Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs `
         -NoNewWindow -Wait -PassThru
@@ -388,7 +416,8 @@ function Invoke-MirrorStructure {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 function Invoke-MoveFiles {
-    Write-Banner 'PHASE 2: MOVE FILES TO ARCHIVE (WITH PROGRESS)'
+    if ($Script:IsDryRun) { $bannerText = 'PHASE 2: MOVE FILES TO ARCHIVE — DRY RUN (NO FILES MOVED)' } else { $bannerText = 'PHASE 2: MOVE FILES TO ARCHIVE (WITH PROGRESS)' }
+    Write-Banner $bannerText
 
     $src = $Script:Config.SourcePath
     $dst = $Script:Config.ArchivePath
@@ -445,7 +474,7 @@ function Invoke-MoveFiles {
             [bool]$Append
         )
 
-        $logFlag = if ($Append) { '/LOG+:' + $Log } else { '/LOG:' + $Log }
+        if ($Append) { $logFlag = '/LOG+:' + $Log } else { $logFlag = '/LOG:' + $Log }
 
         $args = @(
             $SubSource
@@ -463,6 +492,8 @@ function Invoke-MoveFiles {
             $logFlag
         )
 
+        if ($Script:IsDryRun) { $args += '/L' }
+
         $proc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $args `
             -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'NUL'
 
@@ -471,7 +502,8 @@ function Invoke-MoveFiles {
 
     # ── Move root-level files first (files sitting directly in G:\Public) ──
     if ($topLevelFiles.Count -gt 0) {
-        Write-Step ("Moving {0} root-level files..." -f $topLevelFiles.Count) -Level Detail
+        if ($Script:IsDryRun) { $actionVerb = 'Simulating move of' } else { $actionVerb = 'Moving' }
+        Write-Step ("{0} {1} root-level files..." -f $actionVerb, $topLevelFiles.Count) -Level Detail
 
         # Robocopy with /LEV:1 to only move files at root level, not recurse
         $rootLogFlag = '/LOG:' + $logFile
@@ -488,6 +520,7 @@ function Invoke-MoveFiles {
             '/BYTES'
             $rootLogFlag
         )
+        if ($Script:IsDryRun) { $rootArgs += '/L' }
 
         $rootProc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $rootArgs `
             -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'NUL'
@@ -566,9 +599,10 @@ function Invoke-MoveFiles {
     Write-Host ''
 
     # ── Summary ──
+    if ($Script:IsDryRun) { $summaryLabel = 'MOVE SUMMARY (DRY RUN — SIMULATED)' } else { $summaryLabel = 'MOVE SUMMARY' }
     Write-Host ''
     Write-Host '  ┌─────────────────────────────────────────────────────────┐' -ForegroundColor DarkCyan
-    Write-Host '  │              MOVE SUMMARY                              │' -ForegroundColor DarkCyan
+    Write-Host ("  │ {0,-55} │" -f $summaryLabel) -ForegroundColor DarkCyan
     Write-Host '  ├───────────────────┬─────────────────────────────────────┤' -ForegroundColor DarkCyan
     Write-Host ("  │ Files Moved       │ {0,-35} │" -f $movedFiles.ToString('N0')) -ForegroundColor DarkCyan
     Write-Host ("  │ Data Moved        │ {0,-35} │" -f (Format-FileSize $movedBytes)) -ForegroundColor DarkCyan
@@ -660,36 +694,50 @@ data will follow the standard data retention policy.
     # ── Root notice ──
     $rootNoticePath = Join-Path $src $noticeFile
     $rootNotice = $noticeTemplate -f $src, $Script:Config.ArchivePath
-    try {
-        $rootNotice | Out-File -FilePath $rootNoticePath -Encoding UTF8 -Force
-        Write-Step "Placed notice: $rootNoticePath" -Level Success
+    if ($Script:IsDryRun) {
+        Write-Step "[DRY RUN] Would place notice: $rootNoticePath" -Level Detail
         $noticesPlaced++
     }
-    catch {
-        Write-Step "Failed to place root notice: $_" -Level Error
+    else {
+        try {
+            $rootNotice | Out-File -FilePath $rootNoticePath -Encoding UTF8 -Force
+            Write-Step "Placed notice: $rootNoticePath" -Level Success
+            $noticesPlaced++
+        }
+        catch {
+            Write-Step "Failed to place root notice: $_" -Level Error
+        }
     }
 
     # ── Top-level folder notices ──
     $topFolders = @(Get-ChildItem -LiteralPath $src -Directory -Force -ErrorAction SilentlyContinue)
-    Write-Step "Placing notices in $($topFolders.Count) top-level folders..."
+    if ($Script:IsDryRun) { $actionVerb = 'Simulating notice placement in' } else { $actionVerb = 'Placing notices in' }
+    Write-Step "$actionVerb $($topFolders.Count) top-level folders..."
 
     foreach ($folder in $topFolders) {
         $folderNoticePath = Join-Path $folder.FullName $noticeFile
         $archiveEquiv     = Join-Path $Script:Config.ArchivePath $folder.Name
         $folderNotice     = $noticeTemplate -f $folder.FullName, $archiveEquiv
 
-        try {
-            $folderNotice | Out-File -FilePath $folderNoticePath -Encoding UTF8 -Force
-            Write-Step "Placed notice: $($folder.Name)\$noticeFile" -Level Detail
+        if ($Script:IsDryRun) {
+            Write-Step "[DRY RUN] Would place notice: $($folder.Name)\$noticeFile" -Level Detail
             $noticesPlaced++
         }
-        catch {
-            Write-Step "Failed to write notice in $($folder.Name): $_" -Level Error
+        else {
+            try {
+                $folderNotice | Out-File -FilePath $folderNoticePath -Encoding UTF8 -Force
+                Write-Step "Placed notice: $($folder.Name)\$noticeFile" -Level Detail
+                $noticesPlaced++
+            }
+            catch {
+                Write-Step "Failed to write notice in $($folder.Name): $_" -Level Error
+            }
         }
     }
 
     Write-Host ''
-    Write-Step "$noticesPlaced notice files placed across root + top-level folders" -Level Success
+    if ($Script:IsDryRun) { $dryTag = ' (simulated)' } else { $dryTag = '' }
+    Write-Step "$noticesPlaced notice files$dryTag across root + top-level folders" -Level Success
     Write-Step 'Phase 3 complete.' -Level Success
     return $true
 }
@@ -813,10 +861,10 @@ function Invoke-Validate {
     Write-Host ("  │ Archive Files     │ {0,-35} │" -f $dstStats.Files.ToString('N0')) -ForegroundColor DarkCyan
     Write-Host ("  │ Archive Size      │ {0,-35} │" -f $dstStats.SizeHuman) -ForegroundColor DarkCyan
 
-    $leftoverColor = if ($leftoverFiles.Count -eq 0) { 'DarkCyan' } else { 'Yellow' }
+    if ($leftoverFiles.Count -eq 0) { $leftoverColor = 'DarkCyan' } else { $leftoverColor = 'Yellow' }
     Write-Host ("  │ Leftover Files    │ {0,-35} │" -f $leftoverFiles.Count.ToString('N0')) -ForegroundColor $leftoverColor
 
-    $missingColor = if ($missingInArchive.Count -eq 0) { 'DarkCyan' } else { 'Yellow' }
+    if ($missingInArchive.Count -eq 0) { $missingColor = 'DarkCyan' } else { $missingColor = 'Yellow' }
     Write-Host ("  │ Missing Folders   │ {0,-35} │" -f $missingInArchive.Count.ToString('N0')) -ForegroundColor $missingColor
 
     Write-Host ("  │ Notice Files      │ {0,-35} │" -f $noticeFiles.Count.ToString('N0')) -ForegroundColor DarkCyan
@@ -835,11 +883,250 @@ function Invoke-Validate {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  ROLLBACK — REVERSE THE MIGRATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+function Invoke-Rollback {
+    if ($Script:IsDryRun) { $bannerText = 'ROLLBACK — REVERSE MIGRATION (DRY RUN)' } else { $bannerText = 'ROLLBACK — REVERSE MIGRATION' }
+    Write-Banner $bannerText
+
+    $src = $Script:Config.SourcePath      # G:\Public        (destination for rollback)
+    $dst = $Script:Config.ArchivePath     # G:\Archive\Public (source for rollback)
+    $logFile = Join-Path $Script:Config.LogFolder "RobocopyRollback_$($Script:Config.Timestamp).log"
+
+    # ── Validate both paths exist ──
+    if (-not (Test-Path $src)) {
+        Write-Step "Original source not found: $src" -Level Error
+        return $false
+    }
+    if (-not (Test-Path $dst)) {
+        Write-Step "Archive not found: $dst — nothing to roll back" -Level Error
+        return $false
+    }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  STEP 1 — Remove retirement notice files from source
+    # ═══════════════════════════════════════════════════════════════════════
+    Write-Step '── Step 1/3: Removing retirement notice files ──'
+
+    $noticeFileName = $Script:Config.NoticeFileName
+    $noticeFiles = @(Get-ChildItem -LiteralPath $src -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -eq $noticeFileName })
+
+    if ($noticeFiles.Count -gt 0) {
+        foreach ($notice in $noticeFiles) {
+            if ($Script:IsDryRun) {
+                Write-Step "[DRY RUN] Would remove: $($notice.FullName)" -Level Detail
+            }
+            else {
+                try {
+                    Remove-Item -LiteralPath $notice.FullName -Force -ErrorAction Stop
+                    Write-Step "Removed: $($notice.FullName)" -Level Detail
+                }
+                catch {
+                    Write-Step "Failed to remove notice: $($notice.FullName) — $_" -Level Warning
+                }
+            }
+        }
+        if ($Script:IsDryRun) { $actionLabel = 'Would remove' } else { $actionLabel = 'Removed' }
+        Write-Step "$actionLabel $($noticeFiles.Count) notice files" -Level Success
+    }
+    else {
+        Write-Step 'No notice files found in source — skipping' -Level Detail
+    }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  STEP 2 — Move files from archive back to source (with progress)
+    # ═══════════════════════════════════════════════════════════════════════
+    Write-Step '── Step 2/3: Moving files from archive back to source ──'
+
+    # Count files in archive
+    Write-Step 'Counting files in archive for progress tracking...'
+    $allFiles = @(Get-ChildItem -LiteralPath $dst -Recurse -File -Force -ErrorAction SilentlyContinue)
+    $totalFiles = $allFiles.Count
+    $totalBytes = ($allFiles | Measure-Object -Property Length -Sum).Sum
+    if ($null -eq $totalBytes) { $totalBytes = 0 }
+
+    Write-Step ("Files to restore: {0}" -f $totalFiles.ToString('N0'))
+    Write-Step ("Total size:       {0}" -f (Format-FileSize $totalBytes))
+
+    if ($totalFiles -eq 0) {
+        Write-Step 'Archive is empty — no files to restore.' -Level Warning
+    }
+    else {
+        $topLevelItems   = @(Get-ChildItem -LiteralPath $dst -Force -ErrorAction SilentlyContinue)
+        $topLevelFolders = @($topLevelItems | Where-Object { $_.PSIsContainer })
+        $topLevelFiles   = @($topLevelItems | Where-Object { -not $_.PSIsContainer })
+
+        $totalUnits     = $topLevelFolders.Count + 1
+        $completedUnits = 0
+        $restoredFiles  = 0
+        $restoredBytes  = [long]0
+        $failedFiles    = 0
+        $startTime      = Get-Date
+        $logAppend      = $false
+
+        # ── Restore root-level files ──
+        if ($topLevelFiles.Count -gt 0) {
+            if ($Script:IsDryRun) { $actionVerb = 'Simulating restore of' } else { $actionVerb = 'Restoring' }
+            Write-Step ("{0} {1} root-level files..." -f $actionVerb, $topLevelFiles.Count) -Level Detail
+
+            $rootLogFlag = '/LOG:' + $logFile
+            $rootArgs = @(
+                $dst            # Archive is the source for rollback
+                $src            # Original share is the destination
+                '/LEV:1'
+                '/MOV'
+                '/COPYALL'
+                '/R:3'
+                '/W:5'
+                '/V'
+                '/NP'
+                '/BYTES'
+                $rootLogFlag
+            )
+            if ($Script:IsDryRun) { $rootArgs += '/L' }
+
+            $rootProc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $rootArgs `
+                -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'NUL'
+
+            $logAppend = $true
+
+            if (-not (Test-RobocopySuccess $rootProc.ExitCode)) {
+                Write-Step "Some root-level files may have failed (exit code $($rootProc.ExitCode))" -Level Warning
+            }
+
+            $restoredFiles += $topLevelFiles.Count
+            $restoredBytes += ($topLevelFiles | Measure-Object -Property Length -Sum).Sum
+        }
+
+        $completedUnits++
+
+        # ── Restore each top-level folder ──
+        foreach ($folder in $topLevelFolders) {
+            $folderSrc  = $folder.FullName                              # Archive subfolder
+            $folderDest = Join-Path $src $folder.Name                   # Original subfolder
+
+            $folderFiles = @(Get-ChildItem -LiteralPath $folderSrc -Recurse -File -Force -ErrorAction SilentlyContinue)
+            $folderFileCount = $folderFiles.Count
+            $folderSize = ($folderFiles | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+            if ($null -eq $folderSize) { $folderSize = 0 }
+
+            # ── Progress bar ──
+            $completedUnits++
+            $pctComplete = [math]::Min(100, [math]::Round(($completedUnits / $totalUnits) * 100, 1))
+            $elapsed     = (Get-Date) - $startTime
+            if ($completedUnits -gt 1 -and $elapsed.TotalSeconds -gt 0) {
+                $unitsPerSec = ($completedUnits - 1) / $elapsed.TotalSeconds
+                $remaining   = ($totalUnits - $completedUnits) / [math]::Max($unitsPerSec, 0.001)
+                $eta         = [TimeSpan]::FromSeconds([math]::Round($remaining))
+                $etaStr      = '{0:hh\:mm\:ss}' -f $eta
+            }
+            else {
+                $etaStr = '--:--:--'
+            }
+
+            $barWidth = 40
+            $filled   = [math]::Round($barWidth * $pctComplete / 100)
+            $empty    = $barWidth - $filled
+            $bar      = ('█' * $filled) + ('░' * $empty)
+
+            if ($Script:IsDryRun) { $barColor = 'DarkYellow' } else { $barColor = 'Yellow' }
+            Write-Host ("`r  [{0}] {1,5:N1}%  │  {2}/{3} folders  │  ETA: {4}  │  {5}" -f
+                $bar, $pctComplete, ($completedUnits - 1), $topLevelFolders.Count,
+                $etaStr, $folder.Name.PadRight(30)) -NoNewline -ForegroundColor $barColor
+
+            if ($folderFileCount -gt 0) {
+                if ($logAppend) { $logFlag = '/LOG+:' + $logFile } else { $logFlag = '/LOG:' + $logFile }
+                $roboArgs = @(
+                    $folderSrc
+                    $folderDest
+                    '/E'
+                    '/MOV'
+                    '/COPYALL'
+                    '/R:3'
+                    '/W:5'
+                    '/V'
+                    '/NP'
+                    '/NJH'
+                    '/NJS'
+                    '/BYTES'
+                    $logFlag
+                )
+                if ($Script:IsDryRun) { $roboArgs += '/L' }
+
+                $logAppend = $true
+                $proc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs `
+                    -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'NUL'
+
+                if (Test-RobocopySuccess $proc.ExitCode) {
+                    $restoredFiles += $folderFileCount
+                    $restoredBytes += $folderSize
+                }
+                else {
+                    $failedFiles += $folderFileCount
+                    Write-Host ''
+                    Write-Step ("Errors restoring folder: {0} (exit code {1})" -f $folder.Name, $proc.ExitCode) -Level Warning
+                }
+            }
+        }
+
+        # ── Final progress bar ──
+        $bar = '█' * $barWidth
+        $totalElapsed = (Get-Date) - $startTime
+        Write-Host ("`r  [{0}] {1,5:N1}%  │  {2}/{3} folders  │  Done in {4:hh\:mm\:ss}         " -f
+            $bar, 100.0, $topLevelFolders.Count, $topLevelFolders.Count,
+            $totalElapsed) -ForegroundColor Green
+        Write-Host ''
+
+        # ── Summary ──
+        if ($Script:IsDryRun) { $summaryLabel = 'ROLLBACK SUMMARY (DRY RUN — SIMULATED)' } else { $summaryLabel = 'ROLLBACK SUMMARY' }
+        Write-Host ''
+        Write-Host '  ┌─────────────────────────────────────────────────────────┐' -ForegroundColor DarkCyan
+        Write-Host ("  │ {0,-55} │" -f $summaryLabel) -ForegroundColor DarkCyan
+        Write-Host '  ├───────────────────┬─────────────────────────────────────┤' -ForegroundColor DarkCyan
+        Write-Host ("  │ Files Restored    │ {0,-35} │" -f $restoredFiles.ToString('N0')) -ForegroundColor DarkCyan
+        Write-Host ("  │ Data Restored     │ {0,-35} │" -f (Format-FileSize $restoredBytes)) -ForegroundColor DarkCyan
+        Write-Host ("  │ Files Failed      │ {0,-35} │" -f $failedFiles.ToString('N0')) -ForegroundColor DarkCyan
+        Write-Host ("  │ Notices Removed   │ {0,-35} │" -f $noticeFiles.Count.ToString('N0')) -ForegroundColor DarkCyan
+        Write-Host ("  │ Elapsed Time      │ {0,-35} │" -f ('{0:hh\:mm\:ss}' -f $totalElapsed)) -ForegroundColor DarkCyan
+        Write-Host ("  │ Robocopy Log      │ {0,-35} │" -f (Split-Path $logFile -Leaf)) -ForegroundColor DarkCyan
+        Write-Host '  └───────────────────┴─────────────────────────────────────┘' -ForegroundColor DarkCyan
+        Write-Host ''
+    }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  STEP 3 — Validate rollback
+    # ═══════════════════════════════════════════════════════════════════════
+    Write-Step '── Step 3/3: Validating rollback ──'
+
+    $srcFilesAfter = @(Get-ChildItem -LiteralPath $src -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne $noticeFileName })
+    $dstFilesAfter = @(Get-ChildItem -LiteralPath $dst -Recurse -File -Force -ErrorAction SilentlyContinue)
+
+    Write-Step ("Source files restored:    {0}" -f $srcFilesAfter.Count.ToString('N0'))
+    Write-Step ("Archive files remaining:  {0}" -f $dstFilesAfter.Count.ToString('N0'))
+
+    if ($Script:IsDryRun) {
+        Write-Step 'DRY RUN complete — no files were moved. Run without -DryRun to execute.' -Level Success
+    }
+    elseif ($dstFilesAfter.Count -eq 0) {
+        Write-Step '✓ Rollback complete — all files restored to source, archive is empty' -Level Success
+    }
+    else {
+        Write-Step ("⚠ $($dstFilesAfter.Count) files still in archive. Re-run -Rollback to retry.") -Level Warning
+    }
+
+    Write-Step "Robocopy log: $logFile" -Level Detail
+    return $true
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  EXECUTION ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ── Show usage if no switches provided ──
-$anySwitchSet = $PreFlight -or $MirrorStructure -or $MoveFiles -or $DropNotices -or $Validate -or $RunAll
+$anySwitchSet = $PreFlight -or $MirrorStructure -or $MoveFiles -or $DropNotices -or $Validate -or $RunAll -or $Rollback
 
 if (-not $anySwitchSet) {
     Write-Host ''
@@ -855,6 +1142,11 @@ if (-not $anySwitchSet) {
     Write-Host '    .\Retire-PublicShare.ps1 -Validate          # Phase 4: Verify migration' -ForegroundColor Cyan
     Write-Host '    .\Retire-PublicShare.ps1 -RunAll            # Run all phases in sequence' -ForegroundColor Cyan
     Write-Host ''
+    Write-Host '  Modifiers:' -ForegroundColor Gray
+    Write-Host '    -DryRun                                     # Simulate without changes' -ForegroundColor DarkYellow
+    Write-Host '    -Rollback                                   # Reverse: archive → source' -ForegroundColor DarkYellow
+    Write-Host '    -Rollback -DryRun                           # Preview rollback' -ForegroundColor DarkYellow
+    Write-Host ''
     Write-Host '  Source:  ' -NoNewline -ForegroundColor Gray
     Write-Host $Script:Config.SourcePath -ForegroundColor White
     Write-Host '  Archive: ' -NoNewline -ForegroundColor Gray
@@ -868,46 +1160,56 @@ if (-not $anySwitchSet) {
 # ── Initialize logging ──
 Initialize-Logging
 
+if ($Script:IsDryRun) { $modeLabel = ' [DRY RUN]' } else { $modeLabel = '' }
 Write-Host ''
 Write-Host '  ╔═══════════════════════════════════════════════════════════════╗' -ForegroundColor Magenta
-Write-Host '  ║         RETIRE PUBLIC SHARE — MIGRATION TOOLKIT              ║' -ForegroundColor Magenta
+Write-Host ("  ║         RETIRE PUBLIC SHARE — MIGRATION TOOLKIT{0}              ║" -f $modeLabel) -ForegroundColor Magenta
 Write-Host '  ║         Started: ' -NoNewline -ForegroundColor Magenta
 Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')                          ║" -ForegroundColor White
 Write-Host '  ╚═══════════════════════════════════════════════════════════════╝' -ForegroundColor Magenta
+if ($Script:IsDryRun) {
+    Write-Host '  ⚠  DRY RUN MODE — All operations are simulated, nothing will be changed.' -ForegroundColor Yellow
+}
 Write-Host ''
 
 $overallStart = Get-Date
 $phaseResults = @{}
 
-# ── Execute requested phases ──
-if ($RunAll -or $PreFlight) {
-    $phaseResults['PreFlight'] = Invoke-PreFlight
-    if ($RunAll -and $phaseResults['PreFlight'] -eq $false) {
-        Write-Step 'Pre-flight failed. Aborting remaining phases.' -Level Error
-        Stop-Logging
-        return
+# ── Rollback path (separate from forward migration) ──
+if ($Rollback) {
+    $phaseResults['Rollback'] = Invoke-Rollback
+}
+else {
+    # ── Execute requested phases ──
+    if ($RunAll -or $PreFlight) {
+        $phaseResults['PreFlight'] = Invoke-PreFlight
+        if ($RunAll -and $phaseResults['PreFlight'] -eq $false) {
+            Write-Step 'Pre-flight failed. Aborting remaining phases.' -Level Error
+            Stop-Logging
+            return
+        }
     }
-}
 
-if ($RunAll -or $MirrorStructure) {
-    $phaseResults['MirrorStructure'] = Invoke-MirrorStructure
-    if ($RunAll -and $phaseResults['MirrorStructure'] -eq $false) {
-        Write-Step 'Mirror structure failed. Aborting remaining phases.' -Level Error
-        Stop-Logging
-        return
+    if ($RunAll -or $MirrorStructure) {
+        $phaseResults['MirrorStructure'] = Invoke-MirrorStructure
+        if ($RunAll -and $phaseResults['MirrorStructure'] -eq $false) {
+            Write-Step 'Mirror structure failed. Aborting remaining phases.' -Level Error
+            Stop-Logging
+            return
+        }
     }
-}
 
-if ($RunAll -or $MoveFiles) {
-    $phaseResults['MoveFiles'] = Invoke-MoveFiles
-}
+    if ($RunAll -or $MoveFiles) {
+        $phaseResults['MoveFiles'] = Invoke-MoveFiles
+    }
 
-if ($RunAll -or $DropNotices) {
-    $phaseResults['DropNotices'] = Invoke-DropNotices
-}
+    if ($RunAll -or $DropNotices) {
+        $phaseResults['DropNotices'] = Invoke-DropNotices
+    }
 
-if ($RunAll -or $Validate) {
-    $phaseResults['Validate'] = Invoke-Validate
+    if ($RunAll -or $Validate) {
+        $phaseResults['Validate'] = Invoke-Validate
+    }
 }
 
 # ── Final status ──
