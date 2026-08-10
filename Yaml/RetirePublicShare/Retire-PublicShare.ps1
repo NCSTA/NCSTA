@@ -509,6 +509,7 @@ function Invoke-MoveFiles {
     $completedUnits  = 0
     $foldersOK       = 0
     $foldersFailed   = 0
+    $rootMoveFailed  = $false
     $startTime       = Get-Date
     $logAppend       = $false   # First write creates; subsequent writes append
 
@@ -529,7 +530,8 @@ function Invoke-MoveFiles {
             $SubDest
             '/E'            # All subdirectories
             '/MOV'          # Move files (delete source after copy) — leaves dirs
-            '/COPYALL'      # Copy all file attributes (security, timestamps, owner, audit)
+            '/COPY:DAT'     # Copy data, attributes, and timestamps; inherit destination ACLs
+            '/DCOPY:DAT'    # Preserve directory attributes and timestamps
             '/R:3'          # 3 retries
             '/W:5'          # 5-second wait between retries
             $mtFlag         # Multi-threaded
@@ -560,7 +562,8 @@ function Invoke-MoveFiles {
             $dst
             '/LEV:1'        # Only root level
             '/MOV'          # Move files only
-            '/COPYALL'
+            '/COPY:DAT'
+            '/DCOPY:DAT'
             '/R:3'
             '/W:5'
             $mtFlag         # Multi-threaded
@@ -577,6 +580,7 @@ function Invoke-MoveFiles {
         $logAppend = $true
 
         if (-not (Test-RobocopySuccess $rootExitCode)) {
+            $rootMoveFailed = $true
             Write-Step "Some root-level files may have failed (exit code $rootExitCode)" -Level Warning
         }
     }
@@ -649,14 +653,14 @@ function Invoke-MoveFiles {
     Write-Host '  └───────────────────┴─────────────────────────────────────┘' -ForegroundColor DarkCyan
     Write-Host ''
 
-    if ($foldersFailed -gt 0) {
-        Write-Step "$foldersFailed folders had errors. Review log: $logFile" -Level Warning
+    if ($rootMoveFailed -or $foldersFailed -gt 0) {
+        Write-Step "One or more move operations failed ($foldersFailed folder failures). Review log: $logFile" -Level Warning
         Write-Step 'Re-run -MoveFiles after clearing locks to retry failed folders.' -Level Warning
-    }
-    else {
-        Write-Step 'All folders moved successfully.' -Level Success
+        Write-Step 'Phase 2 incomplete.' -Level Warning
+        return $false
     }
 
+    Write-Step 'All folders moved successfully.' -Level Success
     Write-Step "Full robocopy log: $logFile" -Level Detail
     Write-Step 'Phase 2 complete.' -Level Success
     return $true
@@ -1034,7 +1038,8 @@ function Invoke-Rollback {
                 $src            # Original share is the destination
                 '/LEV:1'
                 '/MOV'
-                '/COPYALL'
+                '/COPY:DAT'
+                '/DCOPY:DAT'
                 '/R:3'
                 '/W:5'
                 $mtFlag         # Multi-threaded
@@ -1094,7 +1099,8 @@ function Invoke-Rollback {
                 $folderDest
                 '/E'
                 '/MOV'
-                '/COPYALL'
+                '/COPY:DAT'
+                '/DCOPY:DAT'
                 '/R:3'
                 '/W:5'
                 $mtFlag         # Multi-threaded
