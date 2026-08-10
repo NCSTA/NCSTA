@@ -88,6 +88,7 @@ $Script:Config = @{
     ContactTeam    = 'IT Infrastructure'
     TicketURL      = 'https://servicedesk.yourcompany.com'
     GraceDays      = 30
+    ThreadCount    = 16          # Robocopy /MT threads (16 for SAN/datastore, 2 for single HDD)
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -390,6 +391,7 @@ function Invoke-MirrorStructure {
     Write-Step "Running robocopy to mirror directory structure (no files)...$dryRunLabel"
     Write-Step "Command: robocopy `"$src`" `"$dst`" /E /XF * /DCOPY:DAT /R:3 /W:5 /V /LOG:`"$logFile`"" -Level Detail
 
+    $mtFlag = '/MT:' + $Script:Config.ThreadCount
     $roboArgs = @(
         $src
         $dst
@@ -398,6 +400,7 @@ function Invoke-MirrorStructure {
         '/DCOPY:DAT'    # Copy directory Data, Attributes, Timestamps
         '/R:3'          # Retry 3 times
         '/W:5'          # Wait 5 seconds between retries
+        $mtFlag         # Multi-threaded
         '/V'            # Verbose output
         '/NP'           # No progress percentage (we handle our own)
         '/LOG:' + $logFile
@@ -502,6 +505,7 @@ function Invoke-MoveFiles {
 
         if ($Append) { $logFlag = '/LOG+:' + $Log } else { $logFlag = '/LOG:' + $Log }
 
+        $mtFlag = '/MT:' + $Script:Config.ThreadCount
         $args = @(
             $SubSource
             $SubDest
@@ -510,6 +514,7 @@ function Invoke-MoveFiles {
             '/COPYALL'      # Copy all file attributes (security, timestamps, owner, audit)
             '/R:3'          # 3 retries
             '/W:5'          # 5-second wait between retries
+            $mtFlag         # Multi-threaded
             '/V'            # Verbose
             '/NP'           # No robocopy progress (we do our own)
             '/NJH'          # No job header in log
@@ -533,6 +538,7 @@ function Invoke-MoveFiles {
 
         # Robocopy with /LEV:1 to only move files at root level, not recurse
         $rootLogFlag = '/LOG:' + $logFile
+        $mtFlag = '/MT:' + $Script:Config.ThreadCount
         $rootArgs = @(
             $src
             $dst
@@ -541,6 +547,7 @@ function Invoke-MoveFiles {
             '/COPYALL'
             '/R:3'
             '/W:5'
+            $mtFlag         # Multi-threaded
             '/V'
             '/NP'
             '/BYTES'
@@ -998,6 +1005,7 @@ function Invoke-Rollback {
             Write-Step ("{0} {1} root-level files..." -f $actionVerb, $topLevelFiles.Count) -Level Detail
 
             $rootLogFlag = '/LOG:' + $logFile
+            $mtFlag = '/MT:' + $Script:Config.ThreadCount
             $rootArgs = @(
                 $dst            # Archive is the source for rollback
                 $src            # Original share is the destination
@@ -1006,6 +1014,7 @@ function Invoke-Rollback {
                 '/COPYALL'
                 '/R:3'
                 '/W:5'
+                $mtFlag         # Multi-threaded
                 '/V'
                 '/NP'
                 '/BYTES'
@@ -1064,6 +1073,7 @@ function Invoke-Rollback {
 
             if ($folderFileCount -gt 0) {
                 if ($logAppend) { $logFlag = '/LOG+:' + $logFile } else { $logFlag = '/LOG:' + $logFile }
+                $mtFlag = '/MT:' + $Script:Config.ThreadCount
                 $roboArgs = @(
                     $folderSrc
                     $folderDest
@@ -1072,6 +1082,7 @@ function Invoke-Rollback {
                     '/COPYALL'
                     '/R:3'
                     '/W:5'
+                    $mtFlag         # Multi-threaded
                     '/V'
                     '/NP'
                     '/NJH'
