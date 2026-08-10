@@ -169,28 +169,48 @@ function Format-FileSize {
 }
 
 function Get-FolderStats {
-    <# Returns a stats object for a given path: folder count, file count, total size #>
+    <# Returns a stats object for a given path using robocopy /L (list-only).
+       Robocopy scans the tree natively without loading objects into memory —
+       orders of magnitude faster than Get-ChildItem on large trees. #>
     param([string]$Path)
 
-    Write-Step "Scanning $Path (this may take a few minutes for large trees)..."
+    Write-Step "Scanning $Path ..."
 
     $folders = 0
     $files   = 0
     $size    = [long]0
 
-    # Use robocopy /L (list-only) for speed on large trees — counts without touching files
-    $robocopyOutput = & robocopy $Path 'NUL' /L /E /NJH /NJS /BYTES /NFL /NDL 2>&1
-    # Fallback to Get-ChildItem if robocopy listing doesn't parse cleanly
-    try {
-        $items = Get-ChildItem -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
-        $folders = @($items | Where-Object { $_.PSIsContainer }).Count
-        $files   = @($items | Where-Object { -not $_.PSIsContainer }).Count
-        $size    = ($items | Where-Object { -not $_.PSIsContainer } |
-                   Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
-        if ($null -eq $size) { $size = 0 }
-    }
-    catch {
-        Write-Step "Error scanning ${Path}: $_" -Level Error
+    # Robocopy /L lists without copying. /BYTES gives exact byte counts.
+    # /NFL /NDL suppresses file/dir names (we only need the summary).
+    # Destination 'NUL' is a dummy — nothing is copied in /L mode.
+    $output = & robocopy $Path "$Path\__robocopy_nul_target__" /L /E /BYTES /NFL /NDL /NJH /R:0 /W:0 2>&1
+    $outputStr = $output -join "`n"
+
+    # Parse the summary block at the end of robocopy output:
+    #    Dirs :      1234    1234       0       0       0       0
+    #   Files :     56789   56789       0       0       0       0
+    #   Bytes :  640000000  640000000   0       0       0       0
+    $dirMatch   = [regex]::Match($outputStr, 'Dirs\s*:\s*(\d+)')
+    $fileMatch  = [regex]::Match($outputStr, 'Files\s*:\s*(\d+)')
+    $bytesMatch = [regex]::Match($outputStr, 'Bytes\s*:\s*(\d+)')
+
+    if ($dirMatch.Success)   { $folders = [long]$dirMatch.Groups[1].Value }
+    if ($fileMatch.Success)  { $files   = [long]$fileMatch.Groups[1].Value }
+    if ($bytesMatch.Success) { $size    = [long]$bytesMatch.Groups[1].Value }
+
+    # Fallback if robocopy summary didn't parse (shouldn't happen, but safe)
+    if (-not $fileMatch.Success) {
+        Write-Step 'Robocopy summary not found — falling back to Get-ChildItem...' -Level Warning
+        try {
+            $fileItems = Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue
+            $files   = @($fileItems).Count
+            $size    = ($fileItems | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+            if ($null -eq $size) { $size = 0 }
+            $folders = @(Get-ChildItem -LiteralPath $Path -Recurse -Directory -Force -ErrorAction SilentlyContinue).Count
+        }
+        catch {
+            Write-Step "Error scanning ${Path}: $_" -Level Error
+        }
     }
 
     return [PSCustomObject]@{
