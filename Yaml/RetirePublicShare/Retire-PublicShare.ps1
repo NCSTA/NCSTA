@@ -428,10 +428,8 @@ function Invoke-MirrorStructure {
     )
     if ($Script:IsDryRun) { $roboArgs += '/L' }
 
-    $roboProcess = Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs `
-        -NoNewWindow -Wait -PassThru
-
-    $exitCode = $roboProcess.ExitCode
+    & robocopy @roboArgs | Out-Null
+    $exitCode = $LASTEXITCODE
     Write-Step "Robocopy exit code: $exitCode" -Level Detail
 
     if (Test-RobocopySuccess $exitCode) {
@@ -545,10 +543,8 @@ function Invoke-MoveFiles {
 
         if ($Script:IsDryRun) { $roboArgs += '/L' }
 
-        $proc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs `
-            -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'NUL'
-
-        return $proc.ExitCode
+        & robocopy @roboArgs | Out-Null
+        return $LASTEXITCODE
     }
 
     # ── Move root-level files first (files sitting directly in G:\Public) ──
@@ -575,13 +571,13 @@ function Invoke-MoveFiles {
         )
         if ($Script:IsDryRun) { $rootArgs += '/L' }
 
-        $rootProc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $rootArgs `
-            -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'NUL'
+        & robocopy @rootArgs | Out-Null
+        $rootExitCode = $LASTEXITCODE
 
         $logAppend = $true
 
-        if (-not (Test-RobocopySuccess $rootProc.ExitCode)) {
-            Write-Step "Some root-level files may have failed (exit code $($rootProc.ExitCode))" -Level Warning
+        if (-not (Test-RobocopySuccess $rootExitCode)) {
+            Write-Step "Some root-level files may have failed (exit code $rootExitCode)" -Level Warning
         }
     }
 
@@ -1049,13 +1045,13 @@ function Invoke-Rollback {
             )
             if ($Script:IsDryRun) { $rootArgs += '/L' }
 
-            $rootProc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $rootArgs `
-                -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'NUL'
+            & robocopy @rootArgs | Out-Null
+            $rootExitCode = $LASTEXITCODE
 
             $logAppend = $true
 
-            if (-not (Test-RobocopySuccess $rootProc.ExitCode)) {
-                Write-Step "Some root-level files may have failed (exit code $($rootProc.ExitCode))" -Level Warning
+            if (-not (Test-RobocopySuccess $rootExitCode)) {
+                Write-Step "Some root-level files may have failed (exit code $rootExitCode)" -Level Warning
             }
         }
 
@@ -1112,16 +1108,16 @@ function Invoke-Rollback {
             if ($Script:IsDryRun) { $roboArgs += '/L' }
 
             $logAppend = $true
-            $proc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs `
-                -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'NUL'
+            & robocopy @roboArgs | Out-Null
+            $roboExitCode = $LASTEXITCODE
 
-            if (Test-RobocopySuccess $proc.ExitCode) {
+            if (Test-RobocopySuccess $roboExitCode) {
                 $foldersOK++
             }
             else {
                 $foldersFailed++
                 Write-Host ''
-                Write-Step ("Errors restoring folder: {0} (exit code {1})" -f $folder.Name, $proc.ExitCode) -Level Warning
+                Write-Step ("Errors restoring folder: {0} (exit code {1})" -f $folder.Name, $roboExitCode) -Level Warning
             }
         }
 
