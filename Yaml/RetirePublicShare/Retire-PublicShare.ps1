@@ -507,13 +507,12 @@ function Invoke-MoveFiles {
     $topLevelFolders = @($topLevelItems | Where-Object { $_.PSIsContainer })
     $topLevelFiles   = @($topLevelItems | Where-Object { -not $_.PSIsContainer })
 
-    $totalUnits     = $topLevelFolders.Count + 1  # +1 for root-level files batch
-    $completedUnits = 0
-    $movedFiles     = 0
-    $movedBytes     = [long]0
-    $failedFiles    = 0
-    $startTime      = Get-Date
-    $logAppend      = $false   # First write creates; subsequent writes append
+    $totalUnits      = $topLevelFolders.Count + 1  # +1 for root-level files batch
+    $completedUnits  = 0
+    $foldersOK       = 0
+    $foldersFailed   = 0
+    $startTime       = Get-Date
+    $logAppend       = $false   # First write creates; subsequent writes append
 
     # ── Helper: run robocopy for a specific subfolder ──
     function Move-Subfolder {
@@ -584,22 +583,15 @@ function Invoke-MoveFiles {
         if (-not (Test-RobocopySuccess $rootProc.ExitCode)) {
             Write-Step "Some root-level files may have failed (exit code $($rootProc.ExitCode))" -Level Warning
         }
-
-        $movedFiles += $topLevelFiles.Count
-        $movedBytes += ($topLevelFiles | Measure-Object -Property Length -Sum).Sum
     }
 
     $completedUnits++
 
-    # ── Move each top-level folder ──
+    # ── Move each top-level folder (no per-folder scan — straight to move) ──
+    $barWidth = 40
     foreach ($folder in $topLevelFolders) {
         $folderSrc  = $folder.FullName
         $folderDest = Join-Path $dst $folder.Name
-
-        # Count files in this folder (robocopy /L — fast, no PS object overhead)
-        $folderStats    = Get-FolderStats -Path $folderSrc
-        $folderFileCount = $folderStats.Files
-        $folderSize      = $folderStats.SizeBytes
 
         # ── Progress bar ──
         $completedUnits++
@@ -615,31 +607,26 @@ function Invoke-MoveFiles {
             $etaStr = '--:--:--'
         }
 
-        # Build the bar: 40 chars wide
-        $barWidth  = 40
-        $filled    = [math]::Round($barWidth * $pctComplete / 100)
-        $empty     = $barWidth - $filled
-        $bar       = ('█' * $filled) + ('░' * $empty)
+        $filled = [math]::Round($barWidth * $pctComplete / 100)
+        $empty  = $barWidth - $filled
+        $bar    = ('█' * $filled) + ('░' * $empty)
 
         Write-Host ("`r  [{0}] {1,5:N1}%  │  {2}/{3} folders  │  ETA: {4}  │  {5}" -f
             $bar, $pctComplete, ($completedUnits - 1), $topLevelFolders.Count,
             $etaStr, $folder.Name.PadRight(30)) -NoNewline -ForegroundColor Yellow
 
         # ── Execute the move ──
-        if ($folderFileCount -gt 0) {
-            $exitCode = Move-Subfolder -SubSource $folderSrc -SubDest $folderDest `
-                -Log $logFile -Append $logAppend
-            $logAppend = $true
+        $exitCode = Move-Subfolder -SubSource $folderSrc -SubDest $folderDest `
+            -Log $logFile -Append $logAppend
+        $logAppend = $true
 
-            if (Test-RobocopySuccess $exitCode) {
-                $movedFiles += $folderFileCount
-                $movedBytes += $folderSize
-            }
-            else {
-                $failedFiles += $folderFileCount
-                Write-Host ''
-                Write-Step ("Errors moving folder: {0} (exit code {1})" -f $folder.Name, $exitCode) -Level Warning
-            }
+        if (Test-RobocopySuccess $exitCode) {
+            $foldersOK++
+        }
+        else {
+            $foldersFailed++
+            Write-Host ''
+            Write-Step ("Errors moving folder: {0} (exit code {1})" -f $folder.Name, $exitCode) -Level Warning
         }
     }
 
@@ -657,20 +644,21 @@ function Invoke-MoveFiles {
     Write-Host '  ┌─────────────────────────────────────────────────────────┐' -ForegroundColor DarkCyan
     Write-Host ("  │ {0,-55} │" -f $summaryLabel) -ForegroundColor DarkCyan
     Write-Host '  ├───────────────────┬─────────────────────────────────────┤' -ForegroundColor DarkCyan
-    Write-Host ("  │ Files Moved       │ {0,-35} │" -f $movedFiles.ToString('N0')) -ForegroundColor DarkCyan
-    Write-Host ("  │ Data Moved        │ {0,-35} │" -f (Format-FileSize $movedBytes)) -ForegroundColor DarkCyan
-    Write-Host ("  │ Files Failed      │ {0,-35} │" -f $failedFiles.ToString('N0')) -ForegroundColor DarkCyan
+    Write-Host ("  │ Total Files       │ {0,-35} │" -f $totalFiles.ToString('N0')) -ForegroundColor DarkCyan
+    Write-Host ("  │ Total Size        │ {0,-35} │" -f (Format-FileSize $totalBytes)) -ForegroundColor DarkCyan
+    Write-Host ("  │ Folders OK        │ {0,-35} │" -f $foldersOK.ToString('N0')) -ForegroundColor DarkCyan
+    Write-Host ("  │ Folders Failed    │ {0,-35} │" -f $foldersFailed.ToString('N0')) -ForegroundColor DarkCyan
     Write-Host ("  │ Elapsed Time      │ {0,-35} │" -f ('{0:hh\:mm\:ss}' -f $totalElapsed)) -ForegroundColor DarkCyan
     Write-Host ("  │ Robocopy Log      │ {0,-35} │" -f (Split-Path $logFile -Leaf)) -ForegroundColor DarkCyan
     Write-Host '  └───────────────────┴─────────────────────────────────────┘' -ForegroundColor DarkCyan
     Write-Host ''
 
-    if ($failedFiles -gt 0) {
-        Write-Step ("$failedFiles files failed to move. Review log: $logFile") -Level Warning
-        Write-Step 'Re-run -MoveFiles after clearing locks to retry failed files.' -Level Warning
+    if ($foldersFailed -gt 0) {
+        Write-Step "$foldersFailed folders had errors. Review log: $logFile" -Level Warning
+        Write-Step 'Re-run -MoveFiles after clearing locks to retry failed folders.' -Level Warning
     }
     else {
-        Write-Step 'All files moved successfully.' -Level Success
+        Write-Step 'All folders moved successfully.' -Level Success
     }
 
     Write-Step "Full robocopy log: $logFile" -Level Detail
@@ -1031,13 +1019,12 @@ function Invoke-Rollback {
         $topLevelFolders = @($topLevelItems | Where-Object { $_.PSIsContainer })
         $topLevelFiles   = @($topLevelItems | Where-Object { -not $_.PSIsContainer })
 
-        $totalUnits     = $topLevelFolders.Count + 1
-        $completedUnits = 0
-        $restoredFiles  = 0
-        $restoredBytes  = [long]0
-        $failedFiles    = 0
-        $startTime      = Get-Date
-        $logAppend      = $false
+        $totalUnits      = $topLevelFolders.Count + 1
+        $completedUnits  = 0
+        $foldersOK       = 0
+        $foldersFailed   = 0
+        $startTime       = Get-Date
+        $logAppend       = $false
 
         # ── Restore root-level files ──
         if ($topLevelFiles.Count -gt 0) {
@@ -1070,21 +1057,15 @@ function Invoke-Rollback {
             if (-not (Test-RobocopySuccess $rootProc.ExitCode)) {
                 Write-Step "Some root-level files may have failed (exit code $($rootProc.ExitCode))" -Level Warning
             }
-
-            $restoredFiles += $topLevelFiles.Count
-            $restoredBytes += ($topLevelFiles | Measure-Object -Property Length -Sum).Sum
         }
 
         $completedUnits++
 
-        # ── Restore each top-level folder ──
+        # ── Restore each top-level folder (no per-folder scan — straight to move) ──
+        $barWidth = 40
         foreach ($folder in $topLevelFolders) {
             $folderSrc  = $folder.FullName                              # Archive subfolder
             $folderDest = Join-Path $src $folder.Name                   # Original subfolder
-
-            $folderStats     = Get-FolderStats -Path $folderSrc
-            $folderFileCount = $folderStats.Files
-            $folderSize      = $folderStats.SizeBytes
 
             # ── Progress bar ──
             $completedUnits++
@@ -1100,50 +1081,47 @@ function Invoke-Rollback {
                 $etaStr = '--:--:--'
             }
 
-            $barWidth = 40
-            $filled   = [math]::Round($barWidth * $pctComplete / 100)
-            $empty    = $barWidth - $filled
-            $bar      = ('█' * $filled) + ('░' * $empty)
+            $filled = [math]::Round($barWidth * $pctComplete / 100)
+            $empty  = $barWidth - $filled
+            $bar    = ('█' * $filled) + ('░' * $empty)
 
             if ($Script:IsDryRun) { $barColor = 'DarkYellow' } else { $barColor = 'Yellow' }
             Write-Host ("`r  [{0}] {1,5:N1}%  │  {2}/{3} folders  │  ETA: {4}  │  {5}" -f
                 $bar, $pctComplete, ($completedUnits - 1), $topLevelFolders.Count,
                 $etaStr, $folder.Name.PadRight(30)) -NoNewline -ForegroundColor $barColor
 
-            if ($folderFileCount -gt 0) {
-                if ($logAppend) { $logFlag = '/LOG+:' + $logFile } else { $logFlag = '/LOG:' + $logFile }
-                $mtFlag = '/MT:' + $Script:Config.ThreadCount
-                $roboArgs = @(
-                    $folderSrc
-                    $folderDest
-                    '/E'
-                    '/MOV'
-                    '/COPYALL'
-                    '/R:3'
-                    '/W:5'
-                    $mtFlag         # Multi-threaded
-                    '/V'
-                    '/NP'
-                    '/NJH'
-                    '/NJS'
-                    '/BYTES'
-                    $logFlag
-                )
-                if ($Script:IsDryRun) { $roboArgs += '/L' }
+            # ── Execute the restore ──
+            if ($logAppend) { $logFlag = '/LOG+:' + $logFile } else { $logFlag = '/LOG:' + $logFile }
+            $mtFlag = '/MT:' + $Script:Config.ThreadCount
+            $roboArgs = @(
+                $folderSrc
+                $folderDest
+                '/E'
+                '/MOV'
+                '/COPYALL'
+                '/R:3'
+                '/W:5'
+                $mtFlag         # Multi-threaded
+                '/V'
+                '/NP'
+                '/NJH'
+                '/NJS'
+                '/BYTES'
+                $logFlag
+            )
+            if ($Script:IsDryRun) { $roboArgs += '/L' }
 
-                $logAppend = $true
-                $proc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs `
-                    -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'NUL'
+            $logAppend = $true
+            $proc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs `
+                -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'NUL'
 
-                if (Test-RobocopySuccess $proc.ExitCode) {
-                    $restoredFiles += $folderFileCount
-                    $restoredBytes += $folderSize
-                }
-                else {
-                    $failedFiles += $folderFileCount
-                    Write-Host ''
-                    Write-Step ("Errors restoring folder: {0} (exit code {1})" -f $folder.Name, $proc.ExitCode) -Level Warning
-                }
+            if (Test-RobocopySuccess $proc.ExitCode) {
+                $foldersOK++
+            }
+            else {
+                $foldersFailed++
+                Write-Host ''
+                Write-Step ("Errors restoring folder: {0} (exit code {1})" -f $folder.Name, $proc.ExitCode) -Level Warning
             }
         }
 
@@ -1161,9 +1139,10 @@ function Invoke-Rollback {
         Write-Host '  ┌─────────────────────────────────────────────────────────┐' -ForegroundColor DarkCyan
         Write-Host ("  │ {0,-55} │" -f $summaryLabel) -ForegroundColor DarkCyan
         Write-Host '  ├───────────────────┬─────────────────────────────────────┤' -ForegroundColor DarkCyan
-        Write-Host ("  │ Files Restored    │ {0,-35} │" -f $restoredFiles.ToString('N0')) -ForegroundColor DarkCyan
-        Write-Host ("  │ Data Restored     │ {0,-35} │" -f (Format-FileSize $restoredBytes)) -ForegroundColor DarkCyan
-        Write-Host ("  │ Files Failed      │ {0,-35} │" -f $failedFiles.ToString('N0')) -ForegroundColor DarkCyan
+        Write-Host ("  │ Total Files       │ {0,-35} │" -f $totalFiles.ToString('N0')) -ForegroundColor DarkCyan
+        Write-Host ("  │ Total Size        │ {0,-35} │" -f (Format-FileSize $totalBytes)) -ForegroundColor DarkCyan
+        Write-Host ("  │ Folders OK        │ {0,-35} │" -f $foldersOK.ToString('N0')) -ForegroundColor DarkCyan
+        Write-Host ("  │ Folders Failed    │ {0,-35} │" -f $foldersFailed.ToString('N0')) -ForegroundColor DarkCyan
         Write-Host ("  │ Notices Removed   │ {0,-35} │" -f $noticeFiles.Count.ToString('N0')) -ForegroundColor DarkCyan
         Write-Host ("  │ Elapsed Time      │ {0,-35} │" -f ('{0:hh\:mm\:ss}' -f $totalElapsed)) -ForegroundColor DarkCyan
         Write-Host ("  │ Robocopy Log      │ {0,-35} │" -f (Split-Path $logFile -Leaf)) -ForegroundColor DarkCyan
