@@ -526,7 +526,7 @@ function Invoke-MoveFiles {
         if ($Append) { $logFlag = '/LOG+:' + $Log } else { $logFlag = '/LOG:' + $Log }
 
         $mtFlag = '/MT:' + $Script:Config.ThreadCount
-        $args = @(
+        $roboArgs = @(
             $SubSource
             $SubDest
             '/E'            # All subdirectories
@@ -543,9 +543,9 @@ function Invoke-MoveFiles {
             $logFlag
         )
 
-        if ($Script:IsDryRun) { $args += '/L' }
+        if ($Script:IsDryRun) { $roboArgs += '/L' }
 
-        $proc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $args `
+        $proc = Start-Process -FilePath 'robocopy.exe' -ArgumentList $roboArgs `
             -NoNewWindow -Wait -PassThru -RedirectStandardOutput 'NUL'
 
         return $proc.ExitCode
