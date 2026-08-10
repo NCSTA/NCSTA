@@ -88,7 +88,7 @@ $Script:Config = @{
     ContactTeam    = 'IT Infrastructure'
     TicketURL      = 'https://servicedesk.yourcompany.com'
     GraceDays      = 30
-    ThreadCount    = 16          # Robocopy /MT threads (16 for SAN/datastore, 2 for single HDD)
+    ThreadCount    = 4           # Robocopy /MT threads (4 safe for 4c/10GB, 8 moderate, 16+ risks OOM)
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
