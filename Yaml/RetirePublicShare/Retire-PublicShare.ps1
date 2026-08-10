@@ -401,9 +401,10 @@ function Invoke-MirrorStructure {
         }
     }
 
-    # ── Count source folders for reference ──
+    # ── Count source folders for reference (robocopy /L — fast) ──
     Write-Step 'Counting source directories...'
-    $srcFolderCount = @(Get-ChildItem -LiteralPath $src -Recurse -Directory -Force -ErrorAction SilentlyContinue).Count
+    $srcStats = Get-FolderStats -Path $src
+    $srcFolderCount = $srcStats.Folders
     Write-Step "Source contains $($srcFolderCount.ToString('N0')) directories" -Level Detail
 
     # ── Run robocopy — directories only, no files ──
@@ -441,9 +442,10 @@ function Invoke-MirrorStructure {
         return $false
     }
 
-    # ── Verify ──
+    # ── Verify (robocopy /L — fast) ──
     Write-Step 'Verifying archive directory count...'
-    $dstFolderCount = @(Get-ChildItem -LiteralPath $dst -Recurse -Directory -Force -ErrorAction SilentlyContinue).Count
+    $dstStats = Get-FolderStats -Path $dst
+    $dstFolderCount = $dstStats.Folders
     Write-Step "Archive now contains $($dstFolderCount.ToString('N0')) directories" -Level Detail
 
     if ($dstFolderCount -ge $srcFolderCount) {
@@ -482,12 +484,11 @@ function Invoke-MoveFiles {
         return $false
     }
 
-    # ── Count total files and size for progress tracking ──
-    Write-Step 'Counting files for progress tracking (this may take a few minutes)...'
-    $allFiles = @(Get-ChildItem -LiteralPath $src -Recurse -File -Force -ErrorAction SilentlyContinue)
-    $totalFiles = $allFiles.Count
-    $totalBytes = ($allFiles | Measure-Object -Property Length -Sum).Sum
-    if ($null -eq $totalBytes) { $totalBytes = 0 }
+    # ── Count total files and size for progress tracking (robocopy /L — fast) ──
+    Write-Step 'Counting files for progress tracking...'
+    $srcStats   = Get-FolderStats -Path $src
+    $totalFiles = $srcStats.Files
+    $totalBytes = $srcStats.SizeBytes
 
     Write-Step ("Total files to move: {0}" -f $totalFiles.ToString('N0'))
     Write-Step ("Total size to move:  {0}" -f (Format-FileSize $totalBytes))
@@ -595,11 +596,10 @@ function Invoke-MoveFiles {
         $folderSrc  = $folder.FullName
         $folderDest = Join-Path $dst $folder.Name
 
-        # Count files in this folder for reporting
-        $folderFiles = @(Get-ChildItem -LiteralPath $folderSrc -Recurse -File -Force -ErrorAction SilentlyContinue)
-        $folderFileCount = $folderFiles.Count
-        $folderSize = ($folderFiles | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
-        if ($null -eq $folderSize) { $folderSize = 0 }
+        # Count files in this folder (robocopy /L — fast, no PS object overhead)
+        $folderStats    = Get-FolderStats -Path $folderSrc
+        $folderFileCount = $folderStats.Files
+        $folderSize      = $folderStats.SizeBytes
 
         # ── Progress bar ──
         $completedUnits++
@@ -816,56 +816,76 @@ function Invoke-Validate {
     }
 
     # ── Scan source (should be mostly empty — only notice files) ──
+    # Use robocopy /L to count total files (fast, no PS object overhead)
+    # Then count notices directly (root + top-level only, where we placed them)
     Write-Step 'Scanning source for remaining files...'
-    $srcFiles = @(Get-ChildItem -LiteralPath $src -Recurse -File -Force -ErrorAction SilentlyContinue)
+    $srcFileStats   = Get-FolderStats -Path $src
+    $totalSrcFiles  = $srcFileStats.Files
 
-    # Separate notice files from unexpected leftovers
     $noticeFileName = $Script:Config.NoticeFileName
-    $noticeFiles    = @($srcFiles | Where-Object { $_.Name -eq $noticeFileName })
-    $leftoverFiles  = @($srcFiles | Where-Object { $_.Name -ne $noticeFileName })
+    $noticeCount    = 0
+    if (Test-Path (Join-Path $src $noticeFileName)) { $noticeCount++ }
+    $topDirsVal = @(Get-ChildItem -LiteralPath $src -Directory -Force -ErrorAction SilentlyContinue)
+    foreach ($d in $topDirsVal) {
+        if (Test-Path (Join-Path $d.FullName $noticeFileName)) { $noticeCount++ }
+    }
 
-    Write-Step "Source files remaining: $($srcFiles.Count) total" -Level Detail
-    Write-Step "  Notice files: $($noticeFiles.Count)" -Level Detail
-    Write-Step "  Leftover files (not moved): $($leftoverFiles.Count)" -Level Detail
+    $leftoverCount = [math]::Max(0, $totalSrcFiles - $noticeCount)
+
+    Write-Step "Source files remaining: $totalSrcFiles total" -Level Detail
+    Write-Step "  Notice files: $noticeCount" -Level Detail
+    Write-Step "  Leftover files (not moved): $leftoverCount" -Level Detail
+
+    # If leftovers exist, run robocopy /L to list them (exclude notice files)
+    $leftoverDetails = @()
+    if ($leftoverCount -gt 0) {
+        Write-Step 'Identifying leftover files...' -Level Detail
+        $listOutput = & robocopy $src "$src\__robocopy_nul_target__" /L /E /BYTES /NJH /NJS /NP /R:0 /W:0 /XF $noticeFileName 2>&1
+        foreach ($line in $listOutput) {
+            $lineStr = $line.ToString().Trim()
+            # Robocopy file lines look like: "       <size>  <path>"  (new file lines have tab-separated fields)
+            if ($lineStr -match '^\s*(?:New File|Newer|Older|Changed|Extra File)\s+(\d+)\s+(.+)$') {
+                $leftoverDetails += [PSCustomObject]@{
+                    SizeBytes = [long]$Matches[1]
+                    Path      = $Matches[2].Trim()
+                }
+            }
+        }
+    }
 
     # ── Scan archive ──
     Write-Step 'Scanning archive...'
     $dstStats = Get-FolderStats -Path $dst
 
-    # ── Compare folder structure ──
-    Write-Step 'Comparing folder structures...'
-    $srcFolders = @(Get-ChildItem -LiteralPath $src -Recurse -Directory -Force -ErrorAction SilentlyContinue |
-        ForEach-Object { $_.FullName.Substring($src.Length) })
-    $dstFolders = @(Get-ChildItem -LiteralPath $dst -Recurse -Directory -Force -ErrorAction SilentlyContinue |
-        ForEach-Object { $_.FullName.Substring($dst.Length) })
+    # ── Compare folder counts (robocopy /L — fast) ──
+    Write-Step 'Comparing folder counts...'
+    $srcFolderStats = Get-FolderStats -Path $src
+    $srcFolderCount = $srcFolderStats.Folders
+    $dstFolderCount = $dstStats.Folders
 
-    $missingInArchive = @(Compare-Object -ReferenceObject $srcFolders -DifferenceObject $dstFolders |
-        Where-Object { $_.SideIndicator -eq '<=' } |
-        ForEach-Object { $_.InputObject })
-
-    if ($missingInArchive.Count -gt 0) {
-        Write-Step "$($missingInArchive.Count) folders missing from archive:" -Level Warning
-        foreach ($missing in $missingInArchive | Select-Object -First 20) {
-            Write-Step "  MISSING: $missing" -Level Warning
-        }
-        if ($missingInArchive.Count -gt 20) {
-            Write-Step "  ... and $($missingInArchive.Count - 20) more" -Level Warning
-        }
+    if ($dstFolderCount -ge $srcFolderCount) {
+        Write-Step ("Folder counts match: source {0}, archive {1}" -f
+            $srcFolderCount.ToString('N0'), $dstFolderCount.ToString('N0')) -Level Success
     }
     else {
-        Write-Step 'All source folders exist in archive' -Level Success
+        $missingCount = $srcFolderCount - $dstFolderCount
+        Write-Step ("Folder count mismatch: source {0}, archive {1} ({2} missing)" -f
+            $srcFolderCount.ToString('N0'), $dstFolderCount.ToString('N0'),
+            $missingCount.ToString('N0')) -Level Warning
+        Write-Step 'Re-run -MirrorStructure to sync missing directories.' -Level Warning
     }
 
     # ── List leftover files ──
-    if ($leftoverFiles.Count -gt 0) {
+    if ($leftoverCount -gt 0) {
         Write-Step 'Files that were NOT moved (still in source):' -Level Warning
-        foreach ($file in $leftoverFiles | Select-Object -First 50) {
-            $relativePath = $file.FullName.Substring($src.Length)
-            $sizeStr = Format-FileSize $file.Length
-            Write-Step ("  LEFTOVER: {0}  ({1})" -f $relativePath, $sizeStr) -Level Warning
+        $shown = 0
+        foreach ($item in $leftoverDetails | Select-Object -First 50) {
+            $sizeStr = Format-FileSize $item.SizeBytes
+            Write-Step ("  LEFTOVER: {0}  ({1})" -f $item.Path, $sizeStr) -Level Warning
+            $shown++
         }
-        if ($leftoverFiles.Count -gt 50) {
-            Write-Step "  ... and $($leftoverFiles.Count - 50) more" -Level Warning
+        if ($leftoverCount -gt 50) {
+            Write-Step "  ... and $($leftoverCount - 50) more" -Level Warning
         }
     }
 
@@ -881,25 +901,19 @@ function Invoke-Validate {
         "Archive Files:     $($dstStats.Files.ToString('N0'))"
         "Archive Size:      $($dstStats.SizeHuman)"
         ""
-        "Source Leftovers:  $($leftoverFiles.Count) files (not moved)"
-        "Notice Files:      $($noticeFiles.Count)"
-        "Missing Folders:   $($missingInArchive.Count)"
+        "Source Leftovers:  $leftoverCount files (not moved)"
+        "Notice Files:      $noticeCount"
+        "Source Folders:    $($srcFolderCount.ToString('N0'))"
+        "Archive Folders:   $($dstFolderCount.ToString('N0'))"
         ""
     )
 
-    if ($leftoverFiles.Count -gt 0) {
+    if ($leftoverCount -gt 0) {
         $reportLines += "LEFTOVER FILES:"
-        foreach ($file in $leftoverFiles) {
-            $reportLines += "  $($file.FullName)"
+        foreach ($item in $leftoverDetails) {
+            $reportLines += "  $($item.Path)"
         }
         $reportLines += ""
-    }
-
-    if ($missingInArchive.Count -gt 0) {
-        $reportLines += "MISSING FOLDERS IN ARCHIVE:"
-        foreach ($missing in $missingInArchive) {
-            $reportLines += "  $missing"
-        }
     }
 
     $reportLines | Out-File -FilePath $validationLog -Encoding UTF8
@@ -914,21 +928,21 @@ function Invoke-Validate {
     Write-Host ("  │ Archive Files     │ {0,-35} │" -f $dstStats.Files.ToString('N0')) -ForegroundColor DarkCyan
     Write-Host ("  │ Archive Size      │ {0,-35} │" -f $dstStats.SizeHuman) -ForegroundColor DarkCyan
 
-    if ($leftoverFiles.Count -eq 0) { $leftoverColor = 'DarkCyan' } else { $leftoverColor = 'Yellow' }
-    Write-Host ("  │ Leftover Files    │ {0,-35} │" -f $leftoverFiles.Count.ToString('N0')) -ForegroundColor $leftoverColor
+    if ($leftoverCount -eq 0) { $leftoverColor = 'DarkCyan' } else { $leftoverColor = 'Yellow' }
+    Write-Host ("  │ Leftover Files    │ {0,-35} │" -f $leftoverCount.ToString('N0')) -ForegroundColor $leftoverColor
 
-    if ($missingInArchive.Count -eq 0) { $missingColor = 'DarkCyan' } else { $missingColor = 'Yellow' }
-    Write-Host ("  │ Missing Folders   │ {0,-35} │" -f $missingInArchive.Count.ToString('N0')) -ForegroundColor $missingColor
+    if ($dstFolderCount -ge $srcFolderCount) { $missingColor = 'DarkCyan'; $missingCount = 0 } else { $missingColor = 'Yellow'; $missingCount = $srcFolderCount - $dstFolderCount }
+    Write-Host ("  │ Missing Folders   │ {0,-35} │" -f $missingCount.ToString('N0')) -ForegroundColor $missingColor
 
-    Write-Host ("  │ Notice Files      │ {0,-35} │" -f $noticeFiles.Count.ToString('N0')) -ForegroundColor DarkCyan
+    Write-Host ("  │ Notice Files      │ {0,-35} │" -f $noticeCount.ToString('N0')) -ForegroundColor DarkCyan
     Write-Host '  └───────────────────┴─────────────────────────────────────┘' -ForegroundColor DarkCyan
     Write-Host ''
 
-    if ($leftoverFiles.Count -eq 0 -and $missingInArchive.Count -eq 0) {
+    if ($leftoverCount -eq 0 -and $missingCount -eq 0) {
         Write-Step '✓ Migration validated — all files moved, all folders accounted for' -Level Success
     }
-    elseif ($leftoverFiles.Count -gt 0) {
-        Write-Step "⚠ $($leftoverFiles.Count) files still in source. Re-run -MoveFiles to retry." -Level Warning
+    elseif ($leftoverCount -gt 0) {
+        Write-Step "⚠ $leftoverCount files still in source. Re-run -MoveFiles to retry." -Level Warning
     }
 
     Write-Step 'Phase 4 complete.' -Level Success
@@ -963,8 +977,15 @@ function Invoke-Rollback {
     Write-Step '── Step 1/3: Removing retirement notice files ──'
 
     $noticeFileName = $Script:Config.NoticeFileName
-    $noticeFiles = @(Get-ChildItem -LiteralPath $src -Recurse -File -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -eq $noticeFileName })
+    # Notices were placed in root + top-level folders only — no need to recurse 296K dirs
+    $noticeFiles = @()
+    $rootNotice = Join-Path $src $noticeFileName
+    if (Test-Path $rootNotice) { $noticeFiles += Get-Item -LiteralPath $rootNotice }
+    $topDirs = @(Get-ChildItem -LiteralPath $src -Directory -Force -ErrorAction SilentlyContinue)
+    foreach ($dir in $topDirs) {
+        $n = Join-Path $dir.FullName $noticeFileName
+        if (Test-Path $n) { $noticeFiles += Get-Item -LiteralPath $n }
+    }
 
     if ($noticeFiles.Count -gt 0) {
         foreach ($notice in $noticeFiles) {
@@ -993,12 +1014,11 @@ function Invoke-Rollback {
     # ═══════════════════════════════════════════════════════════════════════
     Write-Step '── Step 2/3: Moving files from archive back to source ──'
 
-    # Count files in archive
+    # Count files in archive (robocopy /L — fast)
     Write-Step 'Counting files in archive for progress tracking...'
-    $allFiles = @(Get-ChildItem -LiteralPath $dst -Recurse -File -Force -ErrorAction SilentlyContinue)
-    $totalFiles = $allFiles.Count
-    $totalBytes = ($allFiles | Measure-Object -Property Length -Sum).Sum
-    if ($null -eq $totalBytes) { $totalBytes = 0 }
+    $archiveStats = Get-FolderStats -Path $dst
+    $totalFiles = $archiveStats.Files
+    $totalBytes = $archiveStats.SizeBytes
 
     Write-Step ("Files to restore: {0}" -f $totalFiles.ToString('N0'))
     Write-Step ("Total size:       {0}" -f (Format-FileSize $totalBytes))
@@ -1062,10 +1082,9 @@ function Invoke-Rollback {
             $folderSrc  = $folder.FullName                              # Archive subfolder
             $folderDest = Join-Path $src $folder.Name                   # Original subfolder
 
-            $folderFiles = @(Get-ChildItem -LiteralPath $folderSrc -Recurse -File -Force -ErrorAction SilentlyContinue)
-            $folderFileCount = $folderFiles.Count
-            $folderSize = ($folderFiles | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
-            if ($null -eq $folderSize) { $folderSize = 0 }
+            $folderStats     = Get-FolderStats -Path $folderSrc
+            $folderFileCount = $folderStats.Files
+            $folderSize      = $folderStats.SizeBytes
 
             # ── Progress bar ──
             $completedUnits++
@@ -1157,21 +1176,20 @@ function Invoke-Rollback {
     # ═══════════════════════════════════════════════════════════════════════
     Write-Step '── Step 3/3: Validating rollback ──'
 
-    $srcFilesAfter = @(Get-ChildItem -LiteralPath $src -Recurse -File -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -ne $noticeFileName })
-    $dstFilesAfter = @(Get-ChildItem -LiteralPath $dst -Recurse -File -Force -ErrorAction SilentlyContinue)
+    $srcStatsAfter = Get-FolderStats -Path $src
+    $dstStatsAfter = Get-FolderStats -Path $dst
 
-    Write-Step ("Source files restored:    {0}" -f $srcFilesAfter.Count.ToString('N0'))
-    Write-Step ("Archive files remaining:  {0}" -f $dstFilesAfter.Count.ToString('N0'))
+    Write-Step ("Source files restored:    {0}" -f $srcStatsAfter.Files.ToString('N0'))
+    Write-Step ("Archive files remaining:  {0}" -f $dstStatsAfter.Files.ToString('N0'))
 
     if ($Script:IsDryRun) {
         Write-Step 'DRY RUN complete — no files were moved. Run without -DryRun to execute.' -Level Success
     }
-    elseif ($dstFilesAfter.Count -eq 0) {
+    elseif ($dstStatsAfter.Files -eq 0) {
         Write-Step '✓ Rollback complete — all files restored to source, archive is empty' -Level Success
     }
     else {
-        Write-Step ("⚠ $($dstFilesAfter.Count) files still in archive. Re-run -Rollback to retry.") -Level Warning
+        Write-Step ("⚠ $($dstStatsAfter.Files) files still in archive. Re-run -Rollback to retry.") -Level Warning
     }
 
     Write-Step "Robocopy log: $logFile" -Level Detail
