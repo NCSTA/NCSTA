@@ -10,7 +10,7 @@ Application Owners,
 
 The Security and Windows Engineering teams are preparing a controlled change to the TLS cipher suites available on Windows Server 2019, 2022, and 2025 systems. Security scans have identified weak or deprecated cipher suites that must be removed from the Windows Schannel configuration.
 
-TLS 1.0 and TLS 1.1 are already disabled. TLS 1.2 remains enabled, and TLS 1.3 remains available through the operating-system default on supported Server 2022 and 2025 systems. This change will not disable TLS 1.2. It will restrict negotiation to modern AES-GCM suites with forward secrecy.
+TLS 1.0 and TLS 1.1 are already disabled. TLS 1.2 remains enabled, and TLS 1.3 remains available through the operating-system default on supported Server 2022 and 2025 systems. This change will not disable TLS 1.2. It will prioritize modern AES-GCM suites with forward secrecy while retaining a limited ECDHE/AES-CBC/SHA-2 compatibility fallback.
 
 ### Current state
 
@@ -18,17 +18,17 @@ Windows systems currently prefer modern TLS 1.2/1.3 suites but retain older fall
 
 ### End state
 
-- Server 2019 will offer TLS 1.2 ECDHE with AES-128-GCM or AES-256-GCM, using RSA or ECDSA authentication.
-- Server 2022 and 2025 will offer TLS 1.3 AES-GCM plus the same TLS 1.2 ECDHE/AES-GCM suites.
+- Server 2019 will offer eight TLS 1.2 ECDHE suites: AES-128/256-GCM first, followed by AES-128/256-CBC with SHA-2 for compatibility, using RSA or ECDSA authentication.
+- Server 2022 and 2025 will offer TLS 1.3 AES-GCM plus the same eight TLS 1.2 ECDHE suites.
 - TLS 1.0 and TLS 1.1 will remain disabled.
 
 ### Why we are making this change
 
-The change removes weak or deprecated cryptographic options reported by security scanners, improves forward secrecy, reduces exposure to legacy algorithms, and creates a consistent, auditable enterprise baseline based on the strongest suites in Microsoft's documented Schannel ordering.
+The change removes weak or deprecated cryptographic options reported by security scanners, improves forward secrecy, reduces exposure to legacy algorithms, and creates a consistent, auditable enterprise baseline based on the strongest suites in Microsoft's documented Schannel ordering. In particular, removing `TLS_RSA_WITH_3DES_EDE_CBC_SHA` remediates the SWEET32 finding. The retained AES-CBC/SHA-2 suites are not affected by SWEET32 because AES uses a 128-bit block size.
 
 ### Possible impact
 
-Current supported operating systems, browsers, .NET releases, Java runtimes, OpenSSL libraries, and network products are expected to continue working. Older applications or devices may fail if they support TLS 1.2 but require static-RSA key exchange, CBC-only encryption, old Java/.NET/OpenSSL behavior, or a hard-coded legacy cipher list.
+Current supported operating systems, browsers, .NET releases, Java runtimes, OpenSSL libraries, and network products are expected to continue working. Older applications or devices may fail if they support TLS 1.2 but require static-RSA key exchange, CBC/SHA-1, 3DES, old Java/.NET/OpenSSL behavior, or a hard-coded legacy cipher list. Clients that support ECDHE with AES-CBC/SHA-2 retain a compatibility path.
 
 The change may affect both inbound connections to Windows servers and outbound connections made by Windows applications. Load balancers, proxies, database drivers, LDAP clients, API integrations, SMTP relays, monitoring agents, backup agents, appliances, and Linux-hosted applications should be included in testing.
 
@@ -37,9 +37,9 @@ The change may affect both inbound connections to Windows servers and outbound c
 1. Identify all inbound and outbound TLS connections for your application.
 2. Confirm the client, runtime, appliance, proxy, and vendor-product versions are supported and current.
 3. Check for hard-coded cipher lists or TLS overrides.
-4. Confirm every connection supports ECDHE with AES-GCM under TLS 1.2.
+4. Confirm every connection supports at least one approved ECDHE suite under TLS 1.2; AES-GCM is preferred, with AES-CBC/SHA-2 retained as the compatibility fallback.
 5. Provide a functional test procedure and named tester.
-6. Report any known PSK, static-RSA-only, or CBC-only dependency.
+6. Report any known PSK, static-RSA-only, CBC/SHA-1-only, or 3DES dependency.
 7. Complete validation in [TEST ENVIRONMENT/WINDOW] and send sign-off to [CONTACT].
 
 Linux application teams can validate TLS 1.2 connectivity with:
@@ -78,7 +78,7 @@ Thank you,
 
 Hello [OWNER],
 
-[APPLICATION] has been selected for the TLS cipher-hardening pilot scheduled for [DATE/TIME]. The change will restrict the Windows server to TLS 1.2/1.3 AES-GCM suites with ECDHE forward secrecy where applicable.
+[APPLICATION] has been selected for the TLS cipher-hardening pilot scheduled for [DATE/TIME]. The change will restrict the Windows server to approved TLS suites, prioritizing TLS 1.3 AES-GCM where supported and ECDHE/AES-GCM for TLS 1.2 while retaining ECDHE/AES-CBC/SHA-2 as a limited TLS 1.2 compatibility fallback.
 
 Please confirm before the change:
 
@@ -125,7 +125,7 @@ Thank you,
 
 Application Owners,
 
-The TLS cipher-hardening change for [SCOPE] was completed on [DATE/TIME]. The affected Windows systems now offer only the approved TLS 1.2/1.3 AES-GCM cipher suites. Post-change technical validation and security scanning [COMPLETED SUCCESSFULLY / STATUS].
+The TLS cipher-hardening change for [SCOPE] was completed on [DATE/TIME]. The affected Windows systems now offer only the approved TLS suites, with TLS 1.3 AES-GCM available where supported, ECDHE/AES-GCM preferred for TLS 1.2, and ECDHE/AES-CBC/SHA-2 retained for TLS 1.2 compatibility. Post-change technical validation and security scanning [COMPLETED SUCCESSFULLY / STATUS].
 
 Please report any suspected delayed impact to [CONTACT] and include:
 
