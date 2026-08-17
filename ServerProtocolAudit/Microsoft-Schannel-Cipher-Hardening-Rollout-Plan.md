@@ -10,12 +10,12 @@
 
 ## 1. Executive summary
 
-Security scans are identifying weak or deprecated cipher suites on Windows servers. The organization will define explicit Microsoft-aligned cipher-suite orders through Group Policy so that Schannel offers only authenticated-encryption suites with forward secrecy:
+Security scans are identifying weak or deprecated cipher suites on Windows servers. The organization will define explicit Microsoft-aligned cipher-suite orders through Group Policy so that Schannel offers modern TLS 1.3 AES-GCM suites where supported and forward-secret ECDHE suites for TLS 1.2:
 
-- Windows Server 2019: four TLS 1.2 ECDHE/AES-GCM suites.
-- Windows Server 2022 and 2025: two TLS 1.3 AES-GCM suites followed by four TLS 1.2 ECDHE/AES-GCM suites.
+- Windows Server 2019: eight TLS 1.2 ECDHE suites—four AES-GCM suites followed by four AES-CBC/SHA-2 compatibility suites.
+- Windows Server 2022 and 2025: two TLS 1.3 AES-GCM suites followed by the same eight TLS 1.2 ECDHE suites.
 
-The change removes 3DES, NULL, PSK, static-RSA key exchange, CBC, SHA-1, and DHE suites from the normal server policy. Modern supported clients should continue to work. The principal compatibility risk is an older application, runtime, appliance, agent, proxy, or integration that supports TLS 1.2 but cannot negotiate ECDHE with AES-GCM.
+The change removes 3DES, NULL, PSK, static-RSA key exchange, CBC/SHA-1, and DHE suites from the normal server policy. It retains ECDHE/AES-CBC with SHA-256 or SHA-384 as a staged compatibility fallback. Removing `TLS_RSA_WITH_3DES_EDE_CBC_SHA` directly remediates the SWEET32 finding. Modern supported clients should continue to work. The principal compatibility risk is an older application, runtime, appliance, agent, proxy, or integration that supports TLS 1.2 but cannot negotiate any retained ECDHE suite.
 
 Deployment will proceed in rings: laboratory validation, representative Windows application servers, broader Windows server waves, infrastructure services, and domain controllers last. Linux servers are not changed in this phase, but Linux-hosted applications that connect to Windows endpoints must participate in compatibility testing.
 
@@ -33,7 +33,7 @@ Deployment will proceed in rings: laboratory validation, representative Windows 
 ### Success criteria
 
 - The effective suite order matches the approved OS baseline after reboot.
-- Security rescans no longer report 3DES, NULL, static-RSA, CBC, SHA-1, or other excluded suites.
+- Security rescans no longer report SWEET32/3DES, NULL, static-RSA, CBC/SHA-1, or other excluded suites. CBC/SHA-2 results are reviewed separately because some scanner policies report all CBC suites even though AES-CBC is not affected by SWEET32.
 - Inbound and outbound application transactions complete successfully.
 - No sustained increase in Schannel, application, proxy, authentication, database, or monitoring errors.
 - Domain-controller authentication, LDAP over TLS, Global Catalog TLS, replication-related integrations, and dependent applications pass validation before the DC rollout.
@@ -66,11 +66,15 @@ Endpoints 3, 19, and 20 should receive specific ownership review because their e
 | 2 | `TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256` | TLS 1.2 |
 | 3 | `TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384` | TLS 1.2 |
 | 4 | `TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256` | TLS 1.2 |
+| 5 | `TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384` | TLS 1.2 |
+| 6 | `TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256` | TLS 1.2 |
+| 7 | `TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384` | TLS 1.2 |
+| 8 | `TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256` | TLS 1.2 |
 
 GPO value:
 
 ```text
-TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
 ```
 
 Microsoft reference: <https://learn.microsoft.com/en-us/windows/win32/secauthn/tls-cipher-suites-in-windows-10-v1809>
@@ -87,11 +91,15 @@ Microsoft maps Windows Server 2019 to the Windows 10 version 1809 Schannel ciphe
 | 4 | `TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256` | TLS 1.2 |
 | 5 | `TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384` | TLS 1.2 |
 | 6 | `TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256` | TLS 1.2 |
+| 7 | `TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384` | TLS 1.2 |
+| 8 | `TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256` | TLS 1.2 |
+| 9 | `TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384` | TLS 1.2 |
+| 10 | `TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256` | TLS 1.2 |
 
 GPO value:
 
 ```text
-TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
 ```
 
 Microsoft references:
@@ -108,7 +116,8 @@ Microsoft references:
 - Both RSA and ECDSA authentication families are retained.
 - AES-128 and AES-256 options are retained.
 - The order follows the strongest portion of Microsoft's documented Schannel defaults.
-- The list avoids HTTP/2-blocked CBC and static-RSA suites.
+- AES-GCM suites are prioritized ahead of CBC suites in accordance with Microsoft's HTTP/2 custom-order guidance.
+- AES-CBC/SHA-2 is retained only as a staged TLS 1.2 compatibility fallback and may be removed later if telemetry and scanner policy permit.
 - ChaCha20 is not included because Microsoft supports it on newer systems but does not enable it by default.
 
 ### Deliberately excluded
@@ -120,7 +129,6 @@ Microsoft references:
 | RC4, DES, export | Deprecated or cryptographically broken |
 | Static RSA | No forward secrecy and commonly reported by scanners |
 | CBC/SHA-1 | Legacy construction commonly reported as weak |
-| CBC/SHA-2 | Better than CBC/SHA-1, but unnecessary when GCM is universally supported and may still trigger policy findings |
 | DHE-RSA | Strong when correctly configured, but removed from newer Microsoft defaults and unnecessary when ECDHE is available |
 | PSK | Not required for normal Schannel server operation; retain only for a documented application exception |
 | ChaCha20 | Supported on newer Windows but not enabled by Microsoft by default |
@@ -255,10 +263,10 @@ This produces verbose and potentially sensitive diagnostic output; collect it on
 ### GPO objects
 
 1. **Schannel Strong Cipher Order — Server 2019**
-   - Four-suite TLS 1.2 order.
+   - Eight-suite TLS 1.2 order.
    - Scoped only to Windows Server 2019.
 2. **Schannel Strong Cipher Order — Server 2022-2025**
-   - Six-suite TLS 1.2/TLS 1.3 order.
+   - Ten-suite TLS 1.2/TLS 1.3 order.
    - Scoped only to Windows Server 2022 and 2025.
 
 Policy location:
@@ -288,14 +296,18 @@ $expected2019 = @(
     'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384',
     'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256',
     'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384',
-    'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256'
+    'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256',
+    'TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384',
+    'TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256',
+    'TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384',
+    'TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256'
 )
 
 $actual = @(Get-TlsCipherSuite | Select-Object -ExpandProperty Name)
 Compare-Object -ReferenceObject $expected2019 -DifferenceObject $actual
 ```
 
-For Server 2022/2025, use the corresponding six-suite list as `$expected`.
+For Server 2022/2025, use the corresponding ten-suite list as `$expected`.
 
 Also verify policy application:
 
@@ -432,3 +444,4 @@ Retain:
 - Microsoft — Manage TLS in Windows Server: <https://learn.microsoft.com/en-us/windows-server/security/tls/manage-tls>
 - Microsoft — Deploy custom cipher-suite ordering: <https://learn.microsoft.com/en-us/troubleshoot/windows-server/windows-security/deploy-custom-cipher-suite-ordering>
 - NIST SP 800-52 Rev. 2: <https://csrc.nist.gov/pubs/sp/800/52/r2/final>
+- NVD — CVE-2016-2183 / SWEET32: <https://nvd.nist.gov/vuln/detail/CVE-2016-2183>
