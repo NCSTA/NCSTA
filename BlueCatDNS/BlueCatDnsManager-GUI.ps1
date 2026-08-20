@@ -419,13 +419,12 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                         </StackPanel>
                     </GroupBox>
 
-                    <GroupBox Header="Deployment Status / Events">
+                    <GroupBox Header="Deployment Status Check">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <Label Content="Event / Deployment ID:"/>
+                                <Label Content="Deployment ID:"/>
                                 <TextBox x:Name="txtCheckDeployId" Width="150" Margin="0,0,10,0"/>
-                                <Button x:Name="btnCheckDeploy" Content="Check ID"/>
-                                <Button x:Name="btnRecentDeployments" Content="Recent Events" Margin="10,0,0,0"/>
+                                <Button x:Name="btnCheckDeploy" Content="Check Status"/>
                             </StackPanel>
                             <DataGrid x:Name="dgDeployments" AutoGenerateColumns="False"
                                       IsReadOnly="True" Height="220"
@@ -435,12 +434,11 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                                     <DataGridTextColumn Header="Time" Binding="{Binding time}" Width="145"/>
                                     <DataGridTextColumn Header="ID" Binding="{Binding id}" Width="70"/>
                                     <DataGridTextColumn Header="Category" Binding="{Binding category}" Width="135"/>
-                                    <DataGridTextColumn Header="Source" Binding="{Binding source}" Width="120"/>
                                     <DataGridTextColumn Header="Name / Target" Binding="{Binding name}" Width="170"/>
                                     <DataGridTextColumn Header="Action" Binding="{Binding action}" Width="105"/>
                                     <DataGridTextColumn Header="State" Binding="{Binding state}" Width="85"/>
                                     <DataGridTextColumn Header="Status" Binding="{Binding status}" Width="85"/>
-                                    <DataGridTextColumn Header="User" Binding="{Binding user}" Width="95"/>
+                                    <DataGridTextColumn Header="Deployed By" Binding="{Binding deployedBy}" Width="110"/>
                                     <DataGridTextColumn Header="Message" Binding="{Binding message}" Width="*"/>
                                 </DataGrid.Columns>
                             </DataGrid>
@@ -561,7 +559,6 @@ $btnSelectiveDeploy = $controls['btnSelectiveDeploy']
 $btnQuickDeploy     = $controls['btnQuickDeploy']
 $txtCheckDeployId   = $controls['txtCheckDeployId']
 $btnCheckDeploy     = $controls['btnCheckDeploy']
-$btnRecentDeployments = $controls['btnRecentDeployments']
 
 
 $dgDeployments      = $controls['dgDeployments']
@@ -1266,20 +1263,45 @@ function Get-DeploymentSortDate {
 function Get-DeploymentUserName {
     param($Deployment)
 
-    $user = Get-ObjectPropertyValue -InputObject $Deployment -Names @(
+    $userPropertyNames = @(
         'user',
+        'deployedBy',
+        'requestedBy',
         'username',
         'userName',
         'createdBy',
         'owner',
         'actor'
     )
+
+    $user = Get-RecordPropertyValue -InputObject $Deployment -Names $userPropertyNames
+    if ($null -eq $user) {
+        $embedded = Get-RecordPropertyValue -InputObject $Deployment -Names @('_embedded','embedded')
+        if ($embedded) {
+            $user = Get-RecordPropertyValue -InputObject $embedded -Names $userPropertyNames
+        }
+    }
     if ($null -eq $user) { return '' }
 
-    $name = Get-ObjectPropertyValue -InputObject $user -Names @('name','username','userName')
-    if ($name) { return $name.ToString() }
+    if ($user -is [System.Array]) {
+        $user = @($user) | Select-Object -First 1
+    }
+    if ($user -is [string] -or $user -is [System.ValueType]) {
+        return $user.ToString()
+    }
 
-    return $user.ToString()
+    $name = Get-RecordPropertyValue -InputObject $user -Names @(
+        'name',
+        'username',
+        'userName',
+        'loginName',
+        'absoluteName'
+    )
+    if ($null -ne $name -and $name.ToString().Trim() -ne '') {
+        return $name.ToString()
+    }
+
+    return ''
 }
 
 function Get-DeploymentDisplayName {
@@ -1334,14 +1356,13 @@ function ConvertTo-DeploymentRows {
             time            = Format-DeploymentDateValue -Value $dateValue
             id              = (Get-ObjectPropertyValue -InputObject $deployment -Names @('id','eventId','eventID','deploymentId','deploymentID','taskId'))
             category        = (Get-ObjectPropertyValue -InputObject $deployment -Names @('category','eventCategory','type','deploymentType'))
-            source          = (Get-ObjectPropertyValue -InputObject $deployment -Names @('eventSource','source','serverName'))
             deploymentType  = (Get-ObjectPropertyValue -InputObject $deployment -Names @('type','deploymentType'))
             name            = Get-DeploymentDisplayName -Deployment $deployment
             action          = (($actionParts | ForEach-Object { $_.ToString() }) -join ' ')
             state           = (Get-ObjectPropertyValue -InputObject $deployment -Names @('state'))
             status          = (Get-ObjectPropertyValue -InputObject $deployment -Names @('status','level','severity'))
             percentComplete = $percentText
-            user            = Get-DeploymentUserName -Deployment $deployment
+            deployedBy      = Get-DeploymentUserName -Deployment $deployment
             message         = (Get-ObjectPropertyValue -InputObject $deployment -Names @('message','description'))
             sortDate        = Get-DeploymentSortDate -Deployment $deployment
         })
@@ -2064,95 +2085,29 @@ $btnQuickDeploy.Add_Click({
 $btnCheckDeploy.Add_Click({
     if (-not $script:IsConnected) { Show-Error 'Error' 'Not connected.'; return }
 
-    $lookupId = $txtCheckDeployId.Text.Trim()
-    if (-not $lookupId -or $lookupId -notmatch '^\d+$') {
-        Show-Error 'Validation' 'Enter a valid event or deployment ID.'
+    $deploymentId = $txtCheckDeployId.Text.Trim()
+    if (-not $deploymentId -or $deploymentId -notmatch '^\d+$') {
+        Show-Error 'Validation' 'Enter a valid deployment ID.'
         return
     }
 
-    $eventLookupError = $null
     try {
-        try {
-            $result = Get-BlueCatEvent -EventId ([int]$lookupId)
-            [void](Set-DeploymentResults -InputObject $result -Summary "Event $lookupId retrieved from the BAM event list.")
-            Write-AppLog -Level INFO -Action 'DeploymentEventStatus' -Message "Retrieved event $lookupId" -Details @{
-                EventId = [int]$lookupId
-                Response = $result
-            }
-            Set-Status "Event $lookupId retrieved"
-            return
-        }
-        catch {
-            $eventLookupError = Get-ExceptionMessage $_
-        }
-
-        $result = Get-BlueCatDeploymentStatus -DeploymentId ([int]$lookupId)
-        [void](Set-DeploymentResults -InputObject $result -Summary "Deployment $lookupId status retrieved. Event-list lookup was not available for this ID.")
-        Write-AppLog -Level INFO -Action 'DeploymentStatus' -Message "Retrieved status for deployment $lookupId" -Details @{
-            DeploymentId = [int]$lookupId
-            EventLookupError = $eventLookupError
+        $result = Get-BlueCatDeploymentStatus -DeploymentId ([int]$deploymentId)
+        [void](Set-DeploymentResults -InputObject $result -Summary "Deployment $deploymentId status retrieved.")
+        Write-AppLog -Level INFO -Action 'DeploymentStatus' -Message "Retrieved status for deployment $deploymentId" -Details @{
+            DeploymentId = [int]$deploymentId
             Response = $result
         }
-        Set-Status "Deployment $lookupId status retrieved"
+        Set-Status "Deployment $deploymentId status retrieved"
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
-        $combinedMessage = "Checking event/deployment ID ${lookupId}: $errMsg"
-        if ($eventLookupError) {
-            $combinedMessage += "`n`nEvent-list lookup failed first:`n$eventLookupError"
+        $message = "Checking deployment ID ${deploymentId}: $errMsg`n`nUse the deployment ID returned by selective or quick deploy, not a DNS record/entity ID."
+        Set-DeploymentError -Message $message
+        Write-AppLog -Level ERROR -Action 'DeploymentStatus' -Message $message -Details @{
+            DeploymentId = [int]$deploymentId
         }
-        $combinedMessage += "`n`nUse an Event ID from Administration > Tracking > Deployment Status > Events List, or a deployment/task ID returned by selective/quick deploy."
-        Set-DeploymentError -Message $combinedMessage
-        Write-AppLog -Level ERROR -Action 'DeploymentStatus' -Message $combinedMessage -Details @{
-            DeploymentId = [int]$lookupId
-            EventLookupError = $eventLookupError
-        }
-        Set-Status 'ID check failed' '#f38ba8'
-    }
-})
-
-$btnRecentDeployments.Add_Click({
-    if (-not $script:IsConnected) { Show-Error 'Error' 'Not connected.'; return }
-
-    Set-Status 'Loading recent deployment events...' '#f9e2af'
-    $eventListError = $null
-    try {
-        try {
-            $result = Get-BlueCatDeploymentEvents -Limit 100
-            $rows = Set-DeploymentResults -InputObject $result -Summary 'Recent deployment events loaded from the BAM event list. Rows are sorted newest first.'
-            if ($rows.Count -gt 0 -and $rows[0].id) {
-                $txtCheckDeployId.Text = $rows[0].id.ToString()
-            }
-            Write-AppLog -Level INFO -Action 'RecentDeploymentEvents' -Message 'Retrieved recent deployment events' -Details @{
-                Events = $result
-            }
-            Set-Status 'Recent deployment events loaded' '#a6e3a1'
-            return
-        }
-        catch {
-            $eventListError = Get-ExceptionMessage $_
-        }
-
-        $result = Get-BlueCatDeployments -Limit 20 -OrderBy 'desc(id)'
-        $rows = Set-DeploymentResults -InputObject $result -Summary "Recent deployment tasks loaded. BAM event-list endpoint was not available, so this is the v2 deployments fallback."
-        if ($rows.Count -gt 0 -and $rows[0].id) {
-            $txtCheckDeployId.Text = $rows[0].id.ToString()
-        }
-        Write-AppLog -Level INFO -Action 'RecentDeployments' -Message 'Retrieved recent deployments' -Details @{
-            EventListError = $eventListError
-            Deployment = $result
-        }
-        Set-Status 'Recent deployment tasks loaded' '#a6e3a1'
-    }
-    catch {
-        $errMsg = Get-ExceptionMessage $_
-        $combinedMessage = "Loading recent deployment events/tasks: $errMsg"
-        if ($eventListError) {
-            $combinedMessage += "`n`nEvent-list lookup failed first:`n$eventListError"
-        }
-        Set-DeploymentError -Message $combinedMessage
-        Write-AppLog -Level ERROR -Action 'RecentDeployments' -Message $combinedMessage
-        Set-Status 'Recent events failed' '#f38ba8'
+        Set-Status 'Status check failed' '#f38ba8'
     }
 })
 
