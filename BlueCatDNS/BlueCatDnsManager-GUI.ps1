@@ -434,12 +434,11 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                                     <DataGridTextColumn Header="Time" Binding="{Binding time}" Width="145"/>
                                     <DataGridTextColumn Header="ID" Binding="{Binding id}" Width="70"/>
                                     <DataGridTextColumn Header="Category" Binding="{Binding category}" Width="135"/>
-                                    <DataGridTextColumn Header="Source" Binding="{Binding source}" Width="120"/>
                                     <DataGridTextColumn Header="Name / Target" Binding="{Binding name}" Width="170"/>
                                     <DataGridTextColumn Header="Action" Binding="{Binding action}" Width="105"/>
                                     <DataGridTextColumn Header="State" Binding="{Binding state}" Width="85"/>
                                     <DataGridTextColumn Header="Status" Binding="{Binding status}" Width="85"/>
-                                    <DataGridTextColumn Header="User" Binding="{Binding user}" Width="95"/>
+                                    <DataGridTextColumn Header="Deployed By" Binding="{Binding deployedBy}" Width="110"/>
                                     <DataGridTextColumn Header="Message" Binding="{Binding message}" Width="*"/>
                                 </DataGrid.Columns>
                             </DataGrid>
@@ -1264,20 +1263,45 @@ function Get-DeploymentSortDate {
 function Get-DeploymentUserName {
     param($Deployment)
 
-    $user = Get-ObjectPropertyValue -InputObject $Deployment -Names @(
+    $userPropertyNames = @(
         'user',
+        'deployedBy',
+        'requestedBy',
         'username',
         'userName',
         'createdBy',
         'owner',
         'actor'
     )
+
+    $user = Get-RecordPropertyValue -InputObject $Deployment -Names $userPropertyNames
+    if ($null -eq $user) {
+        $embedded = Get-RecordPropertyValue -InputObject $Deployment -Names @('_embedded','embedded')
+        if ($embedded) {
+            $user = Get-RecordPropertyValue -InputObject $embedded -Names $userPropertyNames
+        }
+    }
     if ($null -eq $user) { return '' }
 
-    $name = Get-ObjectPropertyValue -InputObject $user -Names @('name','username','userName')
-    if ($name) { return $name.ToString() }
+    if ($user -is [System.Array]) {
+        $user = @($user) | Select-Object -First 1
+    }
+    if ($user -is [string] -or $user -is [System.ValueType]) {
+        return $user.ToString()
+    }
 
-    return $user.ToString()
+    $name = Get-RecordPropertyValue -InputObject $user -Names @(
+        'name',
+        'username',
+        'userName',
+        'loginName',
+        'absoluteName'
+    )
+    if ($null -ne $name -and $name.ToString().Trim() -ne '') {
+        return $name.ToString()
+    }
+
+    return ''
 }
 
 function Get-DeploymentDisplayName {
@@ -1332,14 +1356,13 @@ function ConvertTo-DeploymentRows {
             time            = Format-DeploymentDateValue -Value $dateValue
             id              = (Get-ObjectPropertyValue -InputObject $deployment -Names @('id','eventId','eventID','deploymentId','deploymentID','taskId'))
             category        = (Get-ObjectPropertyValue -InputObject $deployment -Names @('category','eventCategory','type','deploymentType'))
-            source          = (Get-ObjectPropertyValue -InputObject $deployment -Names @('eventSource','source','serverName'))
             deploymentType  = (Get-ObjectPropertyValue -InputObject $deployment -Names @('type','deploymentType'))
             name            = Get-DeploymentDisplayName -Deployment $deployment
             action          = (($actionParts | ForEach-Object { $_.ToString() }) -join ' ')
             state           = (Get-ObjectPropertyValue -InputObject $deployment -Names @('state'))
             status          = (Get-ObjectPropertyValue -InputObject $deployment -Names @('status','level','severity'))
             percentComplete = $percentText
-            user            = Get-DeploymentUserName -Deployment $deployment
+            deployedBy      = Get-DeploymentUserName -Deployment $deployment
             message         = (Get-ObjectPropertyValue -InputObject $deployment -Names @('message','description'))
             sortDate        = Get-DeploymentSortDate -Deployment $deployment
         })
