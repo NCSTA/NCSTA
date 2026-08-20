@@ -419,13 +419,12 @@ Import-Module (Join-Path $modulesPath 'BlueCatApi.psm1') -Force
                         </StackPanel>
                     </GroupBox>
 
-                    <GroupBox Header="Deployment Status / Events">
+                    <GroupBox Header="Deployment Status Check">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <Label Content="Event / Deployment ID:"/>
+                                <Label Content="Deployment ID:"/>
                                 <TextBox x:Name="txtCheckDeployId" Width="150" Margin="0,0,10,0"/>
-                                <Button x:Name="btnCheckDeploy" Content="Check ID"/>
-                                <Button x:Name="btnRecentDeployments" Content="Recent Events" Margin="10,0,0,0"/>
+                                <Button x:Name="btnCheckDeploy" Content="Check Status"/>
                             </StackPanel>
                             <DataGrid x:Name="dgDeployments" AutoGenerateColumns="False"
                                       IsReadOnly="True" Height="220"
@@ -561,7 +560,6 @@ $btnSelectiveDeploy = $controls['btnSelectiveDeploy']
 $btnQuickDeploy     = $controls['btnQuickDeploy']
 $txtCheckDeployId   = $controls['txtCheckDeployId']
 $btnCheckDeploy     = $controls['btnCheckDeploy']
-$btnRecentDeployments = $controls['btnRecentDeployments']
 
 
 $dgDeployments      = $controls['dgDeployments']
@@ -2064,95 +2062,29 @@ $btnQuickDeploy.Add_Click({
 $btnCheckDeploy.Add_Click({
     if (-not $script:IsConnected) { Show-Error 'Error' 'Not connected.'; return }
 
-    $lookupId = $txtCheckDeployId.Text.Trim()
-    if (-not $lookupId -or $lookupId -notmatch '^\d+$') {
-        Show-Error 'Validation' 'Enter a valid event or deployment ID.'
+    $deploymentId = $txtCheckDeployId.Text.Trim()
+    if (-not $deploymentId -or $deploymentId -notmatch '^\d+$') {
+        Show-Error 'Validation' 'Enter a valid deployment ID.'
         return
     }
 
-    $eventLookupError = $null
     try {
-        try {
-            $result = Get-BlueCatEvent -EventId ([int]$lookupId)
-            [void](Set-DeploymentResults -InputObject $result -Summary "Event $lookupId retrieved from the BAM event list.")
-            Write-AppLog -Level INFO -Action 'DeploymentEventStatus' -Message "Retrieved event $lookupId" -Details @{
-                EventId = [int]$lookupId
-                Response = $result
-            }
-            Set-Status "Event $lookupId retrieved"
-            return
-        }
-        catch {
-            $eventLookupError = Get-ExceptionMessage $_
-        }
-
-        $result = Get-BlueCatDeploymentStatus -DeploymentId ([int]$lookupId)
-        [void](Set-DeploymentResults -InputObject $result -Summary "Deployment $lookupId status retrieved. Event-list lookup was not available for this ID.")
-        Write-AppLog -Level INFO -Action 'DeploymentStatus' -Message "Retrieved status for deployment $lookupId" -Details @{
-            DeploymentId = [int]$lookupId
-            EventLookupError = $eventLookupError
+        $result = Get-BlueCatDeploymentStatus -DeploymentId ([int]$deploymentId)
+        [void](Set-DeploymentResults -InputObject $result -Summary "Deployment $deploymentId status retrieved.")
+        Write-AppLog -Level INFO -Action 'DeploymentStatus' -Message "Retrieved status for deployment $deploymentId" -Details @{
+            DeploymentId = [int]$deploymentId
             Response = $result
         }
-        Set-Status "Deployment $lookupId status retrieved"
+        Set-Status "Deployment $deploymentId status retrieved"
     }
     catch {
         $errMsg = Get-ExceptionMessage $_
-        $combinedMessage = "Checking event/deployment ID ${lookupId}: $errMsg"
-        if ($eventLookupError) {
-            $combinedMessage += "`n`nEvent-list lookup failed first:`n$eventLookupError"
+        $message = "Checking deployment ID ${deploymentId}: $errMsg`n`nUse the deployment ID returned by selective or quick deploy, not a DNS record/entity ID."
+        Set-DeploymentError -Message $message
+        Write-AppLog -Level ERROR -Action 'DeploymentStatus' -Message $message -Details @{
+            DeploymentId = [int]$deploymentId
         }
-        $combinedMessage += "`n`nUse an Event ID from Administration > Tracking > Deployment Status > Events List, or a deployment/task ID returned by selective/quick deploy."
-        Set-DeploymentError -Message $combinedMessage
-        Write-AppLog -Level ERROR -Action 'DeploymentStatus' -Message $combinedMessage -Details @{
-            DeploymentId = [int]$lookupId
-            EventLookupError = $eventLookupError
-        }
-        Set-Status 'ID check failed' '#f38ba8'
-    }
-})
-
-$btnRecentDeployments.Add_Click({
-    if (-not $script:IsConnected) { Show-Error 'Error' 'Not connected.'; return }
-
-    Set-Status 'Loading recent deployment events...' '#f9e2af'
-    $eventListError = $null
-    try {
-        try {
-            $result = Get-BlueCatDeploymentEvents -Limit 100
-            $rows = Set-DeploymentResults -InputObject $result -Summary 'Recent deployment events loaded from the BAM event list. Rows are sorted newest first.'
-            if ($rows.Count -gt 0 -and $rows[0].id) {
-                $txtCheckDeployId.Text = $rows[0].id.ToString()
-            }
-            Write-AppLog -Level INFO -Action 'RecentDeploymentEvents' -Message 'Retrieved recent deployment events' -Details @{
-                Events = $result
-            }
-            Set-Status 'Recent deployment events loaded' '#a6e3a1'
-            return
-        }
-        catch {
-            $eventListError = Get-ExceptionMessage $_
-        }
-
-        $result = Get-BlueCatDeployments -Limit 20 -OrderBy 'desc(id)'
-        $rows = Set-DeploymentResults -InputObject $result -Summary "Recent deployment tasks loaded. BAM event-list endpoint was not available, so this is the v2 deployments fallback."
-        if ($rows.Count -gt 0 -and $rows[0].id) {
-            $txtCheckDeployId.Text = $rows[0].id.ToString()
-        }
-        Write-AppLog -Level INFO -Action 'RecentDeployments' -Message 'Retrieved recent deployments' -Details @{
-            EventListError = $eventListError
-            Deployment = $result
-        }
-        Set-Status 'Recent deployment tasks loaded' '#a6e3a1'
-    }
-    catch {
-        $errMsg = Get-ExceptionMessage $_
-        $combinedMessage = "Loading recent deployment events/tasks: $errMsg"
-        if ($eventListError) {
-            $combinedMessage += "`n`nEvent-list lookup failed first:`n$eventListError"
-        }
-        Set-DeploymentError -Message $combinedMessage
-        Write-AppLog -Level ERROR -Action 'RecentDeployments' -Message $combinedMessage
-        Set-Status 'Recent events failed' '#f38ba8'
+        Set-Status 'Status check failed' '#f38ba8'
     }
 })
 

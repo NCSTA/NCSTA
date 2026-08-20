@@ -136,12 +136,11 @@ If immediate deployment is selected, the GUI uses zone quick deploy because the 
 | Deploy after delete | Zone quick deployment | All pending changes in the selected zone |
 | Selective Deploy tool | Selective deployment | Entered record entity ID |
 | Quick Deploy tool | Zone quick deployment | All pending changes in the selected zone |
-| Recent Events | Event list first, deployment list fallback | Deployment-service events when available; otherwise newest deployment objects |
-| Check ID | Event lookup first, deployment lookup fallback | One event or deployment ID |
+| Check Status | Deployment detail | Current state of one deployment ID |
 
 Quick deploy is broader than the selected record. The confirmation text must continue to warn that it can push all pending changes in the selected zone.
 
-The GUI displays deployment responses and deployment-service events. It does not currently expose server deployment, even though `Invoke-BlueCatServerDeploy` is available in the API module.
+The GUI displays selective and quick deployment responses and can retrieve the current state of a deployment ID. Deployment history remains available in Integrity. The GUI does not currently expose server deployment, even though `Invoke-BlueCatServerDeploy` is available in the API module.
 
 ## API Module Reference
 
@@ -189,10 +188,10 @@ The GUI displays deployment responses and deployment-service events. It does not
 | `Invoke-BlueCatQuickDeploy` | Starts a zone quick deployment | Yes |
 | `Invoke-BlueCatServerDeploy` | Starts a DNS/DHCP/DHCPv6/TFTP server deployment | Module/console |
 | `Get-BlueCatDeploymentStatus` | Loads one deployment by ID | Yes |
-| `Get-BlueCatEvent` | Loads one BAM event-list entry by ID when available | Yes |
+| `Get-BlueCatEvent` | Loads one BAM event-list entry by ID when available | Module/console |
 | `Get-BlueCatEvents` | Loads recent BAM event-list entries when available | Module/console |
-| `Get-BlueCatDeploymentEvents` | Filters recent event-list entries to deployment-service events | Yes |
-| `Get-BlueCatDeployments` | Lists recent/filterable deployments | Yes |
+| `Get-BlueCatDeploymentEvents` | Filters recent event-list entries to deployment-service events | Module/console |
+| `Get-BlueCatDeployments` | Lists recent/filterable deployments | Module/console |
 
 ### Internal Helpers
 
