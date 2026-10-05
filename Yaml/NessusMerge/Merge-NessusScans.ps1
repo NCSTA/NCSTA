@@ -333,6 +333,14 @@ foreach ($group in $groups) {
             }
         }
 
+        # Header row: bold, frozen, with filter buttons
+        foreach ($sheet in (@($allSheet) + $platformSheets)) {
+            $lastCol = $sheet.Dimension.End.Column
+            $sheet.Cells[1, 1, 1, $lastCol].Style.Font.Bold = $true
+            $sheet.Cells[1, 1, $sheet.Dimension.End.Row, $lastCol].AutoFilter = $true
+            $sheet.View.FreezePanes(2, 1)
+        }
+
         Write-Host ("Saving {0} ({1:N0} rows) ..." -f $masterPath, ($nextAllRow - 2))
         Close-ExcelPackage -ExcelPackage $outPkg
         $outPkg = $null
