@@ -20,7 +20,7 @@ There is no local staging database or scheduled deployment worker. The schedule 
 ## Repository Map
 
 ```text
-BlueCatDNS/
+BlueCat-DNS-Manager/
 |-- BlueCatDnsManager-GUI.ps1          WPF UI, validation, workflows, and logs
 |-- modules/
 |   `-- BlueCatApi.psm1                BAM RESTful v2 API wrapper

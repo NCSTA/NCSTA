@@ -55,7 +55,7 @@ The GUI supports record create/modify/delete operations, optional immediate depl
 ## Project Structure
 
 ```text
-BlueCatDNS/
+BlueCat-DNS-Manager/
 |-- BlueCatDnsManager-GUI.ps1
 |-- Launch-BlueCatDnsManager.bat
 |-- Launch-BlueCatDnsManager-SkipCert.bat

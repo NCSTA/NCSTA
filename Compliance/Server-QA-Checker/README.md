@@ -13,7 +13,7 @@ PowerShell 5.1 WPF tool for validating Windows server build state against JSON t
 ## Folder Structure
 
 ```text
-server-qa-checker/
+Server-QA-Checker/
 |-- Launch-ServerQaChecker.bat
 |-- ServerQaChecker-GUI.ps1
 |-- README.md
