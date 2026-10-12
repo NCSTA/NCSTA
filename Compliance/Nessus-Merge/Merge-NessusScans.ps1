@@ -15,7 +15,7 @@
     Files are grouped by zone + role and each group is written to its own workbook:
 
         ZONE1_DC_Master.xlsx   ZONE1_MS_Master.xlsx
-        GWS_DC_Master.xlsx     GWS_MS_Master.xlsx
+        ZONE2_DC_Master.xlsx   ZONE2_MS_Master.xlsx
 
     Every master workbook contains:
 
@@ -27,7 +27,7 @@
 
     Existing master workbooks in -OutputFolder are overwritten on every run.
 
-    Written for Windows PowerShell 5.1. Set the two paths in the SETTINGS section
+    Written for Windows PowerShell 5.1. Set the paths and zone names in the SETTINGS section
     below and press F5 in the ISE script pane - no arguments are needed.
 
 .PARAMETER InputFolder
@@ -35,6 +35,10 @@
 
 .PARAMETER OutputFolder
     Folder for the master workbooks. Default: C:\temp.
+
+.PARAMETER Zones
+    Zone names that prefix the Nessus export file names. One set of master workbooks is
+    written per zone. Default: set in the SETTINGS section.
 
 .PARAMETER WorksheetName
     Worksheet to read from .xlsx sources. Default: the first worksheet.
@@ -49,10 +53,11 @@
 [CmdletBinding()]
 param(
     # ==========================================================================
-    #  SETTINGS - edit these two paths, then press F5 in the ISE script pane
+    #  SETTINGS - edit the paths and zone names, then press F5 in the ISE script pane
     # ==========================================================================
     [string]$InputFolder  = '\\SERVER\Share\NessusDumps',   # UNC folder the Nessus exports are dropped in
     [string]$OutputFolder = 'C:\temp',                      # where the master workbooks are written
+    [string[]]$Zones      = @('ZONE1', 'ZONE2'),            # zone names the export file names start with
     # ==========================================================================
 
     [string]$WorksheetName
@@ -75,7 +80,8 @@ $masterSuffix      = '_Master.xlsx'
 $dateFormat        = 'yyyy-mm-dd hh:mm:ss'
 
 # Zone is the leading token, then '... Server <year> <role>'
-$namePattern   = [regex]'^(?<Zone>ZONE1|ZONE2)\b.*?Server\s+(?<Year>\d{4})\s+(?<Role>MS|DC)\b'
+$zonePattern   = ($Zones | ForEach-Object { [regex]::Escape($_) }) -join '|'
+$namePattern   = [regex]('^(?<Zone>' + $zonePattern + ')\b.*?Server\s+(?<Year>\d{4})\s+(?<Role>MS|DC)\b')
 $scanIdPattern = [regex]'\.(\d+)$'
 $numberPattern = [regex]'^-?(0|[1-9]\d*)(\.\d+)?$'
 
