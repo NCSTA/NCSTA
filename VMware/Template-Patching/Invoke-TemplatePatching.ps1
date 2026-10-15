@@ -67,6 +67,10 @@
 # =============================================================================
 #  CONFIGURATION
 # =============================================================================
+# Each setting is "Name = value" - no $ in front of the name. A line such as
+# "$VCenters = @(...)" inside this block fails with "A null key is not allowed
+# in a hash literal".
+$Config = $null   # the ISE keeps variables between runs; never reuse an old config
 $Config = @{
     # --- Run options ---------------------------------------------------------
     # $false = new run from the templates CSV.
@@ -131,6 +135,15 @@ $Config = @{
     # the datastore (the original script's behaviour). $true deletes the disks too.
     DeleteOldUnpatchPermanently = $false
 }
+
+# Stop here if the block above has a mistake, instead of failing later with
+# unrelated-looking errors (e.g. Join-Path "cannot bind argument ... null").
+if ($null -eq $Config) {
+    throw 'The CONFIGURATION block did not load - see the first red error above. Settings must be written "Name = value" (no $ before the name).'
+}
+$missing = @('VCenters', 'VCenterCredentialPath', 'GuestCredentialPath', 'TemplatesFilePath', 'LogDirectory', 'PatchesRootPath', 'TestServers' |
+    Where-Object { -not $Config[$_] })
+if ($missing) { throw "CONFIGURATION is missing a value for: $($missing -join ', ')" }
 
 $RunTimestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $LogPath      = Join-Path $Config.LogDirectory "template_patching_$RunTimestamp.log"
