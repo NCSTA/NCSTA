@@ -20,16 +20,44 @@ Both scripts are written to be pasted into an unsaved PowerShell ISE script pane
 For each template listed in the templates CSV:
 
 1. Clones `<name>` to `<name>_patching` and waits for the clone task.
-2. Converts the clone to a VM, powers it on and copies this month's patches in.
+2. Converts the clone to a VM, powers it on, records an Appx baseline and copies this month's patches in.
 3. Registers the `LoopingPatch` scheduled task and reboots the guest.
 4. Waits for the patch cycle to finish. The guest powers itself off when done.
-5. Powers on, shows the latest hotfixes and pauses for operator review.
+5. Powers on, shows the latest hotfixes, runs the Appx sysprep check and pauses for operator review.
 6. Shuts down, stamps the notes and promotes:
    - `<name>_unpatch` is removed (last month's rollback)
    - `<name>` becomes `<name>_unpatch`
    - `<name>_patching` becomes `<name>`
 
 Each template is tracked independently. A template that fails any step is skipped for the rest of the run and is never promoted, so its production template and rollback copy are left untouched. A summary table is printed at the end, and `$jobs` stays in the session for inspection.
+
+### Appx sysprep check
+
+Sysprep, run by the VMware customization spec when a VM is deployed from the template, fails when an Appx package is installed for a user but not provisioned for all users. It also fails when a user's copy is newer than the provisioned version. Patching can cause this, for example when an Edge update registers a package for Administrator.
+
+- **Before patching**, the script records the installed and provisioned packages. Templates that already have a blocking package are flagged in the log.
+- **After patching**, it logs which packages were added or removed, then looks for blocking packages. Framework, resource and system packages are ignored, as are packages installed for all users through provisioning.
+- Each blocking package is removed with `Remove-AppxPackage -AllUsers`, and the check runs again. Set `AppxAutoRemove = $false` to only report.
+- Anything still present fails the template: it is not promoted and its `_patching` VM is left powered on. The packages, users and removal errors are printed and written to `appx_manual_intervention_<timestamp>.csv` in the log directory.
+
+The guest account must be able to run elevated without a UAC prompt. The built-in Administrator account can; other local admin accounts get a filtered token and the check fails with "requires elevation".
+
+### Resuming a run
+
+Progress is saved after every step to `template_patching_state.json` in the log directory. To continue after a failure, for example once you have removed an Appx package by hand, or after the ISE was closed mid-run:
+
+1. Fix the cause. Leave the `_patching` VM in place.
+2. Set `Resume = $true` in the configuration and run the script again.
+
+Each unfinished template continues at the step it failed or stopped on. Completed steps are skipped and finished templates are left alone. The template list comes from the state file, not the CSV. Set `ResumeTemplates = @('2022_Std_Core')` to resume only some templates; the others stay as they are and can be resumed later.
+
+On resume the script also:
+
+- Powers the `_patching` VM back on if the next step runs inside the guest.
+- Starts a template over from the clone if its `_patching` VM or template no longer exists, for example because you deleted it to start again.
+- Finishes a partly done promotion. If production was already renamed to `_unpatch`, that copy is kept as the rollback and is not deleted.
+
+A new run (`Resume = $false`) renames the old state file to `template_patching_state_replaced_<timestamp>.json` before starting. It refuses to touch any template that still has a `_patching` VM or template, so an unfinished run cannot be overwritten by accident.
 
 ### Templates CSV
 
