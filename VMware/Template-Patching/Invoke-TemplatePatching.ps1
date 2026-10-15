@@ -5,12 +5,13 @@
     For each template listed in the templates CSV:
       1. Clones <name> to <name>_patching and waits for the clone task
       2. Converts the clone to a VM, powers it on, records an Appx baseline,
-         copies this month's patches in
-      3. Registers the LoopingPatch scheduled task and reboots the guest
+         copies this month's patches and the guest patch-cycle script in
+      3. Registers the patch-cycle scheduled task and reboots the guest
       4. Waits for the patch cycle to finish (the guest powers itself off)
-      5. Powers on, shows the latest hotfixes, runs the Appx sysprep check
-         (see below), pauses for operator review
-      6. Shuts down, stamps the notes, and promotes:
+      5. Powers on, checks the patch-cycle status, shows the latest hotfixes,
+         runs the Appx sysprep check (see below), pauses for operator review
+      6. Seals the guest (SCCM client cleanup) and shuts it down, stamps the
+         notes, and promotes:
            <name>_unpatch  -> removed (last month's rollback)
            <name>          -> <name>_unpatch
            <name>_patching -> <name>
@@ -31,6 +32,26 @@
     and is written to appx_manual_intervention_<timestamp>.csv in the log
     directory. Framework, resource and system packages are ignored, as are
     packages installed for all users through provisioning.
+
+    GUEST PATCH CYCLE
+    The script that runs inside the guest is embedded below ($GuestPatchCycleScript)
+    and copied into each VM on every run, so nothing needs to live on the
+    templates. It runs at each boot as SYSTEM and:
+      - installs only .cab/.msu files, smallest first, and reboots only when
+        a package needs it
+      - skips packages that are not applicable, and gives up on a package
+        after GuestPatchMaxAttempts failures (moving it to a Failed folder)
+        instead of rebooting forever
+      - writes progress to <GuestWorkPath>\status.json and patchcycle.log
+      - always ends with a forced shutdown, whether it succeeded or not
+    After the patch cycle, the status file is checked. A failed package or a
+    cycle that did not finish fails the template with the error.
+
+    SEAL
+    The SCCM client cleanup (stop CcmExec, remove SMSCFG.INI and the SMS
+    certificates) runs as the last action before the final shutdown, so the VM
+    is never booted afterwards. A cleared client that boots again would create
+    a new client identity and bake it into the template.
 
     RESUMING
     Progress is saved after every step to template_patching_state.json in the
@@ -67,6 +88,10 @@
 # =============================================================================
 #  CONFIGURATION
 # =============================================================================
+# Each setting is "Name = value" - no $ in front of the name. A line such as
+# "$VCenters = @(...)" inside this block fails with "A null key is not allowed
+# in a hash literal".
+$Config = $null   # the ISE keeps variables between runs; never reuse an old config
 $Config = @{
     # --- Run options ---------------------------------------------------------
     # $false = new run from the templates CSV.
@@ -87,9 +112,24 @@ $Config = @{
     # --- Guest OS ------------------------------------------------------------
     # Local administrator on the templates. Prompted for and saved on first run.
     GuestCredentialPath   = 'C:\temp\credstore\template_guest_admin.xml'
+    # Patches are copied to <GuestPatchPath>\Patches
     GuestPatchPath        = 'C:\temp'
-    LoopingPatchScript    = 'C:\Users\Administrator\Desktop\LoopingPatch.ps1'
+    # Patch-cycle script, its log and status file
+    GuestWorkPath         = 'C:\temp\PatchCycle'
+    GuestPatchTaskName    = 'TemplatePatchCycle'
+    # A package that fails this many times is skipped and reported
+    GuestPatchMaxAttempts = 2
     GuestToolsWaitSeconds = 3600
+
+    # Scripts left on the templates by the old process. They are no longer used.
+    # Set RemoveLegacyGuestScripts = $true once a run with the new patch cycle
+    # has succeeded, and the seal step deletes them from each template.
+    RemoveLegacyGuestScripts = $false
+    LegacyGuestScripts    = @(
+        'C:\Users\Administrator\Desktop\logoff.ps1'
+        'C:\Users\Administrator\Desktop\LoopingPatch.ps1'
+        'C:\Users\Administrator\Desktop\TriggerLoopingPatch.ps1'
+    )
 
     # --- File share ----------------------------------------------------------
     TemplatesFilePath     = '\\FILE-SERVER-01\f$\Templates\Data\AllTemplates_Exclude_2016_2019.csv'
@@ -132,6 +172,16 @@ $Config = @{
     DeleteOldUnpatchPermanently = $false
 }
 
+# Stop here if the block above has a mistake, instead of failing later with
+# unrelated-looking errors (e.g. Join-Path "cannot bind argument ... null").
+if ($null -eq $Config) {
+    throw 'The CONFIGURATION block did not load - see the first red error above. Settings must be written "Name = value" (no $ before the name).'
+}
+$missing = @('VCenters', 'VCenterCredentialPath', 'GuestCredentialPath', 'GuestPatchPath', 'GuestWorkPath', 'GuestPatchTaskName',
+              'GuestPatchMaxAttempts', 'TemplatesFilePath', 'LogDirectory', 'PatchesRootPath', 'TestServers' |
+    Where-Object { -not $Config[$_] })
+if ($missing) { throw "CONFIGURATION is missing a value for: $($missing -join ', ')" }
+
 $RunTimestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $LogPath      = Join-Path $Config.LogDirectory "template_patching_$RunTimestamp.log"
 $StatePath    = Join-Path $Config.LogDirectory 'template_patching_state.json'
@@ -150,17 +200,19 @@ $StepOrder = @(
     'Wait for patch cycle'
     'Power on for validation'
     'Wait for power on (validation)'
+    'Check patch status'
     'Validate patches'
     'Appx sysprep check'
     'Review'
-    'Shut down guest'
+    'Seal and shut down'
     'Wait for shutdown'
     'Update notes'
     'Promote'
 )
 
 # Steps that run commands inside the guest, so the VM must be powered on
-$GuestSteps = @('Appx baseline', 'Copy patches', 'Register patch task', 'Restart guest', 'Validate patches', 'Appx sysprep check')
+$GuestSteps = @('Appx baseline', 'Copy patches', 'Register patch task', 'Restart guest', 'Check patch status',
+                'Validate patches', 'Appx sysprep check', 'Seal and shut down')
 
 # =============================================================================
 #  TYPES
@@ -600,6 +652,197 @@ function Start-TemplateClone {
         -Datastore $dsCluster -Server $Job.Server -RunAsync -ErrorAction Stop
 }
 
+# =============================================================================
+#  GUEST PATCH CYCLE
+# =============================================================================
+
+# Copied into every VM as <GuestWorkPath>\Invoke-GuestPatchCycle.ps1 and run at
+# each boot as SYSTEM by the patch-cycle scheduled task. Replaces the old
+# LoopingPatch.ps1 / logoff.ps1 / TriggerLoopingPatch.ps1 on the templates.
+$GuestPatchCycleScript = @'
+# Template patch cycle. Runs at every boot as SYSTEM from a scheduled task.
+# Copied in by Invoke-TemplatePatching.ps1 on each run - do not edit on a template.
+param(
+    [string]$PatchPath           = 'C:\temp\Patches',
+    [string]$WorkPath            = 'C:\temp\PatchCycle',
+    [string]$TaskName            = 'TemplatePatchCycle',
+    [int]$MaxAttempts            = 2,
+    [int]$MaxBoots               = 25,
+    [int]$StartupDelaySeconds    = 60
+)
+
+$ErrorActionPreference = 'Stop'
+$statusPath = Join-Path $WorkPath 'status.json'
+$logPath    = Join-Path $WorkPath 'patchcycle.log'
+$failedPath = Join-Path $WorkPath 'Failed'
+New-Item -ItemType Directory -Path $WorkPath, $failedPath -Force | Out-Null
+
+function Write-CycleLog([string]$Message) {
+    Add-Content -Path $logPath -Value ('[{0}] {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message)
+}
+
+function Save-Status($Status) {
+    $Status.UpdatedAt = (Get-Date).ToString('s')
+    ConvertTo-Json -InputObject $Status -Depth 5 | Set-Content -Path $statusPath -Encoding UTF8
+}
+
+function Test-RebootPending {
+    Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
+}
+
+# Ends the cycle: records the result, removes the task and the patches, and
+# always powers the VM off so the orchestrator never waits on a stuck guest.
+function Complete-Cycle($Status, [string]$State, [string]$Message) {
+    $Status.State   = $State
+    $Status.Message = $Message
+    Write-CycleLog "Patch cycle $State. $Message"
+    try {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Stop
+    } catch {
+        Write-CycleLog "Could not remove scheduled task $TaskName : $($_.Exception.Message)"
+    }
+    Remove-Item -Path $PatchPath -Recurse -Force -ErrorAction SilentlyContinue
+    Save-Status $Status
+    & shutdown.exe /s /t 15 /f /d p:0:0 /c 'Template patch cycle finished'
+    exit
+}
+
+# ---- Load progress from earlier boots ------------------------------------------
+$status = $null
+if (Test-Path $statusPath) {
+    $saved = Get-Content -Path $statusPath -Raw | ConvertFrom-Json
+    $attempts = @{}
+    if ($saved.Attempts) { foreach ($p in $saved.Attempts.PSObject.Properties) { $attempts[$p.Name] = [int]$p.Value } }
+    $status = @{
+        State         = $saved.State
+        Boot          = [int]$saved.Boot
+        StartedAt     = $saved.StartedAt
+        Installed     = @($saved.Installed     | Where-Object { $_ })
+        NotApplicable = @($saved.NotApplicable | Where-Object { $_ })
+        Failed        = @($saved.Failed        | Where-Object { $_ })
+        Attempts      = $attempts
+        Message       = $saved.Message
+        UpdatedAt     = $saved.UpdatedAt
+    }
+}
+if (-not $status) {
+    $status = @{
+        State = 'Running'; Boot = 0; StartedAt = (Get-Date).ToString('s')
+        Installed = @(); NotApplicable = @(); Failed = @(); Attempts = @{}; Message = ''; UpdatedAt = ''
+    }
+}
+
+try {
+    $status.Boot++
+    $status.State = 'Running'
+    Write-CycleLog "Boot $($status.Boot): patch cycle starting"
+    Save-Status $status
+
+    if ($status.Boot -gt $MaxBoots) {
+        Complete-Cycle $status 'Failed' "Stopped after $MaxBoots boots without finishing"
+    }
+
+    # Give the servicing stack time to finish its own startup work
+    Start-Sleep -Seconds $StartupDelaySeconds
+
+    # Only .cab/.msu files count; anything else in the folder is ignored
+    $packages = @(Get-ChildItem -Path $PatchPath -File -Recurse -ErrorAction SilentlyContinue |
+                  Where-Object { $_.Extension -in '.cab', '.msu' } |
+                  Sort-Object Length)
+    Write-CycleLog "$($packages.Count) package(s) left to install"
+
+    $restartNeeded     = $false
+    $retryLater        = $false
+    $installedThisBoot = $false
+    foreach ($pkg in $packages) {
+        $name = $pkg.Name
+        Write-CycleLog ('Installing {0} ({1:N0} MB)' -f $name, ($pkg.Length / 1MB))
+        try {
+            $result = Add-WindowsPackage -Online -PackagePath $pkg.FullName -NoRestart -ErrorAction Stop
+            $needsRestart = [bool]$result.RestartNeeded
+            $status.Installed += [pscustomobject]@{ File = $name; RestartNeeded = $needsRestart; At = (Get-Date).ToString('s') }
+            Remove-Item -Path $pkg.FullName -Force
+            $installedThisBoot = $true
+            Write-CycleLog "Installed $name (restart needed: $needsRestart)"
+            if ($needsRestart) { $restartNeeded = $true }
+        } catch {
+            $message = ($_.Exception.Message -replace '\s+', ' ').Trim()
+            if ($message -match '0x800f081e') {
+                # CBS_E_NOT_APPLICABLE - superseded or not for this OS; not an error
+                $status.NotApplicable += $name
+                Remove-Item -Path $pkg.FullName -Force
+                Write-CycleLog "Not applicable, skipped: $name"
+            } else {
+                $count = [int]$status.Attempts[$name] + 1
+                $status.Attempts[$name] = $count
+                Write-CycleLog "Failed $name (attempt $count of $MaxAttempts): $message"
+                if ($count -ge $MaxAttempts) {
+                    $status.Failed += [pscustomobject]@{ File = $name; Attempts = $count; Error = $message }
+                    Move-Item -Path $pkg.FullName -Destination $failedPath -Force
+                } else {
+                    $retryLater = $true
+                }
+            }
+        }
+        Save-Status $status
+
+        # Install the rest after the restart this package asked for
+        if ($restartNeeded) { break }
+    }
+
+    # Windows' own pending-reboot flag only counts on a boot that installed
+    # something; a flag that is stuck would otherwise reboot until MaxBoots
+    $pendingFromInstall = $installedThisBoot -and (Test-RebootPending)
+    if ($restartNeeded -or $retryLater -or $pendingFromInstall) {
+        Write-CycleLog 'Restarting to continue the patch cycle'
+        Save-Status $status
+        Restart-Computer -Force
+        exit
+    }
+
+    if ($status.Failed.Count -gt 0) {
+        Complete-Cycle $status 'Failed' ("$($status.Failed.Count) package(s) failed: " + (($status.Failed | ForEach-Object { $_.File }) -join ', '))
+    }
+    Complete-Cycle $status 'Completed' "$($status.Installed.Count) installed, $($status.NotApplicable.Count) not applicable"
+} catch {
+    Complete-Cycle $status 'Failed' "Unexpected error: $($_.Exception.Message)"
+}
+'@
+
+# Paths are passed to guest scripts and a scheduled task unquoted
+foreach ($key in 'GuestPatchPath', 'GuestWorkPath') {
+    if ($Config[$key] -match '\s') { throw "CONFIGURATION $key must not contain spaces: $($Config[$key])" }
+}
+$GuestPatchFolder = Join-Path $Config.GuestPatchPath 'Patches'
+$GuestCycleFile   = Join-Path $Config.GuestWorkPath 'Invoke-GuestPatchCycle.ps1'
+
+# Turns a list of strings into a PowerShell array literal for a guest script.
+function ConvertTo-GuestLiteral {
+    param([AllowEmptyCollection()][string[]]$Values)
+    '@(' + (($Values | ForEach-Object { "'" + $_.Replace("'", "''") + "'" }) -join ',') + ')'
+}
+
+# Clears leftovers from an earlier attempt and copies the patch-cycle script in.
+function Initialize-GuestPatchCycle {
+    param(
+        [Parameter(Mandatory = $true)]$VM,
+        [Parameter(Mandatory = $true)][pscredential]$GuestCredential
+    )
+
+    $prepare = @'
+$ErrorActionPreference = 'Stop'
+Remove-Item -Path '__WORK__', '__PATCHES__' -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path '__WORK__' -Force | Out-Null
+'GUESTJSON:' + (ConvertTo-Json -InputObject @{ Ready = $true } -Compress)
+'@.Replace('__WORK__', $Config.GuestWorkPath).Replace('__PATCHES__', $GuestPatchFolder)
+    Invoke-GuestJsonScript -VM $VM -ScriptText $prepare -GuestCredential $GuestCredential | Out-Null
+
+    $local = Join-Path $env:TEMP 'Invoke-GuestPatchCycle.ps1'
+    Set-Content -Path $local -Value $GuestPatchCycleScript -Encoding UTF8
+    Copy-VMGuestFile -Source $local -Destination $GuestCycleFile -VM $VM -LocalToGuest `
+        -GuestCredential $GuestCredential -ToolsWaitSecs $Config.GuestToolsWaitSeconds -Force -ErrorAction Stop
+}
+
 function Register-GuestPatchTask {
     param(
         [Parameter(Mandatory = $true)]$VM,
@@ -607,17 +850,99 @@ function Register-GuestPatchTask {
     )
 
     $scriptText = @'
-$action  = New-ScheduledTaskAction -Execute 'PowerShell.exe' -Argument '-ExecutionPolicy Bypass -NoProfile -File __SCRIPT__'
-$trigger = New-ScheduledTaskTrigger -AtStartup
-Register-ScheduledTask -Action $action -Trigger $trigger -User 'NT AUTHORITY\SYSTEM' -TaskPath 'CustomTasks' -TaskName 'UpdateTask' -Description 'This task starts a looping patch cycle.' -Force | Out-Null
-'@.Replace('__SCRIPT__', $Config.LoopingPatchScript)
+$ErrorActionPreference = 'Stop'
+# The old process used a task called UpdateTask; make sure it can't run too
+Get-ScheduledTask -TaskName 'UpdateTask' -ErrorAction SilentlyContinue | Unregister-ScheduledTask -Confirm:$false
+$argument  = '-ExecutionPolicy Bypass -NoProfile -File __SCRIPT__ -PatchPath __PATCHES__ -WorkPath __WORK__ -TaskName __TASK__ -MaxAttempts __ATTEMPTS__'
+$action    = New-ScheduledTaskAction -Execute 'PowerShell.exe' -Argument $argument
+$trigger   = New-ScheduledTaskTrigger -AtStartup
+$settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 4)
+$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+Register-ScheduledTask -TaskName '__TASK__' -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
+    -Description 'Template patch cycle (Invoke-TemplatePatching.ps1)' -Force | Out-Null
+'GUESTJSON:' + (ConvertTo-Json -InputObject @{ Registered = $true } -Compress)
+'@.Replace('__SCRIPT__', $GuestCycleFile).Replace('__PATCHES__', $GuestPatchFolder).Replace('__WORK__', $Config.GuestWorkPath).
+   Replace('__TASK__', $Config.GuestPatchTaskName).Replace('__ATTEMPTS__', [string]$Config.GuestPatchMaxAttempts)
 
-    $result = Invoke-VMScript -VM $VM -ScriptText $scriptText -ScriptType Powershell `
-        -GuestCredential $GuestCredential -ToolsWaitSecs $Config.GuestToolsWaitSeconds -ErrorAction Stop
+    Invoke-GuestJsonScript -VM $VM -ScriptText $scriptText -GuestCredential $GuestCredential | Out-Null
+}
 
-    if ($result.ExitCode -ne 0) {
-        throw "Register-ScheduledTask exited $($result.ExitCode): $($result.ScriptOutput.Trim())"
+# Reads status.json written by the patch cycle, plus the end of its log.
+# State is Completed, Failed, Running (did not finish) or Missing (never ran).
+function Get-GuestPatchStatus {
+    param(
+        [Parameter(Mandatory = $true)]$VM,
+        [Parameter(Mandatory = $true)][pscredential]$GuestCredential
+    )
+
+    $scriptText = @'
+$statusPath = Join-Path '__WORK__' 'status.json'
+$logPath    = Join-Path '__WORK__' 'patchcycle.log'
+if (Test-Path $statusPath) {
+    $status = Get-Content -Path $statusPath -Raw | ConvertFrom-Json
+} else {
+    $status = [pscustomobject]@{ State = 'Missing' }
+}
+$tail = if (Test-Path $logPath) { @(Get-Content -Path $logPath -Tail 15) } else { @() }
+$status | Add-Member -NotePropertyName LogTail -NotePropertyValue $tail -Force
+'GUESTJSON:' + (ConvertTo-Json -InputObject $status -Depth 5 -Compress)
+'@.Replace('__WORK__', $Config.GuestWorkPath)
+
+    return Invoke-GuestJsonScript -VM $VM -ScriptText $scriptText -GuestCredential $GuestCredential
+}
+
+# Last action before the final shutdown: resets the SCCM client identity
+# (stop CcmExec, remove SMSCFG.INI and the SMS certificates), removes the patch
+# cycle files and, if enabled, the legacy template scripts, then shuts down.
+# Does not shut down if any of the cleanup could not be confirmed.
+function Invoke-GuestSeal {
+    param(
+        [Parameter(Mandatory = $true)]$VM,
+        [Parameter(Mandatory = $true)][pscredential]$GuestCredential
+    )
+
+    $legacy = if ($Config.RemoveLegacyGuestScripts) { @($Config.LegacyGuestScripts) } else { @() }
+
+    $scriptText = @'
+$ErrorActionPreference = 'Stop'
+$result = [ordered]@{ CcmExec = 'NotInstalled'; SmsCertsRemoved = 0; LegacyRemoved = @(); Problems = @(); ShutdownScheduled = $false }
+
+$service = Get-Service -Name CcmExec -ErrorAction SilentlyContinue
+if ($service) {
+    if ($service.Status -ne 'Stopped') {
+        Stop-Service -Name CcmExec -Force
+        $service.WaitForStatus('Stopped', [TimeSpan]::FromMinutes(2))
     }
+    $result.CcmExec = 'Stopped'
+}
+
+$smsCfg = 'C:\Windows\SMSCFG.INI'
+if (Test-Path $smsCfg) { Remove-Item -Path $smsCfg -Force }
+if (Test-Path $smsCfg) { $result.Problems += 'SMSCFG.INI is still present' }
+
+if (Test-Path 'Cert:\LocalMachine\SMS') {
+    $certs = @(Get-ChildItem -Path 'Cert:\LocalMachine\SMS')
+    $certs | Remove-Item -Force
+    $result.SmsCertsRemoved = $certs.Count
+    if (@(Get-ChildItem -Path 'Cert:\LocalMachine\SMS').Count -gt 0) { $result.Problems += 'SMS certificates are still present' }
+}
+
+foreach ($path in __LEGACY__) {
+    if (Test-Path $path) { Remove-Item -Path $path -Force; $result.LegacyRemoved += $path }
+}
+
+Get-ScheduledTask -TaskName '__TASK__' -ErrorAction SilentlyContinue | Unregister-ScheduledTask -Confirm:$false
+Remove-Item -Path '__WORK__', '__PATCHES__' -Recurse -Force -ErrorAction SilentlyContinue
+
+if ($result.Problems.Count -eq 0) {
+    & shutdown.exe /s /t 20 /f /d p:0:0 /c 'Template sealed' | Out-Null
+    $result.ShutdownScheduled = $true
+}
+'GUESTJSON:' + (ConvertTo-Json -InputObject ([pscustomobject]$result) -Depth 3 -Compress)
+'@.Replace('__LEGACY__', (ConvertTo-GuestLiteral $legacy)).Replace('__TASK__', $Config.GuestPatchTaskName).
+   Replace('__WORK__', $Config.GuestWorkPath).Replace('__PATCHES__', $GuestPatchFolder)
+
+    return Invoke-GuestJsonScript -VM $VM -ScriptText $scriptText -GuestCredential $GuestCredential
 }
 
 # Replaces a trailing "Updated M/d/yyyy" line in the notes, or appends one.
@@ -685,7 +1010,7 @@ function Publish-PatchedTemplate {
 #  APPX / SYSPREP SAFETY
 # =============================================================================
 
-# Runs inside the guest. Emits one line: APPXJSON:{Installed, Provisioned, Offenders}
+# Runs inside the guest. Emits one line: GUESTJSON:{Installed, Provisioned, Offenders}
 #   Installed   - "Name|Version" of every non-framework, non-resource, non-system package
 #   Provisioned - "Name|Version" of every provisioned package (highest version per name)
 #   Offenders   - packages installed for at least one user that sysprep will reject:
@@ -736,11 +1061,11 @@ $state = [pscustomobject]@{
     Provisioned = @($provisioned.Keys | Sort-Object | ForEach-Object { "$_|$($provisioned[$_])" })
     Offenders   = @($offenders)
 }
-'APPXJSON:' + (ConvertTo-Json -InputObject $state -Depth 4 -Compress)
+'GUESTJSON:' + (ConvertTo-Json -InputObject $state -Depth 4 -Compress)
 '@
 
 # Runs inside the guest. __PACKAGES__ is replaced with a quoted list of
-# PackageFullNames. Emits APPXJSON:[{PackageFullName, Removed, Error}]
+# PackageFullNames. Emits GUESTJSON:[{PackageFullName, Removed, Error}]
 $AppxRemoveScript = @'
 $results = foreach ($name in @(__PACKAGES__)) {
     try {
@@ -750,10 +1075,10 @@ $results = foreach ($name in @(__PACKAGES__)) {
         [pscustomobject]@{ PackageFullName = $name; Removed = $false; Error = ($_.Exception.Message -replace '\s+', ' ').Trim() }
     }
 }
-'APPXJSON:' + (ConvertTo-Json -InputObject @($results) -Depth 3 -Compress)
+'GUESTJSON:' + (ConvertTo-Json -InputObject @($results) -Depth 3 -Compress)
 '@
 
-# Runs a guest script that reports through an APPXJSON: line and returns the parsed object.
+# Runs a guest script that reports through an GUESTJSON: line and returns the parsed object.
 function Invoke-GuestJsonScript {
     param(
         [Parameter(Mandatory = $true)]$VM,
@@ -764,11 +1089,11 @@ function Invoke-GuestJsonScript {
     $result = Invoke-VMScript -VM $VM -ScriptText $ScriptText -ScriptType Powershell `
         -GuestCredential $GuestCredential -ToolsWaitSecs $Config.GuestToolsWaitSeconds -ErrorAction Stop
 
-    $line = $result.ScriptOutput -split "`r?`n" | Where-Object { $_.StartsWith('APPXJSON:') } | Select-Object -Last 1
+    $line = $result.ScriptOutput -split "`r?`n" | Where-Object { $_.StartsWith('GUESTJSON:') } | Select-Object -Last 1
     if (-not $line) {
         throw "Guest script returned no data (exit code $($result.ExitCode)): $($result.ScriptOutput.Trim())"
     }
-    return $line.Substring('APPXJSON:'.Length) | ConvertFrom-Json
+    return $line.Substring('GUESTJSON:'.Length) | ConvertFrom-Json
 }
 
 function Get-GuestAppxState {
@@ -1127,11 +1452,12 @@ try {
         if (-not $source) { throw "No patch folder found for $($job.Year)" }
 
         $vm = Get-VM -Name $job.PatchingName -Server $job.Server
+        Initialize-GuestPatchCycle -VM $vm -GuestCredential $guestCredential
         foreach ($item in (Get-ChildItem -Path $source)) {
             Copy-VMGuestFile -Source $item.FullName -Destination $Config.GuestPatchPath -VM $vm -LocalToGuest `
                 -GuestCredential $guestCredential -ToolsWaitSecs $Config.GuestToolsWaitSeconds -Force
         }
-        Write-Log "[$($job.Name)] Copied $source to $($Config.GuestPatchPath)" -Level SUCCESS
+        Write-Log "[$($job.Name)] Copied $source and the patch-cycle script into the guest" -Level SUCCESS
     }
 
     # ---- Start patch cycle --------------------------------------------------
@@ -1148,7 +1474,7 @@ try {
         Write-Log "[$($job.Name)] Restarted; patch cycle running"
     }
 
-    # LoopingPatch.ps1 powers the guest off when it has nothing left to install
+    # The patch-cycle script always powers the guest off when it finishes
     Wait-JobPowerState -Jobs $jobs -PowerState PoweredOff -Step 'Wait for patch cycle' `
         -TimeoutMinutes $Config.PatchCycleTimeoutMinutes -PollSeconds $Config.PatchCyclePollSeconds -FailOnTimeout
 
@@ -1160,6 +1486,33 @@ try {
 
     Wait-JobPowerState -Jobs $jobs -PowerState PoweredOn -Step 'Wait for power on (validation)' `
         -TimeoutMinutes $Config.PowerOnTimeoutMinutes -FailOnTimeout
+
+    Invoke-JobStep -Step 'Check patch status' -Jobs $jobs -Action {
+        param($job)
+        $vm     = Get-VM -Name $job.PatchingName -Server $job.Server
+        $status = Get-GuestPatchStatus -VM $vm -GuestCredential $guestCredential
+
+        foreach ($i in @($status.Installed | Where-Object { $_ })) { Write-Log "[$($job.Name)] Installed $($i.File)" }
+        foreach ($n in @($status.NotApplicable | Where-Object { $_ })) { Write-Log "[$($job.Name)] Not applicable: $n" }
+        foreach ($f in @($status.Failed | Where-Object { $_ })) {
+            Write-Log "[$($job.Name)] FAILED $($f.File) after $($f.Attempts) attempt(s): $($f.Error)" -Level ERROR
+        }
+
+        switch ($status.State) {
+            'Completed' {
+                Write-Log "[$($job.Name)] Patch cycle completed in $($status.Boot) boot(s): $($status.Message)" -Level SUCCESS
+            }
+            'Missing' {
+                throw "No patch-cycle status in $($Config.GuestWorkPath) - the patch cycle never ran. Check the $($Config.GuestPatchTaskName) scheduled task."
+            }
+            default {
+                Write-Log "[$($job.Name)] End of patchcycle.log:" -Level WARNING
+                @($status.LogTail) | ForEach-Object { Write-Host "    $_" }
+                if ($status.State -eq 'Failed') { throw "Patch cycle failed: $($status.Message)" }
+                throw "Patch cycle did not finish (state '$($status.State)' at boot $($status.Boot)). The VM was powered off mid-cycle."
+            }
+        }
+    }
 
     Invoke-JobStep -Step 'Validate patches' -Jobs $jobs -Action {
         param($job)
@@ -1195,11 +1548,21 @@ try {
         Save-RunState
     }
 
-    # ---- Shut down ----------------------------------------------------------
-    Invoke-JobStep -Step 'Shut down guest' -Jobs $jobs -Action {
+    # ---- Seal and shut down -------------------------------------------------
+    # Nothing may boot the VM after this - see SEAL in the header.
+    Invoke-JobStep -Step 'Seal and shut down' -Jobs $jobs -Action {
         param($job)
-        $vm = Get-VM -Name $job.PatchingName -Server $job.Server
-        if ($vm.PowerState -eq 'PoweredOn') { Stop-VMGuest -VM $vm -Confirm:$false | Out-Null }
+        $vm   = Get-VM -Name $job.PatchingName -Server $job.Server
+        $seal = Invoke-GuestSeal -VM $vm -GuestCredential $guestCredential
+
+        Write-Log "[$($job.Name)] SCCM client: $($seal.CcmExec), $($seal.SmsCertsRemoved) SMS certificate(s) removed"
+        foreach ($p in @($seal.LegacyRemoved | Where-Object { $_ })) { Write-Log "[$($job.Name)] Removed legacy script $p" }
+
+        $problems = @($seal.Problems | Where-Object { $_ })
+        if ($problems.Count -gt 0) {
+            throw "Seal could not be confirmed, VM left running: $($problems -join '; ')"
+        }
+        Write-Log "[$($job.Name)] Sealed; guest shutting down" -Level SUCCESS
     }
 
     # Not fatal - Publish-PatchedTemplate hard powers off anything still running
