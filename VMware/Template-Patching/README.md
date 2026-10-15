@@ -15,6 +15,8 @@ PowerCLI scripts for the monthly patch cycle of VMware templates, and for findin
 
 Both scripts are written to be pasted into an unsaved PowerShell ISE script pane. Edit the CONFIGURATION block at the top and press F5.
 
+Settings in the CONFIGURATION block are written `Name = value`, without a `$` in front of the name. A line such as `$VCenters = @(...)` inside the block fails with "A null key is not allowed in a hash literal", and the script stops before connecting to anything.
+
 ## Invoke-TemplatePatching.ps1
 
 For each template listed in the templates CSV:
