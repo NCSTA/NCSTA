@@ -1,6 +1,6 @@
 # NCSTA
 
-PowerShell tooling for Windows infrastructure administration, organized by area. Each project folder has its own README covering requirements, usage and output.
+PowerShell tooling and Splunk searches for Windows infrastructure administration, organized by area. Each project folder has its own README covering requirements, usage and output.
 
 ## Categories
 
@@ -10,6 +10,7 @@ PowerShell tooling for Windows infrastructure administration, organized by area.
 | [Compliance](Compliance/README.md) | Auditing, hardening and vulnerability-scan tooling |
 | [DNS](DNS/README.md) | DNS management |
 | [Hypervisor](Hypervisor/README.md) | Hyper-V, SCVMM and VMware to Hyper-V migration |
+| [Splunk](Splunk/README.md) | Template Splunk searches |
 | [Tools](Tools/README.md) | General server and file share administration |
 | [VMware](VMware/README.md) | vSphere inventory, templates and VM maintenance |
 
@@ -49,6 +50,12 @@ PowerShell tooling for Windows infrastructure administration, organized by area.
 | [Commvault-HyperV-PostMigration](Hypervisor/Commvault-HyperV-PostMigration/README.md) | Pre- and post-migration automation for Commvault VMware to Hyper-V migrations |
 | [ESXi-to-HyperV](Hypervisor/ESXi-to-HyperV/README.md) | Carries a VM's network identity across an ESXi to Hyper-V migration |
 | [SCVMM-V2V-HighAvailability](Hypervisor/SCVMM-V2V-HighAvailability/README.md) | SCVMM V2V conversion of a single VM with high availability |
+
+### Splunk
+
+| Project | Description |
+|---|---|
+| [LDAP-DC-Failures](Splunk/LDAP-DC-Failures/README.md) | LDAP bind, signing, channel binding and LDAPS TLS failures on DCs |
 
 ### Tools
 
