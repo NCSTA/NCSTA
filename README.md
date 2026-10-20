@@ -73,9 +73,3 @@ PowerShell tooling and Splunk searches for Windows infrastructure administration
 | [Template-Patching](VMware/Template-Patching/README.md) | Monthly template patch cycle and orphaned template scan |
 | [VM-Hardware-Tools-Upgrade](VMware/VM-Hardware-Tools-Upgrade/README.md) | VM hardware version staging and VMware Tools reporting |
 | [VM-Location-Report](VMware/VM-Location-Report/README.md) | Report of Windows Server VM placement and host core counts |
-
-## Conventions
-
-- Every project lives in exactly one category folder and has a `README.md`.
-- Folder names use `Pascal-Case-With-Hyphens`.
-- Hostnames, domains, IP addresses and credentials in this repository are placeholders. Replace them with your own values before running a script.
