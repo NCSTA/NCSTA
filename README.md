@@ -30,6 +30,7 @@ PowerShell tooling and Splunk searches for Windows infrastructure administration
 
 | Project | Description |
 |---|---|
+| [Certificate-Metadata](Compliance/Certificate-Metadata/README.md) | Collects per-certificate PKI metadata from Windows servers over WinRM |
 | [Crypto-Inventory](Compliance/Crypto-Inventory/README.md) | Remotely collects cryptographic posture data from Windows servers |
 | [Nessus-Merge](Compliance/Nessus-Merge/README.md) | Merges Nessus scan exports into master workbooks per zone and role |
 | [Resolve-SID](Compliance/Resolve-SID/README.md) | Tells orphaned SIDs apart from SIDs of unreachable domains |

@@ -69,35 +69,6 @@ C:\temp\CryptoInventory_<HOSTNAME>_<TIMESTAMP>\    # uncompressed folder
 C:\temp\CryptoInventory_<HOSTNAME>_<TIMESTAMP>.zip  # ZIP
 ```
 
-## Certificate Metadata Function
-
-`scripts\Get-CertificateMetadata.ps1` is a standalone function for the PKI / Certificate Metadata data call. It returns one `PSCustomObject` per certificate instead of writing files, so you can pipe the results to `Select-Object`, `Format-Table` or `Export-Csv`.
-
-```powershell
-. .\scripts\Get-CertificateMetadata.ps1
-$cred = Get-Credential
-
-Get-CertificateMetadata -ComputerName web01, web02 -Credential $cred |
-    Format-Table ComputerName, CommonName, PublicKeyAlgorithm, KeySize, SignatureAlgorithm, Expiration, Status, Services -AutoSize
-
-# servers.csv columns: ComputerName, AssetId, Environment, Owner
-Import-Csv .\servers.csv | Get-CertificateMetadata -Credential $cred |
-    Export-Csv .\CertificateMetadata.csv -NoTypeInformation
-```
-
-| Parameter | Purpose |
-|---|---|
-| `-ComputerName` | Targets; accepts pipeline input. Defaults to the local machine |
-| `-Credential` | Optional credential for WinRM |
-| `-StoreName` | LocalMachine stores to read. Default `My`, `WebHosting`, `Remote Desktop`; add `Root`, `CA` for trust anchors |
-| `-ExpiringDays` | Window for `ExpiringSoon` status (default 30) |
-| `-VerifyChain` | Online chain and revocation check; sets `Revoked` / `Untrusted` |
-| `-AssetId`, `-Environment`, `-Owner` | Stamped onto each result; can come from CSV columns |
-
-Properties returned: `ComputerName`, `FQDN`, `IPAddress`, `CertificateStore`, `CommonName`, `SubjectAlternativeNames`, `Subject`, `IssuingCA`, `Issuer`, `SerialNumber`, `Thumbprint`, `PublicKeyAlgorithm`, `KeySize`, `Curve`, `SignatureAlgorithm`, `SignatureAlgorithmOid`, `ValidFrom`, `Expiration`, `DaysRemaining`, `Status`, `ChainStatus`, `Services`, `EnhancedKeyUsage`, `Template`, `FriendlyName`, `HasPrivateKey`, `AssetId`, `Environment`, `Owner`.
-
-`Services` is built from HTTP.sys SSL bindings (IIS site names, WinRM HTTPS, SSTP), the RDP listener certificate and SQL Server's configured certificate. The function reads metadata only. It never reads private keys or key material, and `HasPrivateKey` is only a yes/no flag.
-
 ## Failure Logging
 
 If any server fails at the Connect, Execute, or Copy stage, a `CollectionFailures_<timestamp>.csv` is written to the output path. The CSV is only created when at least one failure occurs.
@@ -108,4 +79,3 @@ If any server fails at the Connect, Execute, or Copy stage, a `CollectionFailure
 |---|---|
 | `scripts\Start-CryptoCollection.ps1` | Management VM invoker - sessions, execution, ZIP retrieval |
 | `scripts\CryptoInventory.ps1` | Target-side collection script pushed via PSRemoting |
-| `scripts\Get-CertificateMetadata.ps1` | `Get-CertificateMetadata` function: one object per certificate over WinRM, optional `-Credential` |
