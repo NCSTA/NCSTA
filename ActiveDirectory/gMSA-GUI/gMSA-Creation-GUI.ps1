@@ -1533,10 +1533,13 @@ function Add-ManageSpns {
         return
     }
 
+    # The AD module only accepts the hashtable's values as a string or an object[]
+    # of strings; a typed string[] (List.ToArray()) is rejected with "Values in the
+    # argument collection should be of type System.String", so pass @() instead.
     Write-Log -Level 'STEP' -Message ("Running: Set-ADServiceAccount -Identity '{0}' -Server '{1}' -ServicePrincipalNames @{{Add='{2}'}}" -f `
         $target.SamAccountName, $target.Domain, ($toAdd -join "','"))
     Set-ADServiceAccount -Identity $target.SamAccountName -Server $target.Domain `
-        -ServicePrincipalNames @{ Add = $toAdd.ToArray() } @script:CredentialSplat -ErrorAction Stop
+        -ServicePrincipalNames @{ Add = @($toAdd) } @script:CredentialSplat -ErrorAction Stop
     Write-Log -Level 'SUCCESS' -Message ("Added {0} SPN(s) to '{1}'." -f $toAdd.Count, $target.SamAccountName)
     $ui.ManageAddSpnTextBox.Clear()
     Update-ManageTarget
