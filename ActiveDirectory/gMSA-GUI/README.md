@@ -1,6 +1,10 @@
 # gMSA Management Utility
 
-WPF GUI for creating group Managed Service Accounts (gMSA), and for maintaining existing ones: which servers, service accounts, and groups may retrieve the password, and which SPNs are registered on the account.
+WPF GUI for creating group Managed Service Accounts (gMSA), and for maintaining existing ones:
+
+- which servers, service accounts, and groups may retrieve the password
+- which SPNs are registered on the account
+- which services it may delegate to (constrained delegation)
 
 ## Requirements
 
@@ -66,13 +70,17 @@ The DNS host name is built as `<gMSA name>.<domain>`.
 
 For day-to-day changes to an existing gMSA.
 
-1. Enter the domain and gMSA name, then select **Load gMSA**. The two tables show the current allowed principals and SPNs.
+1. Enter the domain and gMSA name, then select **Load gMSA**. The three tables show the current allowed principals, SPNs, and constrained delegation targets.
 2. **Allowed principals**
    - To add: pick the object type (**Auto-detect**, **Server**, **Service Account**, **Group**, or **gMSA**), enter one name per line, and select **Add principals**.
    - To remove: select rows (Ctrl+click or Shift+click for several) and select **Remove selected**.
 3. **SPNs**
    - To add: enter one SPN per line in the form `service/host[:port]` (for example `MSSQLSvc/sqlserver01a.domain.com:1433`) and select **Add SPNs**.
    - To remove: select rows and select **Remove selected**.
+4. **Constrained delegation** (`msDS-AllowedToDelegateTo`): the services this gMSA may delegate to, as on the Delegation tab in ADUC.
+   - To add: enter one service SPN per line (for example `cifs/fileserver01.domain.com`) and select **Add targets**. The confirmation shows which account holds each SPN, and flags any that aren't found in the domain.
+   - To remove: select rows and select **Remove selected**.
+   - The line above the input shows the delegation mode, **Kerberos only** or **any authentication protocol**. If unconstrained delegation is on, it shows a warning instead, because AD then ignores this list.
 
 Every change asks for confirmation first and then reloads the tables. Changes always apply to the loaded account. Editing either field unloads it, so a typo can't redirect a change to another account.
 
@@ -90,4 +98,6 @@ Shows a timestamped log of every action, the commands that ran, and the full tex
 - Each allowed principal must already exist in the domain. **Auto-detect** matches an exact account name first, then a computer with that name. If a service account and a server share a name, pick the type explicitly or use the distinguished name.
 - The duplicate SPN check covers the gMSA's own domain only, not other domains in the forest.
 - Managing SPNs needs write access to `servicePrincipalName` on the gMSA (Domain Admins, or delegated rights).
+- Changing `msDS-AllowedToDelegateTo` needs the **Enable computer and user accounts to be trusted for delegation** user right (`SeEnableDelegationPrivilege`) on the domain controllers, which Domain Admins have by default.
+- The delegation mode (Kerberos only or any protocol) is shown but not changed by this tool.
 - Installing the account on the member servers (`Install-ADServiceAccount`) is a separate step and is not done by this tool.
