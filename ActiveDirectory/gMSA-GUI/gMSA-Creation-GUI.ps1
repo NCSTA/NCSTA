@@ -17,9 +17,9 @@ $ProgressPreference = 'SilentlyContinue'
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="gMSA Management Utility"
         Height="880"
-        Width="1140"
+        Width="1320"
         MinHeight="680"
-        MinWidth="900"
+        MinWidth="1040"
         WindowStartupLocation="CenterScreen"
         Background="#17191F"
         Foreground="#F3F5F7"
@@ -424,7 +424,7 @@ $ProgressPreference = 'SilentlyContinue'
                 </Grid>
             </TabItem>
 
-            <!-- Manage gMSA: change principals and SPNs on an existing account -->
+            <!-- Manage gMSA: change principals, SPNs, and constrained delegation on an existing account -->
             <TabItem Name="ManageTab" Header="Manage gMSA">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -462,18 +462,21 @@ $ProgressPreference = 'SilentlyContinue'
                         </Grid>
                     </Border>
 
-                    <!-- Shared row sizes keep the two cards' buttons and inputs on the same lines.
+                    <!-- Shared row sizes keep the three cards' buttons and inputs on the same lines.
                          The grid fills the window, and scrolls once the window is shorter than MinHeight. -->
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <Grid Grid.IsSharedSizeScope="True"
                           MinHeight="560"
                           Height="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" MinWidth="320" />
+                            <ColumnDefinition Width="1.3*" MinWidth="340" />
                             <ColumnDefinition Width="16" />
-                            <ColumnDefinition Width="*" MinWidth="320" />
+                            <ColumnDefinition Width="*" MinWidth="280" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" MinWidth="280" />
                         </Grid.ColumnDefinitions>
                         <GridSplitter Grid.Column="1" Style="{StaticResource SplitterStyle}" />
+                        <GridSplitter Grid.Column="3" Style="{StaticResource SplitterStyle}" />
 
                         <Border Grid.Column="0" Style="{StaticResource Card}">
                             <Grid>
@@ -586,11 +589,70 @@ $ProgressPreference = 'SilentlyContinue'
                                              Height="70"
                                              TextWrapping="Wrap" />
                                     <TextBlock Style="{StaticResource Hint}"
-                                               Text="One SPN per line, e.g. MSSQLSvc/sqlserver01a.domain.com:1433" />
+                                               Text="One SPN per line, e.g. MSSQLSvc/sql01.domain.com:1433" />
                                 </StackPanel>
                                 <Button Name="ManageAddSpnButton"
                                         Grid.Row="6"
                                         Content="Add SPNs"
+                                        HorizontalAlignment="Left"
+                                        IsEnabled="False" />
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="4" Style="{StaticResource Card}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" SharedSizeGroup="CardHeading" />
+                                    <RowDefinition Height="*" MinHeight="80" />
+                                    <RowDefinition Height="Auto" SharedSizeGroup="RemoveRow" />
+                                    <RowDefinition Height="Auto" SharedSizeGroup="AddLabel" />
+                                    <RowDefinition Height="Auto" SharedSizeGroup="AddOptions" />
+                                    <RowDefinition Height="Auto" SharedSizeGroup="AddInput" />
+                                    <RowDefinition Height="Auto" SharedSizeGroup="AddButton" />
+                                </Grid.RowDefinitions>
+                                <StackPanel Grid.Row="0">
+                                    <TextBlock Style="{StaticResource CardHeading}" Text="Constrained delegation" />
+                                    <TextBlock Style="{StaticResource CardSubheading}"
+                                               Text="Services this gMSA may delegate to (msDS-AllowedToDelegateTo)." />
+                                </StackPanel>
+                                <ListView Name="ManageDelegationListView"
+                                          Grid.Row="1"
+                                          ToolTip="Ctrl+click or Shift+click to select several entries.">
+                                    <ListView.View>
+                                        <GridView>
+                                            <GridViewColumn Header="Service" Width="420" DisplayMemberBinding="{Binding Spn}" />
+                                        </GridView>
+                                    </ListView.View>
+                                </ListView>
+                                <Button Name="ManageRemoveDelegationButton"
+                                        Grid.Row="2"
+                                        Style="{StaticResource DangerButton}"
+                                        Content="Remove selected"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,10,0,0"
+                                        IsEnabled="False" />
+                                <StackPanel Grid.Row="3">
+                                    <Border Style="{StaticResource Divider}" />
+                                    <TextBlock Style="{StaticResource FieldLabel}" Text="Add delegation targets" />
+                                </StackPanel>
+                                <TextBlock Name="ManageDelegationModeText"
+                                           Grid.Row="4"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,2,0,8"
+                                           Text="Format: service/host[:port]" />
+                                <StackPanel Grid.Row="5">
+                                    <TextBox Name="ManageAddDelegationTextBox"
+                                             AcceptsReturn="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             Height="70"
+                                             TextWrapping="Wrap" />
+                                    <TextBlock Style="{StaticResource Hint}"
+                                               Text="One service SPN per line, e.g. cifs/fileserver01.domain.com" />
+                                </StackPanel>
+                                <Button Name="ManageAddDelegationButton"
+                                        Grid.Row="6"
+                                        Content="Add targets"
                                         HorizontalAlignment="Left"
                                         IsEnabled="False" />
                             </Grid>
@@ -702,6 +764,11 @@ $controlNames = @(
     'ManageAddPrincipalTextBox',
     'ManageAddPrincipalButton',
     'ManageSpnListView',
+    'ManageDelegationListView',
+    'ManageRemoveDelegationButton',
+    'ManageDelegationModeText',
+    'ManageAddDelegationTextBox',
+    'ManageAddDelegationButton',
     'ManageRemoveSpnButton',
     'ManageAddSpnTextBox',
     'ManageAddSpnButton',
@@ -1346,7 +1413,8 @@ function Get-SelectedPrincipalType {
 function Set-ManageButtonsEnabled {
     param([bool]$Enabled)
 
-    foreach ($name in 'ManageAddPrincipalButton', 'ManageRemovePrincipalButton', 'ManageAddSpnButton', 'ManageRemoveSpnButton') {
+    foreach ($name in 'ManageAddPrincipalButton', 'ManageRemovePrincipalButton', 'ManageAddSpnButton', 'ManageRemoveSpnButton',
+                      'ManageAddDelegationButton', 'ManageRemoveDelegationButton') {
         $ui[$name].IsEnabled = $Enabled
     }
 }
@@ -1355,8 +1423,28 @@ function Clear-ManageTarget {
     $script:ManageTarget = $null
     $ui.ManagePrincipalsListView.ItemsSource = $null
     $ui.ManageSpnListView.ItemsSource = $null
+    $ui.ManageDelegationListView.ItemsSource = $null
+    $ui.ManageDelegationModeText.Text = 'Format: service/host[:port]'
+    $ui.ManageDelegationModeText.Foreground = $window.FindResource('MutedTextBrush')
     $ui.ManageStatusTextBlock.Text = 'No gMSA loaded. Enter the domain and gMSA name, then select Load gMSA.'
     Set-ManageButtonsEnabled -Enabled $false
+}
+
+function Test-SpnFormat {
+    param([string]$Spn)
+    return ($Spn -match '^[^/\s]+/[^/\s]+(/[^/\s]+)?$')
+}
+
+# Reads a property that AD may leave off the object when it has no value.
+function Get-OptionalProperty {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($property) { return $property.Value }
+    return $null
 }
 
 function Import-ManageTarget {
@@ -1369,9 +1457,13 @@ function Import-ManageTarget {
     Write-Log -Level 'STEP' -Message ("Loading gMSA '{0}' from '{1}'." -f $SamAccountName, $Domain)
 
     $account = Get-ADServiceAccount -Identity $SamAccountName -Server $Domain `
-                   -Properties PrincipalsAllowedToRetrieveManagedPassword, ServicePrincipalNames @script:CredentialSplat -ErrorAction Stop
-    $principals = @($account.PrincipalsAllowedToRetrieveManagedPassword | ForEach-Object { [string]$_ })
-    $spns       = @($account.ServicePrincipalNames | ForEach-Object { [string]$_ } | Sort-Object)
+                   -Properties PrincipalsAllowedToRetrieveManagedPassword, ServicePrincipalNames, 'msDS-AllowedToDelegateTo', `
+                               TrustedForDelegation, TrustedToAuthForDelegation @script:CredentialSplat -ErrorAction Stop
+    $principals  = @($account.PrincipalsAllowedToRetrieveManagedPassword | ForEach-Object { [string]$_ })
+    $spns        = @($account.ServicePrincipalNames | ForEach-Object { [string]$_ } | Sort-Object)
+    $delegations = @(Get-OptionalProperty -Object $account -Name 'msDS-AllowedToDelegateTo' | Where-Object { $_ } | ForEach-Object { [string]$_ } | Sort-Object)
+    $unconstrained     = (Get-OptionalProperty -Object $account -Name 'TrustedForDelegation') -eq $true
+    $protocolTransition = (Get-OptionalProperty -Object $account -Name 'TrustedToAuthForDelegation') -eq $true
 
     $ui.ManagePrincipalsListView.ItemsSource = @(
         foreach ($dn in $principals) { Get-PrincipalRow -DistinguishedName $dn -Domain $Domain }
@@ -1379,6 +1471,21 @@ function Import-ManageTarget {
     $ui.ManageSpnListView.ItemsSource = @(
         foreach ($spn in $spns) { [pscustomobject]@{ Spn = $spn } }
     )
+    $ui.ManageDelegationListView.ItemsSource = @(
+        foreach ($spn in $delegations) { [pscustomobject]@{ Spn = $spn } }
+    )
+
+    if ($unconstrained) {
+        $ui.ManageDelegationModeText.Text = 'Unconstrained delegation is ON for this gMSA, so AD ignores this list until it is turned off.'
+        $ui.ManageDelegationModeText.Foreground = $window.FindResource('WarningBrush')
+    } else {
+        $ui.ManageDelegationModeText.Text = if ($protocolTransition) {
+            'Mode: use any authentication protocol (protocol transition)'
+        } else {
+            'Mode: use Kerberos only'
+        }
+        $ui.ManageDelegationModeText.Foreground = $window.FindResource('MutedTextBrush')
+    }
 
     $script:ManageTarget = [pscustomobject]@{
         Domain            = $Domain
@@ -1386,12 +1493,15 @@ function Import-ManageTarget {
         DistinguishedName = $account.DistinguishedName
         Principals        = $principals
         Spns              = $spns
+        Delegations       = $delegations
+        Unconstrained     = $unconstrained
     }
 
-    $ui.ManageStatusTextBlock.Text = "Loaded {0}: {1} allowed principal(s), {2} SPN(s). Changes apply to this account only." -f `
-        $account.SamAccountName, $principals.Count, $spns.Count
+    $ui.ManageStatusTextBlock.Text = "Loaded {0}: {1} allowed principal(s), {2} SPN(s), {3} delegation target(s). Changes apply to this account only." -f `
+        $account.SamAccountName, $principals.Count, $spns.Count, $delegations.Count
     Set-ManageButtonsEnabled -Enabled $true
-    Write-Log -Level 'SUCCESS' -Message ("Loaded '{0}': {1} principal(s), {2} SPN(s)." -f $account.SamAccountName, $principals.Count, $spns.Count)
+    Write-Log -Level 'SUCCESS' -Message ("Loaded '{0}': {1} principal(s), {2} SPN(s), {3} delegation target(s)." -f `
+        $account.SamAccountName, $principals.Count, $spns.Count, $delegations.Count)
 }
 
 function Update-ManageTarget {
@@ -1496,7 +1606,7 @@ function Add-ManageSpns {
     $toAdd = New-Object System.Collections.Generic.List[string]
 
     foreach ($spn in $spns) {
-        if ($spn -notmatch '^[^/\s]+/[^/\s]+(/[^/\s]+)?$') {
+        if (-not (Test-SpnFormat -Spn $spn)) {
             Show-ValidationError -Message ("'{0}' is not a valid SPN. Use service/host[:port], for example MSSQLSvc/sqlserver01a.domain.com:1433." -f $spn)
             return
         }
@@ -1564,6 +1674,95 @@ function Remove-ManageSpns {
     Set-ADServiceAccount -Identity $target.SamAccountName -Server $target.Domain `
         -ServicePrincipalNames @{ Remove = $selected } @script:CredentialSplat -ErrorAction Stop
     Write-Log -Level 'SUCCESS' -Message ("Removed {0} SPN(s) from '{1}'." -f $selected.Count, $target.SamAccountName)
+    Update-ManageTarget
+}
+
+# Constrained delegation: msDS-AllowedToDelegateTo holds the service SPNs this
+# gMSA may delegate to. Values go in as @() for the same reason as SPNs above.
+function Add-ManageDelegations {
+    $target  = $script:ManageTarget
+    $entries = @(Get-MultiLineValues -Text $ui.ManageAddDelegationTextBox.Text)
+    if ($entries.Count -eq 0) {
+        Show-ValidationError -Message 'Enter at least one service SPN to delegate to.'
+        return
+    }
+
+    Ensure-ActiveDirectoryModule
+    $toAdd   = New-Object System.Collections.Generic.List[string]
+    $lines   = New-Object System.Collections.Generic.List[string]
+    $missing = 0
+
+    foreach ($spn in $entries) {
+        if (-not (Test-SpnFormat -Spn $spn)) {
+            Show-ValidationError -Message ("'{0}' is not a valid service SPN. Use service/host[:port], for example cifs/fileserver01.domain.com." -f $spn)
+            return
+        }
+        if ($target.Delegations -contains $spn -or $toAdd -contains $spn) {
+            Write-Log -Level 'INFO' -Message ("'{0}' is already a delegation target of '{1}'; skipping." -f $spn, $target.SamAccountName)
+            continue
+        }
+
+        # Delegating to an SPN that no account holds does nothing, so show who owns each one.
+        Write-Log -Level 'STEP' -Message ("Looking up the owner of SPN '{0}' in '{1}'." -f $spn, $target.Domain)
+        $escaped = ConvertTo-LdapFilterValue -Value $spn
+        $owners  = @(Get-ADObject -LDAPFilter "(servicePrincipalName=$escaped)" -Server $target.Domain `
+                         -Properties sAMAccountName @script:CredentialSplat -ErrorAction Stop)
+        if ($owners.Count -gt 0) {
+            $lines.Add(('  {0}  (on {1})' -f $spn, (($owners | ForEach-Object { $_.sAMAccountName }) -join ', ')))
+        } else {
+            $missing++
+            $lines.Add(('  {0}  (not found in {1})' -f $spn, $target.Domain))
+        }
+        $toAdd.Add($spn)
+    }
+
+    if ($toAdd.Count -eq 0) {
+        Write-Log -Level 'INFO' -Message 'Nothing to add; every entry is already a delegation target.'
+        Show-ValidationError -Message 'Every entry is already a delegation target of this account.'
+        return
+    }
+
+    $message = "Allow '{0}' to delegate to these services?`n`n{1}" -f $target.SamAccountName, ($lines -join "`n")
+    if ($missing -gt 0) {
+        $message += "`n`nEntries marked 'not found' aren't registered on any account in {0}. They may be in another domain or mistyped, and delegation to them won't work until the SPN exists." -f $target.Domain
+    }
+    if ($target.Unconstrained) {
+        $message += "`n`nUnconstrained delegation is ON for this gMSA, so AD ignores this list until it is turned off."
+    }
+    if (-not (Confirm-Change -Message $message)) {
+        Write-Log -Level 'INFO' -Message 'Add delegation targets cancelled by user.'
+        return
+    }
+
+    Write-Log -Level 'STEP' -Message ("Running: Set-ADServiceAccount -Identity '{0}' -Server '{1}' -Add @{{'msDS-AllowedToDelegateTo'='{2}'}}" -f `
+        $target.SamAccountName, $target.Domain, ($toAdd -join "','"))
+    Set-ADServiceAccount -Identity $target.SamAccountName -Server $target.Domain `
+        -Add @{ 'msDS-AllowedToDelegateTo' = @($toAdd) } @script:CredentialSplat -ErrorAction Stop
+    Write-Log -Level 'SUCCESS' -Message ("Added {0} delegation target(s) to '{1}'." -f $toAdd.Count, $target.SamAccountName)
+    $ui.ManageAddDelegationTextBox.Clear()
+    Update-ManageTarget
+}
+
+function Remove-ManageDelegations {
+    $target   = $script:ManageTarget
+    $selected = @($ui.ManageDelegationListView.SelectedItems | ForEach-Object { [string]$_.Spn })
+    if ($selected.Count -eq 0) {
+        Show-ValidationError -Message 'Select one or more delegation targets to remove.'
+        return
+    }
+
+    $message = "Stop '{0}' from delegating to these services?`n`n{1}`n`nApplications relying on this delegation will fail to reach these services on behalf of users." -f `
+        $target.SamAccountName, (($selected | ForEach-Object { '  ' + $_ }) -join "`n")
+    if (-not (Confirm-Change -Message $message)) {
+        Write-Log -Level 'INFO' -Message 'Remove delegation targets cancelled by user.'
+        return
+    }
+
+    Write-Log -Level 'STEP' -Message ("Running: Set-ADServiceAccount -Identity '{0}' -Server '{1}' -Remove @{{'msDS-AllowedToDelegateTo'='{2}'}}" -f `
+        $target.SamAccountName, $target.Domain, ($selected -join "','"))
+    Set-ADServiceAccount -Identity $target.SamAccountName -Server $target.Domain `
+        -Remove @{ 'msDS-AllowedToDelegateTo' = @($selected) } @script:CredentialSplat -ErrorAction Stop
+    Write-Log -Level 'SUCCESS' -Message ("Removed {0} delegation target(s) from '{1}'." -f $selected.Count, $target.SamAccountName)
     Update-ManageTarget
 }
 
@@ -1640,6 +1839,12 @@ $ui.ManageAddSpnButton.Add_Click({
 $ui.ManageRemoveSpnButton.Add_Click({
     Invoke-UiAction -Context 'Remove SPNs' -Action { Remove-ManageSpns }
 })
+$ui.ManageAddDelegationButton.Add_Click({
+    Invoke-UiAction -Context 'Add delegation targets' -Action { Add-ManageDelegations }
+})
+$ui.ManageRemoveDelegationButton.Add_Click({
+    Invoke-UiAction -Context 'Remove delegation targets' -Action { Remove-ManageDelegations }
+})
 foreach ($textBox in $ui.ManageDomainTextBox, $ui.ManageServiceNameTextBox) {
     $textBox.Add_TextChanged({
         try { if ($script:ManageTarget) { Clear-ManageTarget } } catch { Write-Log -Level 'ERROR' -Message ("TextChanged error: {0}" -f $_.Exception.Message) }
@@ -1667,7 +1872,7 @@ Set-AdCredential -Credential $Credential
 $window.Add_SourceInitialized({
     try {
         Write-Log -Level 'INFO' -Message ('{0} loaded.' -f $script:AppTitle)
-        Write-Log -Level 'INFO' -Message 'Create gMSA: fill in the details, Review, then Create. Manage gMSA: change principals and SPNs on an existing account.'
+        Write-Log -Level 'INFO' -Message 'Create gMSA: fill in the details, Review, then Create. Manage gMSA: change principals, SPNs, and constrained delegation on an existing account.'
     } catch { }
 })
 
