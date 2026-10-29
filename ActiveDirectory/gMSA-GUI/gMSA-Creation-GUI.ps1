@@ -48,6 +48,18 @@ $ProgressPreference = 'SilentlyContinue'
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             <Setter Property="Margin" Value="0,6,0,12" />
         </Style>
+        <Style TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Margin" Value="0,0,16,8" />
+        </Style>
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="{StaticResource InputBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="SelectionMode" Value="Extended" />
+        </Style>
         <Style TargetType="Button">
             <Setter Property="Background" Value="{StaticResource AccentBrush}" />
             <Setter Property="Foreground" Value="White" />
@@ -114,7 +126,7 @@ $ProgressPreference = 'SilentlyContinue'
                         <TextBlock TextWrapping="Wrap"
                                    Foreground="#AEB7C4"
                                    FontSize="13"
-                                   Text="Enter the target domain, the short gMSA name, and one server per line. Preview builds the exact PowerShell steps first, then Execute runs them only after confirmation." />
+                                   Text="Enter the target domain, the short gMSA name, and one server, service account, or group per line. Preview builds the exact PowerShell steps first, then Execute runs them only after confirmation." />
                     </Border>
                     <Grid Grid.Row="1">
                         <Grid.ColumnDefinitions>
@@ -141,13 +153,13 @@ $ProgressPreference = 'SilentlyContinue'
                                         <Label Content="gMSA Short Name" />
                                         <TextBox Name="ServiceNameTextBox"
                                                  ToolTip="Example: gMSA-sqlp100z (do not include trailing $)" />
-                                        <Label Content="Allowed Servers (one per line)" />
+                                        <Label Content="Allowed Principals (one per line)" />
                                         <TextBox Name="ServersTextBox"
                                                  AcceptsReturn="True"
                                                  VerticalScrollBarVisibility="Auto"
                                                  Height="160"
                                                  TextWrapping="Wrap"
-                                                 ToolTip="Example: sqlserver01a&#x0a;sqlserver01b" />
+                                                 ToolTip="Servers, service accounts, or groups by sAMAccountName or DN.&#x0a;Example: sqlserver01a&#x0a;svc-sqlagent" />
                                         <CheckBox Name="DelegationCheckBox"
                                                   Content="Enable unconstrained delegation after creation" />
                                     </StackPanel>
@@ -225,7 +237,147 @@ $ProgressPreference = 'SilentlyContinue'
                     </Grid>
                 </Grid>
             </TabItem>
-            <TabItem Header="Console Log">
+            <TabItem Header="Manage gMSA">
+                <Grid Background="#17191F">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0"
+                            Background="#20242C"
+                            CornerRadius="8"
+                            Padding="16,16,16,12"
+                            Margin="0,0,0,14"
+                            BorderBrush="#3A4250"
+                            BorderThickness="1">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <Label Content="Domain / AD Server" />
+                                <TextBox Name="ManageDomainTextBox"
+                                         ToolTip="Example: domain.com" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <Label Content="gMSA Short Name" />
+                                <TextBox Name="ManageServiceNameTextBox"
+                                         ToolTip="Example: gMSA-sqlp100z (do not include trailing $)" />
+                            </StackPanel>
+                            <Button Name="ManageLoadButton"
+                                    Grid.Column="4"
+                                    Content="Load gMSA"
+                                    VerticalAlignment="Bottom"
+                                    Margin="0,0,0,12" />
+                            <TextBlock Name="ManageStatusTextBlock"
+                                       Grid.Row="1"
+                                       Grid.ColumnSpan="5"
+                                       Foreground="#AEB7C4"
+                                       TextWrapping="Wrap" />
+                        </Grid>
+                    </Border>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MinWidth="300" />
+                            <ColumnDefinition Width="5" />
+                            <ColumnDefinition Width="*" MinWidth="300" />
+                        </Grid.ColumnDefinitions>
+
+                        <GridSplitter Grid.Column="1"
+                                      Style="{StaticResource SplitterStyle}"
+                                      ResizeBehavior="PreviousAndNext"
+                                      ResizeDirection="Columns"
+                                      ShowsPreview="False"
+                                      ToolTip="Drag to resize panels" />
+
+                        <GroupBox Header="Allowed Principals (can retrieve the password)" Grid.Column="0" Margin="0,0,10,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" MinHeight="80" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <ListBox Name="ManagePrincipalsListBox"
+                                         Grid.Row="0"
+                                         ToolTip="Ctrl+click or Shift+click to select several entries." />
+                                <Button Name="ManageRemovePrincipalButton"
+                                        Grid.Row="1"
+                                        Content="Remove Selected"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,8,0,14"
+                                        IsEnabled="False" />
+                                <Label Grid.Row="2" Content="Object type to add" />
+                                <WrapPanel Grid.Row="3">
+                                    <RadioButton Name="PrincipalTypeAutoRadio" GroupName="PrincipalType" Content="Auto-detect" IsChecked="True"
+                                                 ToolTip="Match by name: service accounts and groups first, then computers." />
+                                    <RadioButton Name="PrincipalTypeServerRadio" GroupName="PrincipalType" Content="Server" />
+                                    <RadioButton Name="PrincipalTypeUserRadio" GroupName="PrincipalType" Content="Service Account" />
+                                    <RadioButton Name="PrincipalTypeGroupRadio" GroupName="PrincipalType" Content="Group" />
+                                    <RadioButton Name="PrincipalTypeGmsaRadio" GroupName="PrincipalType" Content="gMSA" />
+                                </WrapPanel>
+                                <TextBox Name="ManageAddPrincipalTextBox"
+                                         Grid.Row="4"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Height="70"
+                                         TextWrapping="Wrap"
+                                         ToolTip="One name per line. Example: sqlserver01c&#x0a;svc-sqlagent" />
+                                <Button Name="ManageAddPrincipalButton"
+                                        Grid.Row="5"
+                                        Content="Add Principals"
+                                        HorizontalAlignment="Left"
+                                        IsEnabled="False" />
+                            </Grid>
+                        </GroupBox>
+
+                        <GroupBox Header="Service Principal Names (SPNs)" Grid.Column="2" Margin="10,0,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" MinHeight="80" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <ListBox Name="ManageSpnListBox"
+                                         Grid.Row="0"
+                                         ToolTip="Ctrl+click or Shift+click to select several entries." />
+                                <Button Name="ManageRemoveSpnButton"
+                                        Grid.Row="1"
+                                        Content="Remove Selected"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,8,0,14"
+                                        IsEnabled="False" />
+                                <Label Grid.Row="2" Content="SPNs to add (one per line, service/host[:port])" />
+                                <TextBox Name="ManageAddSpnTextBox"
+                                         Grid.Row="3"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Height="70"
+                                         TextWrapping="Wrap"
+                                         ToolTip="Example: MSSQLSvc/sqlserver01a.domain.com:1433&#x0a;HTTP/app01.domain.com" />
+                                <Button Name="ManageAddSpnButton"
+                                        Grid.Row="4"
+                                        Content="Add SPNs"
+                                        HorizontalAlignment="Left"
+                                        IsEnabled="False" />
+                            </Grid>
+                        </GroupBox>
+                    </Grid>
+                </Grid>
+            </TabItem>
+            <TabItem Name="ConsoleLogTab" Header="Console Log">
                 <Grid Background="#17191F">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -271,7 +423,25 @@ $controlNames = @(
     'LookupOutputTextBox',
     'LogTextBox',
     'ClearLogButton',
-    'MainTabControl'
+    'MainTabControl',
+    'ConsoleLogTab',
+    'ManageDomainTextBox',
+    'ManageServiceNameTextBox',
+    'ManageLoadButton',
+    'ManageStatusTextBlock',
+    'ManagePrincipalsListBox',
+    'ManageRemovePrincipalButton',
+    'PrincipalTypeAutoRadio',
+    'PrincipalTypeServerRadio',
+    'PrincipalTypeUserRadio',
+    'PrincipalTypeGroupRadio',
+    'PrincipalTypeGmsaRadio',
+    'ManageAddPrincipalTextBox',
+    'ManageAddPrincipalButton',
+    'ManageSpnListBox',
+    'ManageRemoveSpnButton',
+    'ManageAddSpnTextBox',
+    'ManageAddSpnButton'
 )
 
 $ui = @{}
@@ -309,7 +479,7 @@ function Write-ErrorLog {
     )
 
     Write-Log -Level 'ERROR' -Message ("{0}: {1}" -f $Context, $FullText)
-    try { $ui.MainTabControl.SelectedIndex = 1 } catch { }
+    try { $ui.MainTabControl.SelectedItem = $ui.ConsoleLogTab } catch { }
     if ($ShowDialog) {
         Show-ErrorDialog -Message ("{0} failed.`n`n{1}" -f $Context, $ShortMessage)
     }
@@ -355,14 +525,20 @@ function Reset-PreviewState {
     $ui.ExecuteButton.IsEnabled = $false
 }
 
-function Get-InputState {
-    $domain = $ui.DomainTextBox.Text.Trim()
-    $serviceName = $ui.ServiceNameTextBox.Text.Trim().TrimEnd('$')
-    $servers = @(
-        $ui.ServersTextBox.Text -split "(`r`n|`n|`r)" |
+function Get-MultiLineValues {
+    param([string]$Text)
+
+    return @(
+        $Text -split "(`r`n|`n|`r)" |
         ForEach-Object { $_.Trim() } |
         Where-Object { $_ }
     )
+}
+
+function Get-InputState {
+    $domain = $ui.DomainTextBox.Text.Trim()
+    $serviceName = $ui.ServiceNameTextBox.Text.Trim().TrimEnd('$')
+    $servers = @(Get-MultiLineValues -Text $ui.ServersTextBox.Text)
     $samAccountName = if ($serviceName) { '{0}$' -f $serviceName } else { '' }
     $dnsHostName    = if ($serviceName -and $domain) { '{0}.{1}' -f $serviceName, $domain } else { '' }
 
@@ -383,7 +559,7 @@ function Test-CreateInputs {
     if (-not $InputState.Domain)       { $issues.Add('Domain / AD Server is required.') }
     if (-not $InputState.ServiceName)  { $issues.Add('gMSA Short Name is required.') }
     if (-not $InputState.Servers -or $InputState.Servers.Count -eq 0) {
-        $issues.Add('At least one allowed server is required.')
+        $issues.Add('At least one allowed principal (server or service account) is required.')
     }
 
     return $issues
@@ -444,19 +620,111 @@ Set-ADAccountControl -Identity `$msa -TrustedForDelegation `$true -TrustedToAuth
 $serverLines
 )
 
-`$serverDns = foreach (`$server in `$servers) {
-    (Get-ADComputer -Identity `$server -Server `$domain).DistinguishedName
+# Each entry resolves as a DN, an exact sAMAccountName (service account / group),
+# or a computer name (sAMAccountName with trailing `$).
+`$principalDns = foreach (`$principal in `$servers) {
+    if (`$principal -match '=.+,') {
+        (Get-ADObject -Identity `$principal -Server `$domain).DistinguishedName
+        continue
+    }
+    `$match = @(Get-ADObject -LDAPFilter "(sAMAccountName=`$principal)" -Server `$domain)
+    if (`$match.Count -eq 0 -and -not `$principal.EndsWith('`$')) {
+        `$match = @(Get-ADObject -LDAPFilter "(sAMAccountName=`$principal```$)" -Server `$domain)
+    }
+    if (`$match.Count -ne 1) { throw "Could not resolve '`$principal' to a single AD object." }
+    `$match[0].DistinguishedName
 }
 
 New-ADServiceAccount -Name `$serviceName ``
     -DNSHostName `$dnsHostName ``
     -SamAccountName `$samAccountName ``
-    -PrincipalsAllowedToRetrieveManagedPassword `$serverDns ``
+    -PrincipalsAllowedToRetrieveManagedPassword `$principalDns ``
     -Server `$domain
 $delegationBlock
 
 (Get-ADServiceAccount -Identity '$($InputState.SamAccountName)' -Server '$($InputState.Domain)' -Properties PrincipalsAllowedToRetrieveManagedPassword).PrincipalsAllowedToRetrieveManagedPassword
 "@
+}
+
+function ConvertTo-LdapFilterValue {
+    param([string]$Value)
+
+    $builder = New-Object System.Text.StringBuilder
+    foreach ($char in $Value.ToCharArray()) {
+        switch ($char) {
+            '\'      { [void]$builder.Append('\5c') }
+            '*'      { [void]$builder.Append('\2a') }
+            '('      { [void]$builder.Append('\28') }
+            ')'      { [void]$builder.Append('\29') }
+            "`0"     { [void]$builder.Append('\00') }
+            default  { [void]$builder.Append($char) }
+        }
+    }
+    return $builder.ToString()
+}
+
+# Resolves a server, service account (user / MSA), or group to its AD object.
+# Accepts a DN, an exact sAMAccountName, or a computer name without the trailing $.
+# A specific -Type looks the name up with that object's cmdlet; 'Auto' matches any type.
+function Resolve-AllowedPrincipal {
+    param(
+        [string]$Name,
+        [string]$Domain,
+        [ValidateSet('Auto', 'Server', 'ServiceAccount', 'Group', 'gMSA')]
+        [string]$Type = 'Auto'
+    )
+
+    switch ($Type) {
+        'Server'         { return Get-ADComputer       -Identity $Name -Server $Domain -ErrorAction Stop }
+        'ServiceAccount' { return Get-ADUser           -Identity $Name -Server $Domain -ErrorAction Stop }
+        'Group'          { return Get-ADGroup          -Identity $Name -Server $Domain -ErrorAction Stop }
+        'gMSA'           { return Get-ADServiceAccount -Identity $Name -Server $Domain -ErrorAction Stop }
+    }
+
+    $properties = @('sAMAccountName', 'objectClass')
+
+    if ($Name -match '=.+,') {
+        return Get-ADObject -Identity $Name -Server $Domain -Properties $properties -ErrorAction Stop
+    }
+
+    $escaped = ConvertTo-LdapFilterValue -Value $Name
+    $found = @(Get-ADObject -LDAPFilter "(sAMAccountName=$escaped)" -Server $Domain -Properties $properties -ErrorAction Stop)
+
+    # Computer accounts carry a trailing $, so fall back to that when the bare name has no match.
+    if ($found.Count -eq 0 -and -not $Name.EndsWith('$')) {
+        $found = @(Get-ADObject -LDAPFilter "(sAMAccountName=$escaped`$)" -Server $Domain -Properties $properties -ErrorAction Stop)
+    }
+
+    if ($found.Count -eq 0) {
+        throw ("No server, service account, or group named '{0}' was found in '{1}'." -f $Name, $Domain)
+    }
+    if ($found.Count -gt 1) {
+        throw ("'{0}' matched more than one object in '{1}'. Use the distinguished name instead." -f $Name, $Domain)
+    }
+    return $found[0]
+}
+
+function Format-PrincipalEntry {
+    param(
+        [string]$DistinguishedName,
+        [string]$Domain
+    )
+
+    try {
+        $object = Get-ADObject -Identity $DistinguishedName -Server $Domain -Properties sAMAccountName, objectClass -ErrorAction Stop
+        $type = switch ($object.ObjectClass) {
+            'computer'                         { 'Server' }
+            'user'                             { 'Service Account' }
+            'msDS-GroupManagedServiceAccount'  { 'gMSA' }
+            'msDS-ManagedServiceAccount'       { 'MSA' }
+            'group'                            { 'Group' }
+            default                            { $object.ObjectClass }
+        }
+        return "{0,-16} {1,-24} {2}" -f ('[' + $type + ']'), $object.sAMAccountName, $DistinguishedName
+    }
+    catch {
+        return "{0,-16} {1,-24} {2}" -f '[Unresolved]', '', $DistinguishedName
+    }
 }
 
 function Get-LookupCommandText {
@@ -494,7 +762,10 @@ function Invoke-ManagedPasswordLookup {
         if ($principals.Count -eq 0) {
             $ui.LookupOutputTextBox.Text = 'No principals are currently configured.'
         } else {
-            $ui.LookupOutputTextBox.Text = ($principals | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
+            $lines = foreach ($principal in $principals) {
+                Format-PrincipalEntry -DistinguishedName ([string]$principal) -Domain $state.Domain
+            }
+            $ui.LookupOutputTextBox.Text = $lines -join [Environment]::NewLine
         }
 
         Write-Log -Level 'SUCCESS' -Message ("Lookup completed successfully for '{0}' in '{1}'." -f $state.ServiceName, $state.Domain)
@@ -514,10 +785,11 @@ function Invoke-CreateGmsa {
 
     $resolvedDns = New-Object System.Collections.Generic.List[string]
 
-    foreach ($server in $InputState.Servers) {
-        Write-Log -Level 'STEP' -Message ("Resolving AD computer '{0}' against '{1}'." -f $server, $InputState.Domain)
-        $computer = Get-ADComputer -Identity $server -Server $InputState.Domain -ErrorAction Stop
-        $resolvedDns.Add($computer.DistinguishedName)
+    foreach ($principal in $InputState.Servers) {
+        Write-Log -Level 'STEP' -Message ("Resolving AD principal '{0}' against '{1}'." -f $principal, $InputState.Domain)
+        $object = Resolve-AllowedPrincipal -Name $principal -Domain $InputState.Domain
+        Write-Log -Level 'INFO' -Message ("Resolved '{0}' as {1}: {2}" -f $principal, $object.ObjectClass, $object.DistinguishedName)
+        $resolvedDns.Add($object.DistinguishedName)
     }
 
     Write-Log -Level 'STEP' -Message ("Creating gMSA '{0}' with DNS host '{1}'." -f $InputState.ServiceName, $InputState.DnsHostName)
@@ -540,6 +812,302 @@ function Invoke-CreateGmsa {
     }
 
     Write-Log -Level 'SUCCESS' -Message ("gMSA '{0}' created successfully." -f $InputState.ServiceName)
+}
+
+# ---------------------------------------------------------------------------
+# Manage gMSA tab
+# ---------------------------------------------------------------------------
+
+# The gMSA currently loaded in the Manage tab. Every change is applied to this
+# account, never to whatever is typed in the fields, and the target is cleared
+# as soon as either field is edited.
+$script:ManageTarget = $null
+
+function Show-ValidationError {
+    param([string]$Message)
+
+    Write-Log -Level 'ERROR' -Message $Message
+    Show-ErrorDialog -Message $Message
+}
+
+function Confirm-Change {
+    param([string]$Message)
+
+    $result = [System.Windows.MessageBox]::Show(
+        $window,
+        $Message,
+        'Confirm Change',
+        [System.Windows.MessageBoxButton]::YesNo,
+        [System.Windows.MessageBoxImage]::Warning
+    )
+    return ($result -eq [System.Windows.MessageBoxResult]::Yes)
+}
+
+function Get-SelectedPrincipalType {
+    if ($ui.PrincipalTypeServerRadio.IsChecked -eq $true) { return 'Server' }
+    if ($ui.PrincipalTypeUserRadio.IsChecked   -eq $true) { return 'ServiceAccount' }
+    if ($ui.PrincipalTypeGroupRadio.IsChecked  -eq $true) { return 'Group' }
+    if ($ui.PrincipalTypeGmsaRadio.IsChecked   -eq $true) { return 'gMSA' }
+    return 'Auto'
+}
+
+function Set-ManageButtonsEnabled {
+    param([bool]$Enabled)
+
+    foreach ($name in 'ManageAddPrincipalButton', 'ManageRemovePrincipalButton', 'ManageAddSpnButton', 'ManageRemoveSpnButton') {
+        $ui[$name].IsEnabled = $Enabled
+    }
+}
+
+function Clear-ManageTarget {
+    $script:ManageTarget = $null
+    $ui.ManagePrincipalsListBox.Items.Clear()
+    $ui.ManageSpnListBox.Items.Clear()
+    $ui.ManageStatusTextBlock.Text = 'No gMSA loaded. Enter the domain and gMSA short name, then select Load gMSA.'
+    Set-ManageButtonsEnabled -Enabled $false
+}
+
+function New-ListEntry {
+    param(
+        [string]$Text,
+        [string]$Value
+    )
+
+    $item = New-Object System.Windows.Controls.ListBoxItem
+    $item.Content = $Text
+    $item.Tag = $Value
+    return $item
+}
+
+function Get-SelectedListValues {
+    param([System.Windows.Controls.ListBox]$ListBox)
+
+    return @($ListBox.SelectedItems | ForEach-Object { [string]$_.Tag })
+}
+
+function Get-SelectedListText {
+    param([System.Windows.Controls.ListBox]$ListBox)
+
+    return (@($ListBox.SelectedItems | ForEach-Object { '  ' + [string]$_.Content }) -join [Environment]::NewLine)
+}
+
+function Import-ManageTarget {
+    param(
+        [string]$Domain,
+        [string]$SamAccountName
+    )
+
+    Ensure-ActiveDirectoryModule
+    Write-Log -Level 'STEP' -Message ("Loading gMSA '{0}' from '{1}'." -f $SamAccountName, $Domain)
+
+    $account = Get-ADServiceAccount -Identity $SamAccountName -Server $Domain `
+                   -Properties PrincipalsAllowedToRetrieveManagedPassword, ServicePrincipalNames -ErrorAction Stop
+    $principals = @($account.PrincipalsAllowedToRetrieveManagedPassword | ForEach-Object { [string]$_ })
+    $spns       = @($account.ServicePrincipalNames | ForEach-Object { [string]$_ } | Sort-Object)
+
+    $ui.ManagePrincipalsListBox.Items.Clear()
+    foreach ($dn in $principals) {
+        $text = Format-PrincipalEntry -DistinguishedName $dn -Domain $Domain
+        [void]$ui.ManagePrincipalsListBox.Items.Add((New-ListEntry -Text $text -Value $dn))
+    }
+
+    $ui.ManageSpnListBox.Items.Clear()
+    foreach ($spn in $spns) {
+        [void]$ui.ManageSpnListBox.Items.Add((New-ListEntry -Text $spn -Value $spn))
+    }
+
+    $script:ManageTarget = [pscustomobject]@{
+        Domain            = $Domain
+        SamAccountName    = $account.SamAccountName
+        DistinguishedName = $account.DistinguishedName
+        Principals        = $principals
+        Spns              = $spns
+    }
+
+    $ui.ManageStatusTextBlock.Text = "Loaded {0}: {1} allowed principal(s), {2} SPN(s). Changes apply to this account only." -f `
+        $account.SamAccountName, $principals.Count, $spns.Count
+    Set-ManageButtonsEnabled -Enabled $true
+    Write-Log -Level 'SUCCESS' -Message ("Loaded '{0}': {1} principal(s), {2} SPN(s)." -f $account.SamAccountName, $principals.Count, $spns.Count)
+}
+
+function Update-ManageTarget {
+    Import-ManageTarget -Domain $script:ManageTarget.Domain -SamAccountName $script:ManageTarget.SamAccountName
+}
+
+# Set-ADServiceAccount replaces the whole allowed list, so add and remove both
+# write the full list back.
+function Set-AllowedPrincipals {
+    param([string[]]$DistinguishedNames)
+
+    $target = $script:ManageTarget
+    Write-Log -Level 'STEP' -Message ("Running: Set-ADServiceAccount -Identity '{0}' -Server '{1}' -PrincipalsAllowedToRetrieveManagedPassword <{2} principal(s)>" -f `
+        $target.SamAccountName, $target.Domain, $DistinguishedNames.Count)
+    Set-ADServiceAccount -Identity $target.SamAccountName -Server $target.Domain `
+        -PrincipalsAllowedToRetrieveManagedPassword $DistinguishedNames -ErrorAction Stop
+}
+
+function Add-ManagePrincipals {
+    $target = $script:ManageTarget
+    $names  = @(Get-MultiLineValues -Text $ui.ManageAddPrincipalTextBox.Text)
+    if ($names.Count -eq 0) {
+        Show-ValidationError -Message 'Enter at least one server, service account, or group to add.'
+        return
+    }
+
+    Ensure-ActiveDirectoryModule
+    $type    = Get-SelectedPrincipalType
+    $updated = New-Object System.Collections.Generic.List[string]
+    foreach ($dn in $target.Principals) { $updated.Add($dn) }
+    $added   = New-Object System.Collections.Generic.List[string]
+
+    foreach ($name in $names) {
+        Write-Log -Level 'STEP' -Message ("Resolving '{0}' as {1} against '{2}'." -f $name, $type, $target.Domain)
+        $object = Resolve-AllowedPrincipal -Name $name -Domain $target.Domain -Type $type
+        if ($updated -contains $object.DistinguishedName) {
+            Write-Log -Level 'INFO' -Message ("'{0}' is already allowed; skipping." -f $name)
+            continue
+        }
+        $updated.Add($object.DistinguishedName)
+        $added.Add(("  {0} ({1})" -f $object.sAMAccountName, $object.ObjectClass))
+    }
+
+    if ($added.Count -eq 0) {
+        Write-Log -Level 'INFO' -Message 'Nothing to add; every entry is already allowed.'
+        Show-ValidationError -Message 'Every entry is already allowed to retrieve the password.'
+        return
+    }
+
+    $message = "Allow these principals to retrieve the password for '{0}'?`n`n{1}" -f $target.SamAccountName, ($added -join "`n")
+    if (-not (Confirm-Change -Message $message)) {
+        Write-Log -Level 'INFO' -Message 'Add principals cancelled by user.'
+        return
+    }
+
+    Set-AllowedPrincipals -DistinguishedNames $updated.ToArray()
+    Write-Log -Level 'SUCCESS' -Message ("Added {0} principal(s) to '{1}'." -f $added.Count, $target.SamAccountName)
+    $ui.ManageAddPrincipalTextBox.Clear()
+    Update-ManageTarget
+}
+
+function Remove-ManagePrincipals {
+    $target   = $script:ManageTarget
+    $selected = @(Get-SelectedListValues -ListBox $ui.ManagePrincipalsListBox)
+    if ($selected.Count -eq 0) {
+        Show-ValidationError -Message 'Select one or more principals to remove.'
+        return
+    }
+
+    $remaining = @($target.Principals | Where-Object { $selected -notcontains $_ })
+    if ($remaining.Count -eq 0) {
+        Show-ValidationError -Message 'At least one principal must stay allowed to retrieve the password. Add the replacement first, then remove this one.'
+        return
+    }
+
+    $message = "Stop these principals from retrieving the password for '{0}'?`n`n{1}`n`nServices using this gMSA on a removed server will fail at their next password refresh." -f `
+        $target.SamAccountName, (Get-SelectedListText -ListBox $ui.ManagePrincipalsListBox)
+    if (-not (Confirm-Change -Message $message)) {
+        Write-Log -Level 'INFO' -Message 'Remove principals cancelled by user.'
+        return
+    }
+
+    Set-AllowedPrincipals -DistinguishedNames $remaining
+    Write-Log -Level 'SUCCESS' -Message ("Removed {0} principal(s) from '{1}'." -f $selected.Count, $target.SamAccountName)
+    Update-ManageTarget
+}
+
+function Add-ManageSpns {
+    $target = $script:ManageTarget
+    $spns   = @(Get-MultiLineValues -Text $ui.ManageAddSpnTextBox.Text)
+    if ($spns.Count -eq 0) {
+        Show-ValidationError -Message 'Enter at least one SPN to add.'
+        return
+    }
+
+    Ensure-ActiveDirectoryModule
+    $toAdd = New-Object System.Collections.Generic.List[string]
+
+    foreach ($spn in $spns) {
+        if ($spn -notmatch '^[^/\s]+/[^/\s]+(/[^/\s]+)?$') {
+            Show-ValidationError -Message ("'{0}' is not a valid SPN. Use service/host[:port], for example MSSQLSvc/sqlserver01a.domain.com:1433." -f $spn)
+            return
+        }
+        if ($target.Spns -contains $spn -or $toAdd -contains $spn) {
+            Write-Log -Level 'INFO' -Message ("SPN '{0}' is already on '{1}'; skipping." -f $spn, $target.SamAccountName)
+            continue
+        }
+
+        # Duplicate SPNs break Kerberos for both accounts, so refuse one that is
+        # already registered on another object in the domain.
+        Write-Log -Level 'STEP' -Message ("Checking '{0}' for duplicate SPN '{1}'." -f $target.Domain, $spn)
+        $escaped = ConvertTo-LdapFilterValue -Value $spn
+        $owners  = @(
+            Get-ADObject -LDAPFilter "(servicePrincipalName=$escaped)" -Server $target.Domain -ErrorAction Stop |
+            Where-Object { $_.DistinguishedName -ne $target.DistinguishedName }
+        )
+        if ($owners.Count -gt 0) {
+            Show-ValidationError -Message ("SPN '{0}' is already registered on:`n`n{1}`n`nRemove it there first; duplicate SPNs break Kerberos authentication." -f `
+                $spn, (($owners | ForEach-Object { '  ' + $_.DistinguishedName }) -join "`n"))
+            return
+        }
+        $toAdd.Add($spn)
+    }
+
+    if ($toAdd.Count -eq 0) {
+        Write-Log -Level 'INFO' -Message 'Nothing to add; every SPN is already on the account.'
+        Show-ValidationError -Message 'Every SPN entered is already on this account.'
+        return
+    }
+
+    $message = "Add these SPNs to '{0}'?`n`n{1}" -f $target.SamAccountName, (($toAdd | ForEach-Object { '  ' + $_ }) -join "`n")
+    if (-not (Confirm-Change -Message $message)) {
+        Write-Log -Level 'INFO' -Message 'Add SPNs cancelled by user.'
+        return
+    }
+
+    Write-Log -Level 'STEP' -Message ("Running: Set-ADServiceAccount -Identity '{0}' -Server '{1}' -ServicePrincipalNames @{{Add='{2}'}}" -f `
+        $target.SamAccountName, $target.Domain, ($toAdd -join "','"))
+    Set-ADServiceAccount -Identity $target.SamAccountName -Server $target.Domain `
+        -ServicePrincipalNames @{ Add = $toAdd.ToArray() } -ErrorAction Stop
+    Write-Log -Level 'SUCCESS' -Message ("Added {0} SPN(s) to '{1}'." -f $toAdd.Count, $target.SamAccountName)
+    $ui.ManageAddSpnTextBox.Clear()
+    Update-ManageTarget
+}
+
+function Remove-ManageSpns {
+    $target   = $script:ManageTarget
+    $selected = @(Get-SelectedListValues -ListBox $ui.ManageSpnListBox)
+    if ($selected.Count -eq 0) {
+        Show-ValidationError -Message 'Select one or more SPNs to remove.'
+        return
+    }
+
+    $message = "Remove these SPNs from '{0}'?`n`n{1}" -f $target.SamAccountName, (Get-SelectedListText -ListBox $ui.ManageSpnListBox)
+    if (-not (Confirm-Change -Message $message)) {
+        Write-Log -Level 'INFO' -Message 'Remove SPNs cancelled by user.'
+        return
+    }
+
+    Write-Log -Level 'STEP' -Message ("Running: Set-ADServiceAccount -Identity '{0}' -Server '{1}' -ServicePrincipalNames @{{Remove='{2}'}}" -f `
+        $target.SamAccountName, $target.Domain, ($selected -join "','"))
+    Set-ADServiceAccount -Identity $target.SamAccountName -Server $target.Domain `
+        -ServicePrincipalNames @{ Remove = $selected } -ErrorAction Stop
+    Write-Log -Level 'SUCCESS' -Message ("Removed {0} SPN(s) from '{1}'." -f $selected.Count, $target.SamAccountName)
+    Update-ManageTarget
+}
+
+# Runs a Manage tab action with the same error handling the other buttons use.
+function Invoke-ManageAction {
+    param(
+        [string]$Context,
+        [scriptblock]$Action
+    )
+
+    try { & $Action }
+    catch {
+        $errorText    = ($_ | Out-String).Trim()
+        $errorMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { $errorText }
+        Write-ErrorLog -Context $Context -FullText $errorText -ShortMessage $errorMessage -ShowDialog
+    }
 }
 
 function Register-DirtyTracking {
@@ -620,6 +1188,10 @@ $ui.ExecuteButton.Add_Click({
         Reset-PreviewState
         Invoke-ManagedPasswordLookup -Silent
 
+        # Pre-fill the Manage tab so SPNs can be added to the new account straight away.
+        $ui.ManageDomainTextBox.Text      = $state.Domain
+        $ui.ManageServiceNameTextBox.Text = $state.ServiceName
+
         [System.Windows.MessageBox]::Show(
             $window,
             'gMSA creation completed successfully. The latest retrieval principals have been loaded into the Lookup panel.',
@@ -684,10 +1256,43 @@ $ui.ServersTextBox.Add_TextChanged({
 })
 Register-DirtyTracking -ToggleControl $ui.DelegationCheckBox
 
+$ui.ManageLoadButton.Add_Click({
+    Invoke-ManageAction -Context 'Load gMSA' -Action {
+        $domain      = $ui.ManageDomainTextBox.Text.Trim()
+        $serviceName = $ui.ManageServiceNameTextBox.Text.Trim().TrimEnd('$')
+        if (-not $domain -or -not $serviceName) {
+            Show-ValidationError -Message 'Domain / AD Server and gMSA Short Name are required to load a gMSA.'
+            return
+        }
+        Clear-ManageTarget
+        Import-ManageTarget -Domain $domain -SamAccountName ('{0}$' -f $serviceName)
+    }
+})
+$ui.ManageAddPrincipalButton.Add_Click({
+    Invoke-ManageAction -Context 'Add principals' -Action { Add-ManagePrincipals }
+})
+$ui.ManageRemovePrincipalButton.Add_Click({
+    Invoke-ManageAction -Context 'Remove principals' -Action { Remove-ManagePrincipals }
+})
+$ui.ManageAddSpnButton.Add_Click({
+    Invoke-ManageAction -Context 'Add SPNs' -Action { Add-ManageSpns }
+})
+$ui.ManageRemoveSpnButton.Add_Click({
+    Invoke-ManageAction -Context 'Remove SPNs' -Action { Remove-ManageSpns }
+})
+$ui.ManageDomainTextBox.Add_TextChanged({
+    try { if ($script:ManageTarget) { Clear-ManageTarget } } catch { Write-Log -Level 'ERROR' -Message ("TextChanged error: {0}" -f $_.Exception.Message) }
+})
+$ui.ManageServiceNameTextBox.Add_TextChanged({
+    try { if ($script:ManageTarget) { Clear-ManageTarget } } catch { Write-Log -Level 'ERROR' -Message ("TextChanged error: {0}" -f $_.Exception.Message) }
+})
+Clear-ManageTarget
+
 $window.Add_SourceInitialized({
     try {
         Write-Log -Level 'INFO' -Message 'gMSA Creation Utility loaded.'
         Write-Log -Level 'INFO' -Message 'Use Preview Command before Execute. Lookup can be run independently at any time.'
+        Write-Log -Level 'INFO' -Message 'Use the Manage gMSA tab to add or remove servers, service accounts, groups, and SPNs on an existing gMSA.'
     } catch { }
 })
 
@@ -698,7 +1303,7 @@ $window.Dispatcher.Add_UnhandledException({
     try {
         $errorText = ($e.Exception | Out-String).Trim()
         Write-Log -Level 'ERROR' -Message ("UNHANDLED DISPATCHER EXCEPTION: {0}" -f $errorText)
-        try { $ui.MainTabControl.SelectedIndex = 1 } catch { }
+        try { $ui.MainTabControl.SelectedItem = $ui.ConsoleLogTab } catch { }
         [System.Windows.MessageBox]::Show(
             "An unexpected error was caught and logged to the Console Log tab.`n`nThe application will remain open.`n`n{0}" -f $e.Exception.Message,
             'gMSA Creation Utility - Unexpected Error',
