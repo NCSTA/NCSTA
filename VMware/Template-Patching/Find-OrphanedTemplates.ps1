@@ -34,10 +34,14 @@
 # =============================================================================
 #  CONFIGURATION
 # =============================================================================
+# Each setting is "Name = value" - no $ in front of the name. A line such as
+# "$VCenters = @(...)" inside this block fails with "A null key is not allowed
+# in a hash literal".
+$Config = $null   # the ISE keeps variables between runs; never reuse an old config
 $Config = @{
     # Wildcard applied to the orphan's name: '*' = everything, '*_unpatch' = patching leftovers only
     NameFilter            = '*'
-    CsvPath               = Join-Path ([Environment]::GetFolderPath('MyDocuments')) "orphaned_templates_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
+    CsvPath               = "$([Environment]::GetFolderPath('MyDocuments'))\orphaned_templates_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
 
     VCenters              = @('VCENTER-01', 'VCENTER-02', 'VCENTER-03', 'VCENTER-04')
     VCenterCredentialPath = 'C:\temp\credstore\ps.xml'
@@ -45,6 +49,14 @@ $Config = @{
     # Datastore folders that never hold orphaned VMs
     ExcludeFolderPatterns = @('.sdd.sf*', '.vSphere-HA*', '.dvsData*', '.naa.*', 'contentlib-*', 'vmkdump*', '.locker*')
 }
+
+# Stop here if the block above has a mistake, instead of failing later with
+# unrelated-looking errors.
+if ($null -eq $Config) {
+    throw 'The CONFIGURATION block did not load - see the first red error above. Settings must be written "Name = value" (no $ before the name).'
+}
+$missing = @('VCenters', 'VCenterCredentialPath', 'CsvPath' | Where-Object { -not $Config[$_] })
+if ($missing) { throw "CONFIGURATION is missing a value for: $($missing -join ', ')" }
 
 # =============================================================================
 #  HELPERS
