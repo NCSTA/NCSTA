@@ -1,3 +1,11 @@
+param(
+    # Run every AD command as this account instead of the signed-in user.
+    # Can also be set or changed from the window with "Use admin credentials".
+    [System.Management.Automation.PSCredential]
+    [System.Management.Automation.Credential()]
+    $Credential = [System.Management.Automation.PSCredential]::Empty
+)
+
 Add-Type -AssemblyName PresentationCore, PresentationFramework, WindowsBase, System.Xaml
 
 Set-StrictMode -Version Latest
@@ -241,7 +249,11 @@ $ProgressPreference = 'SilentlyContinue'
         </Style>
     </Window.Resources>
     <Grid Margin="18">
-        <TabControl Name="MainTabControl">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TabControl Name="MainTabControl" Grid.Row="0">
 
             <!-- Create gMSA: 1 details, 2 review, 3 create -->
             <TabItem Header="Create gMSA">
@@ -616,6 +628,36 @@ $ProgressPreference = 'SilentlyContinue'
                 </Grid>
             </TabItem>
         </TabControl>
+
+        <!-- Credentials button and status light, as in the Server QA Checker.
+             Sits in the empty space to the right of the tab headers. -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+            <Button Name="CredentialButton"
+                    Style="{StaticResource SecondaryButton}"
+                    Content="Credentials"
+                    Padding="12,5"
+                    ToolTip="Left-click: set alternate credentials. Right-click: clear." />
+            <Ellipse Name="CredentialStatusLight"
+                     Width="12"
+                     Height="12"
+                     Margin="10,0,0,0"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Status bar, as in the BlueCat DNS Manager -->
+        <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1" CornerRadius="6" Padding="12,6" Margin="0,12,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Name="StatusText" Grid.Column="0" FontSize="12" VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedTextBrush}" />
+                <TextBlock Name="UserText" Grid.Column="1" FontSize="12" VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedTextBrush}" />
+            </Grid>
+        </Border>
     </Grid>
 </Window>
 "@
@@ -664,7 +706,11 @@ $controlNames = @(
     'ManageAddSpnTextBox',
     'ManageAddSpnButton',
     'LogTextBox',
-    'ClearLogButton'
+    'ClearLogButton',
+    'CredentialButton',
+    'CredentialStatusLight',
+    'StatusText',
+    'UserText'
 )
 
 $ui = @{}
@@ -778,6 +824,98 @@ function Invoke-UiAction {
     }
 }
 
+# ---------------------------------------------------------------------------
+# Credentials
+# ---------------------------------------------------------------------------
+
+$script:CurrentUserName = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$script:AdCredential    = $null
+# Splatted into every AD cmdlet call, as in the Server QA Checker:
+# empty runs as the signed-in user, @{ Credential = ... } runs as the alternate account.
+$script:CredentialSplat = @{}
+
+function New-Brush {
+    param([string]$Color)
+    [System.Windows.Media.BrushConverter]::new().ConvertFromString($Color)
+}
+
+function Set-Status {
+    param([string]$Message, [string]$Color = '#AEB7C4')
+    $ui.StatusText.Text = $Message
+    $ui.StatusText.Foreground = New-Brush $Color
+}
+
+# Status light: grey = signed-in user, amber = alternate credentials not yet
+# checked against a domain, green = alternate credentials verified.
+function Set-AdCredential {
+    param(
+        [System.Management.Automation.PSCredential]$Credential,
+        [switch]$Verified
+    )
+
+    # A review was checked under the previous account, so it no longer counts.
+    Reset-PreviewState
+
+    $button = $ui.CredentialButton
+    if ($Credential -and $Credential -ne [System.Management.Automation.PSCredential]::Empty) {
+        $script:AdCredential    = $Credential
+        $script:CredentialSplat = @{ Credential = $Credential }
+        $button.Content     = $Credential.UserName
+        $button.Background  = New-Brush '#F0B429'
+        $button.Foreground  = New-Brush '#18212B'
+        $button.BorderBrush = New-Brush '#F0B429'
+        $ui.UserText.Text   = 'User: {0} (alternate credentials)' -f $Credential.UserName
+        $window.Title       = '{0} - {1}' -f $script:AppTitle, $Credential.UserName
+        if ($Verified) {
+            $ui.CredentialStatusLight.Fill = New-Brush '#3FB950'
+        } else {
+            $ui.CredentialStatusLight.Fill = New-Brush '#F0B429'
+            Set-Status ('Using {0}. The credentials are checked on the first AD command.' -f $Credential.UserName) '#F0B429'
+        }
+        Write-Log -Level 'INFO' -Message ('AD commands now run as {0}.' -f $Credential.UserName)
+    } else {
+        $script:AdCredential    = $null
+        $script:CredentialSplat = @{}
+        $button.Content = 'Credentials'
+        foreach ($property in [System.Windows.Controls.Control]::BackgroundProperty,
+                              [System.Windows.Controls.Control]::ForegroundProperty,
+                              [System.Windows.Controls.Control]::BorderBrushProperty) {
+            $button.ClearValue($property)
+        }
+        $ui.CredentialStatusLight.Fill = New-Brush '#6C7086'
+        $ui.UserText.Text = 'User: {0}' -f $script:CurrentUserName
+        $window.Title     = $script:AppTitle
+        Set-Status 'Using the signed-in account.'
+        Write-Log -Level 'INFO' -Message ('AD commands now run as {0} (signed-in user).' -f $script:CurrentUserName)
+    }
+}
+
+function Request-AdCredential {
+    $credential = Get-Credential -Message 'Enter alternate credentials for Active Directory (DOMAIN\user or user@domain)'
+    if (-not $credential) { return }
+
+    # Check the account against whichever domain is already filled in, so a
+    # mistyped password shows up now rather than halfway through a change.
+    $domain = @($ui.ManageDomainTextBox.Text.Trim(), $ui.DomainTextBox.Text.Trim()) | Where-Object { $_ } | Select-Object -First 1
+    if (-not $domain) {
+        Set-AdCredential -Credential $credential
+        return
+    }
+
+    Ensure-ActiveDirectoryModule
+    Set-Status ("Checking {0} against {1}..." -f $credential.UserName, $domain) '#F0B429'
+    Write-Log -Level 'STEP' -Message ("Checking credentials for {0} against '{1}'." -f $credential.UserName, $domain)
+    try {
+        Get-ADDomain -Server $domain -Credential $credential -ErrorAction Stop | Out-Null
+    }
+    catch {
+        Set-Status ('Credential check failed for {0}.' -f $credential.UserName) '#D9534F'
+        throw
+    }
+    Set-AdCredential -Credential $credential -Verified
+    Set-Status ('Credentials verified against {0}.' -f $domain) '#3FB950'
+}
+
 function Ensure-ActiveDirectoryModule {
     if (-not (Get-Module -Name ActiveDirectory)) {
         Import-Module ActiveDirectory -ErrorAction Stop
@@ -824,24 +962,24 @@ function Resolve-AllowedPrincipal {
     )
 
     switch ($Type) {
-        'Server'         { return Get-ADComputer       -Identity $Name -Server $Domain -ErrorAction Stop }
-        'ServiceAccount' { return Get-ADUser           -Identity $Name -Server $Domain -ErrorAction Stop }
-        'Group'          { return Get-ADGroup          -Identity $Name -Server $Domain -ErrorAction Stop }
-        'gMSA'           { return Get-ADServiceAccount -Identity $Name -Server $Domain -ErrorAction Stop }
+        'Server'         { return Get-ADComputer       -Identity $Name -Server $Domain @script:CredentialSplat -ErrorAction Stop }
+        'ServiceAccount' { return Get-ADUser           -Identity $Name -Server $Domain @script:CredentialSplat -ErrorAction Stop }
+        'Group'          { return Get-ADGroup          -Identity $Name -Server $Domain @script:CredentialSplat -ErrorAction Stop }
+        'gMSA'           { return Get-ADServiceAccount -Identity $Name -Server $Domain @script:CredentialSplat -ErrorAction Stop }
     }
 
     $properties = @('sAMAccountName', 'objectClass')
 
     if ($Name -match '=.+,') {
-        return Get-ADObject -Identity $Name -Server $Domain -Properties $properties -ErrorAction Stop
+        return Get-ADObject -Identity $Name -Server $Domain -Properties $properties @script:CredentialSplat -ErrorAction Stop
     }
 
     $escaped = ConvertTo-LdapFilterValue -Value $Name
-    $found = @(Get-ADObject -LDAPFilter "(sAMAccountName=$escaped)" -Server $Domain -Properties $properties -ErrorAction Stop)
+    $found = @(Get-ADObject -LDAPFilter "(sAMAccountName=$escaped)" -Server $Domain -Properties $properties @script:CredentialSplat -ErrorAction Stop)
 
     # Computer accounts carry a trailing $, so fall back to that when the bare name has no match.
     if ($found.Count -eq 0 -and -not $Name.EndsWith('$')) {
-        $found = @(Get-ADObject -LDAPFilter "(sAMAccountName=$escaped`$)" -Server $Domain -Properties $properties -ErrorAction Stop)
+        $found = @(Get-ADObject -LDAPFilter "(sAMAccountName=$escaped`$)" -Server $Domain -Properties $properties @script:CredentialSplat -ErrorAction Stop)
     }
 
     if ($found.Count -eq 0) {
@@ -884,7 +1022,7 @@ function Get-PrincipalRow {
     )
 
     try {
-        $object = Get-ADObject -Identity $DistinguishedName -Server $Domain -Properties sAMAccountName, objectClass -ErrorAction Stop
+        $object = Get-ADObject -Identity $DistinguishedName -Server $Domain -Properties sAMAccountName, objectClass @script:CredentialSplat -ErrorAction Stop
         return New-PrincipalRow -Object $object
     }
     catch {
@@ -985,11 +1123,19 @@ function Format-Preview {
 
     $principalLines = ($PrincipalDns | ForEach-Object { "    '{0}'" -f ($_ -replace "'", "''") }) -join ",`r`n"
 
+    # With alternate credentials active, every command carries -Credential.
+    $credentialLine = ''
+    $credentialArg  = ''
+    if ($script:AdCredential) {
+        $credentialLine = "`r`n`$credential     = Get-Credential '{0}'" -f $script:AdCredential.UserName
+        $credentialArg  = ' -Credential $credential'
+    }
+
     $delegationBlock = if ($InputState.EnableDelegation) {
 @"
 
-`$msa = Get-ADServiceAccount -Identity '$($InputState.SamAccountName)' -Server `$domain
-Set-ADAccountControl -Identity `$msa -TrustedForDelegation `$true -TrustedToAuthForDelegation `$false -Server `$domain
+`$msa = Get-ADServiceAccount -Identity '$($InputState.SamAccountName)' -Server `$domain$credentialArg
+Set-ADAccountControl -Identity `$msa -TrustedForDelegation `$true -TrustedToAuthForDelegation `$false -Server `$domain$credentialArg
 "@
     } else {
         @"
@@ -1003,7 +1149,7 @@ Set-ADAccountControl -Identity `$msa -TrustedForDelegation `$true -TrustedToAuth
 `$domain         = '$($InputState.Domain)'
 `$serviceName    = '$($InputState.ServiceName)'
 `$samAccountName = '$($InputState.SamAccountName)'
-`$dnsHostName    = '$($InputState.DnsHostName)'
+`$dnsHostName    = '$($InputState.DnsHostName)'$credentialLine
 `$principalDns = @(
 $principalLines
 )
@@ -1012,7 +1158,7 @@ New-ADServiceAccount -Name `$serviceName ``
     -DNSHostName `$dnsHostName ``
     -SamAccountName `$samAccountName ``
     -PrincipalsAllowedToRetrieveManagedPassword `$principalDns ``
-    -Server `$domain
+    -Server `$domain$credentialArg
 $delegationBlock
 "@
 }
@@ -1032,7 +1178,7 @@ function Invoke-Review {
     Write-Log -Level 'STEP' -Message ("Reviewing gMSA '{0}' in '{1}'." -f $state.SamAccountName, $state.Domain)
 
     $escapedSam = ConvertTo-LdapFilterValue -Value $state.SamAccountName
-    $existing = @(Get-ADObject -LDAPFilter "(sAMAccountName=$escapedSam)" -Server $state.Domain -ErrorAction Stop)
+    $existing = @(Get-ADObject -LDAPFilter "(sAMAccountName=$escapedSam)" -Server $state.Domain @script:CredentialSplat -ErrorAction Stop)
     if ($existing.Count -gt 0) {
         $ui.CreateStatusText.Text = 'Fill in the account details, then select Review.'
         Show-ValidationError -Message ("An account named '{0}' already exists in '{1}':`n`n{2}`n`nUse the Manage gMSA tab to change it." -f `
@@ -1096,14 +1242,14 @@ function Invoke-CreateGmsa {
         Server                                     = $InputState.Domain
         ErrorAction                                = 'Stop'
     }
-    New-ADServiceAccount @newParams
+    New-ADServiceAccount @newParams @script:CredentialSplat
 
     if ($InputState.EnableDelegation) {
         Write-Log -Level 'STEP' -Message ("Enabling unconstrained delegation for '{0}'." -f $InputState.ServiceName)
         # Retrieve the created account, then use -Identity (not pipeline) for Set-ADAccountControl
-        $msa = Get-ADServiceAccount -Identity $InputState.SamAccountName -Server $InputState.Domain -ErrorAction Stop
+        $msa = Get-ADServiceAccount -Identity $InputState.SamAccountName -Server $InputState.Domain @script:CredentialSplat -ErrorAction Stop
         Set-ADAccountControl -Identity $msa -TrustedForDelegation $true -TrustedToAuthForDelegation $false `
-            -Server $InputState.Domain -ErrorAction Stop
+            -Server $InputState.Domain @script:CredentialSplat -ErrorAction Stop
     }
 
     Write-Log -Level 'SUCCESS' -Message ("gMSA '{0}' created successfully." -f $InputState.ServiceName)
@@ -1223,7 +1369,7 @@ function Import-ManageTarget {
     Write-Log -Level 'STEP' -Message ("Loading gMSA '{0}' from '{1}'." -f $SamAccountName, $Domain)
 
     $account = Get-ADServiceAccount -Identity $SamAccountName -Server $Domain `
-                   -Properties PrincipalsAllowedToRetrieveManagedPassword, ServicePrincipalNames -ErrorAction Stop
+                   -Properties PrincipalsAllowedToRetrieveManagedPassword, ServicePrincipalNames @script:CredentialSplat -ErrorAction Stop
     $principals = @($account.PrincipalsAllowedToRetrieveManagedPassword | ForEach-Object { [string]$_ })
     $spns       = @($account.ServicePrincipalNames | ForEach-Object { [string]$_ } | Sort-Object)
 
@@ -1261,7 +1407,7 @@ function Set-AllowedPrincipals {
     Write-Log -Level 'STEP' -Message ("Running: Set-ADServiceAccount -Identity '{0}' -Server '{1}' -PrincipalsAllowedToRetrieveManagedPassword <{2} principal(s)>" -f `
         $target.SamAccountName, $target.Domain, $DistinguishedNames.Count)
     Set-ADServiceAccount -Identity $target.SamAccountName -Server $target.Domain `
-        -PrincipalsAllowedToRetrieveManagedPassword $DistinguishedNames -ErrorAction Stop
+        -PrincipalsAllowedToRetrieveManagedPassword $DistinguishedNames @script:CredentialSplat -ErrorAction Stop
 }
 
 function Add-ManagePrincipals {
@@ -1364,7 +1510,7 @@ function Add-ManageSpns {
         Write-Log -Level 'STEP' -Message ("Checking '{0}' for duplicate SPN '{1}'." -f $target.Domain, $spn)
         $escaped = ConvertTo-LdapFilterValue -Value $spn
         $owners  = @(
-            Get-ADObject -LDAPFilter "(servicePrincipalName=$escaped)" -Server $target.Domain -ErrorAction Stop |
+            Get-ADObject -LDAPFilter "(servicePrincipalName=$escaped)" -Server $target.Domain @script:CredentialSplat -ErrorAction Stop |
             Where-Object { $_.DistinguishedName -ne $target.DistinguishedName }
         )
         if ($owners.Count -gt 0) {
@@ -1387,10 +1533,13 @@ function Add-ManageSpns {
         return
     }
 
+    # The AD module only accepts the hashtable's values as a string or an object[]
+    # of strings; a typed string[] (List.ToArray()) is rejected with "Values in the
+    # argument collection should be of type System.String", so pass @() instead.
     Write-Log -Level 'STEP' -Message ("Running: Set-ADServiceAccount -Identity '{0}' -Server '{1}' -ServicePrincipalNames @{{Add='{2}'}}" -f `
         $target.SamAccountName, $target.Domain, ($toAdd -join "','"))
     Set-ADServiceAccount -Identity $target.SamAccountName -Server $target.Domain `
-        -ServicePrincipalNames @{ Add = $toAdd.ToArray() } -ErrorAction Stop
+        -ServicePrincipalNames @{ Add = @($toAdd) } @script:CredentialSplat -ErrorAction Stop
     Write-Log -Level 'SUCCESS' -Message ("Added {0} SPN(s) to '{1}'." -f $toAdd.Count, $target.SamAccountName)
     $ui.ManageAddSpnTextBox.Clear()
     Update-ManageTarget
@@ -1413,7 +1562,7 @@ function Remove-ManageSpns {
     Write-Log -Level 'STEP' -Message ("Running: Set-ADServiceAccount -Identity '{0}' -Server '{1}' -ServicePrincipalNames @{{Remove='{2}'}}" -f `
         $target.SamAccountName, $target.Domain, ($selected -join "','"))
     Set-ADServiceAccount -Identity $target.SamAccountName -Server $target.Domain `
-        -ServicePrincipalNames @{ Remove = $selected } -ErrorAction Stop
+        -ServicePrincipalNames @{ Remove = $selected } @script:CredentialSplat -ErrorAction Stop
     Write-Log -Level 'SUCCESS' -Message ("Removed {0} SPN(s) from '{1}'." -f $selected.Count, $target.SamAccountName)
     Update-ManageTarget
 }
@@ -1497,6 +1646,13 @@ foreach ($textBox in $ui.ManageDomainTextBox, $ui.ManageServiceNameTextBox) {
     })
 }
 
+$ui.CredentialButton.Add_Click({
+    Invoke-UiAction -Context 'Set credentials' -Action { Request-AdCredential }
+})
+$ui.CredentialButton.Add_MouseRightButtonUp({
+    Invoke-UiAction -Context 'Clear credentials' -Action { Set-AdCredential -Credential $null }
+})
+
 $ui.ClearLogButton.Add_Click({
     try {
         $ui.LogTextBox.Clear()
@@ -1506,6 +1662,7 @@ $ui.ClearLogButton.Add_Click({
 
 Reset-PreviewState
 Clear-ManageTarget
+Set-AdCredential -Credential $Credential
 
 $window.Add_SourceInitialized({
     try {
