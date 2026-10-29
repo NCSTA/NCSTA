@@ -15,6 +15,38 @@ WPF GUI for creating group Managed Service Accounts (gMSA), and for maintaining 
 .\gMSA-Creation-GUI.ps1
 ```
 
+### Running with admin credentials
+
+By default, AD commands run as the signed-in user. Alternate credentials work the same way as in the Server QA Checker.
+
+**Credentials button** (top-right corner)
+
+- **Left-click** prompts for an account. If a domain is already filled in, the account is checked against it straight away.
+- **Right-click** clears the alternate account and goes back to the signed-in user.
+- While alternate credentials are set, the button shows the username in amber. The window title and the status bar (`User: ...`) show it too.
+
+Every AD command uses the alternate account, including the PowerShell shown under **Show PowerShell**. Changing the account clears any finished review.
+
+The status light next to the button shows which account is in use:
+
+| Light | Meaning |
+|---|---|
+| Grey | Signed-in user |
+| Amber | Alternate credentials set, not checked yet (no domain was filled in) |
+| Green | Alternate credentials verified against the domain |
+
+**Launch options**
+
+| Option | How |
+|---|---|
+| Pass credentials at launch | `.\gMSA-Creation-GUI.ps1 -Credential DOMAIN\admin` prompts for that account's password |
+| Run the whole tool as another user | `.\Launch-gMSA-GUI-RunAs.ps1 -Username DOMAIN\admin` |
+| Same, from a workstation not joined to the domain | `.\Launch-gMSA-GUI-RunAs.ps1 -Username DOMAIN\admin -NetOnly` |
+
+`-NetOnly` uses `runas /netonly`, so the account is used only for network access such as AD. The status bar still shows your local user name, because that's the local identity.
+
+Credentials are held in memory only for the session. They are never written to disk or to the Console Log.
+
 ### Create gMSA tab
 
 The tab walks through three steps.
