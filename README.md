@@ -1,6 +1,6 @@
 # NCSTA
 
-PowerShell tooling for Windows infrastructure administration, organized by area. Each project folder has its own README covering requirements, usage and output.
+PowerShell tooling and Splunk searches for Windows infrastructure administration, organized by area. Each project folder has its own README covering requirements, usage and output.
 
 ## Categories
 
@@ -10,6 +10,7 @@ PowerShell tooling for Windows infrastructure administration, organized by area.
 | [Compliance](Compliance/README.md) | Auditing, hardening and vulnerability-scan tooling |
 | [DNS](DNS/README.md) | DNS management |
 | [Hypervisor](Hypervisor/README.md) | Hyper-V, SCVMM and VMware to Hyper-V migration |
+| [Splunk](Splunk/README.md) | Template Splunk searches |
 | [Tools](Tools/README.md) | General server and file share administration |
 | [VMware](VMware/README.md) | vSphere inventory, templates and VM maintenance |
 
@@ -29,6 +30,7 @@ PowerShell tooling for Windows infrastructure administration, organized by area.
 
 | Project | Description |
 |---|---|
+| [Certificate-Metadata](Compliance/Certificate-Metadata/README.md) | Collects per-certificate PKI metadata from Windows servers over WinRM |
 | [Crypto-Inventory](Compliance/Crypto-Inventory/README.md) | Remotely collects cryptographic posture data from Windows servers |
 | [Nessus-Merge](Compliance/Nessus-Merge/README.md) | Merges Nessus scan exports into master workbooks per zone and role |
 | [Resolve-SID](Compliance/Resolve-SID/README.md) | Tells orphaned SIDs apart from SIDs of unreachable domains |
@@ -50,6 +52,12 @@ PowerShell tooling for Windows infrastructure administration, organized by area.
 | [ESXi-to-HyperV](Hypervisor/ESXi-to-HyperV/README.md) | Carries a VM's network identity across an ESXi to Hyper-V migration |
 | [SCVMM-V2V-HighAvailability](Hypervisor/SCVMM-V2V-HighAvailability/README.md) | SCVMM V2V conversion of a single VM with high availability |
 
+### Splunk
+
+| Project | Description |
+|---|---|
+| [LDAP-DC-Failures](Splunk/LDAP-DC-Failures/README.md) | LDAP bind, signing, channel binding and LDAPS TLS failures on DCs |
+
 ### Tools
 
 | Project | Description |
@@ -65,9 +73,3 @@ PowerShell tooling for Windows infrastructure administration, organized by area.
 | [Template-Patching](VMware/Template-Patching/README.md) | Monthly template patch cycle and orphaned template scan |
 | [VM-Hardware-Tools-Upgrade](VMware/VM-Hardware-Tools-Upgrade/README.md) | VM hardware version staging and VMware Tools reporting |
 | [VM-Location-Report](VMware/VM-Location-Report/README.md) | Report of Windows Server VM placement and host core counts |
-
-## Conventions
-
-- Every project lives in exactly one category folder and has a `README.md`.
-- Folder names use `Pascal-Case-With-Hyphens`.
-- Hostnames, domains, IP addresses and credentials in this repository are placeholders. Replace them with your own values before running a script.

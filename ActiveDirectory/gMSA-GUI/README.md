@@ -1,6 +1,6 @@
-# gMSA Creation Utility
+# gMSA Management Utility
 
-WPF GUI for creating group Managed Service Accounts (gMSA) and checking which servers are allowed to retrieve a gMSA's password.
+WPF GUI for creating group Managed Service Accounts (gMSA), and for maintaining existing ones: which servers, service accounts, and groups may retrieve the password, and which SPNs are registered on the account.
 
 ## Requirements
 
@@ -17,28 +17,53 @@ WPF GUI for creating group Managed Service Accounts (gMSA) and checking which se
 
 ### Create gMSA tab
 
+The tab walks through three steps.
+
+**1 · Account details**
+
 | Input | Purpose |
 |---|---|
-| Domain / AD Server | Domain the account is created in |
-| gMSA Short Name | Account name without the trailing `$` |
-| Allowed Servers | One computer name per line; these become the principals allowed to retrieve the managed password |
-| Enable unconstrained delegation | Optional; sets `TrustedForDelegation` on the account after creation |
+| Domain | Domain the account is created in, or a specific domain controller |
+| gMSA name | Account name without the trailing `$`, up to 15 characters |
+| Allowed principals | One per line: a server, service account, group, or gMSA, by name or distinguished name. These may retrieve the managed password |
+| Advanced options | Optional unconstrained delegation (`TrustedForDelegation`), hidden by default and shown with a warning |
 
-1. Fill in the inputs and select **Preview Command** to see the exact PowerShell that will run.
-2. Select **Execute** to create the account. Execute stays disabled until a preview has been generated.
-3. **Reset Form** clears the inputs.
+**2 · Review** checks the details against Active Directory without changing anything:
 
-The DNS host name is built as `<short name>.<domain>`.
+- Refuses a name that already exists in the domain.
+- Resolves every allowed principal and lists it with its type.
+- **Show PowerShell** shows the exact commands Create will run.
 
-### Managed Password Retrieval Lookup
+**3 · Create** is enabled only after a review of the current details. Editing any field means reviewing again. After a successful create, the new account opens in the Manage gMSA tab so SPNs can be added straight away.
 
-Select **Run Lookup** to list the `PrincipalsAllowedToRetrieveManagedPassword` of an existing gMSA. The lookup uses the domain and gMSA short name entered in the inputs above.
+The DNS host name is built as `<gMSA name>.<domain>`.
+
+### Manage gMSA tab
+
+For day-to-day changes to an existing gMSA.
+
+1. Enter the domain and gMSA name, then select **Load gMSA**. The two tables show the current allowed principals and SPNs.
+2. **Allowed principals**
+   - To add: pick the object type (**Auto-detect**, **Server**, **Service Account**, **Group**, or **gMSA**), enter one name per line, and select **Add principals**.
+   - To remove: select rows (Ctrl+click or Shift+click for several) and select **Remove selected**.
+3. **SPNs**
+   - To add: enter one SPN per line in the form `service/host[:port]` (for example `MSSQLSvc/sqlserver01a.domain.com:1433`) and select **Add SPNs**.
+   - To remove: select rows and select **Remove selected**.
+
+Every change asks for confirmation first and then reloads the tables. Changes always apply to the loaded account. Editing either field unloads it, so a typo can't redirect a change to another account.
+
+Safeguards:
+
+- An SPN already registered on another object in the domain is refused, since duplicate SPNs break Kerberos.
+- The last allowed principal can't be removed. Add its replacement first.
 
 ### Console Log tab
 
-Shows a timestamped log of every action and the full text of any error.
+Shows a timestamped log of every action, the commands that ran, and the full text of any error.
 
 ## Notes
 
-- Each server in the allowed list must already exist as a computer object in the domain.
+- Each allowed principal must already exist in the domain. **Auto-detect** matches an exact account name first, then a computer with that name. If a service account and a server share a name, pick the type explicitly or use the distinguished name.
+- The duplicate SPN check covers the gMSA's own domain only, not other domains in the forest.
+- Managing SPNs needs write access to `servicePrincipalName` on the gMSA (Domain Admins, or delegated rights).
 - Installing the account on the member servers (`Install-ADServiceAccount`) is a separate step and is not done by this tool.

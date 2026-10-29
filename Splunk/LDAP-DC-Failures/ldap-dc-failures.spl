@@ -1,0 +1,86 @@
+``` =====================================================================
+    LDAP failures on domain controllers
+    Finds: bind/connection errors, rejected or insecure binds, channel
+    binding failures, and LDAPS TLS handshake failures.
+
+    PREREQUISITES
+    1. LDAP diagnostic logging on every DC. Without it, 1216/2889/3039
+       never fire and you only get daily summaries with no client IPs.
+         HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Diagnostics
+         16 LDAP Interface Events = 2 (DWORD)
+    2. Directory Service log forwarded from the DCs (UF inputs.conf):
+         [WinEventLog://Directory Service]
+         disabled = 0
+    3. Classic WinEventLog rendering (Message field). With XmlWinEventLog,
+       these NTDS events store their data in unnamed Data elements, so the
+       rex extractions below need rewriting.
+
+    EVENT REFERENCE
+    1216         LDAP connection closed on error (per client, IP + error)
+    2887         Daily count of unsigned or cleartext binds
+    2888         Daily count of binds rejected because signing is required
+    2889         Per-client unsigned SASL bind (type 0) or cleartext
+                 simple bind (type 1)
+    3039         Per-client channel binding token failure (LDAPS)
+    3040, 3041   Daily channel binding summaries
+    36874, 36887, 36888
+                 Schannel TLS handshake failures. No client IP is logged,
+                 so correlate by time with 1216 or firewall logs.
+    The summary events fire once per DC per day. Per-client detail comes
+    from 1216, 2889 and 3039.
+
+    COMMON 1216 ERROR VALUES
+    8009030C     Logon failure (bad credentials)
+    80090346     Bad channel bindings (appears once CBT enforcement is on)
+    ===================================================================== ```
+
+index=wineventlog
+
+``` SCOPE: keep exactly one of Option A or Option B active.
+
+    Option A (active): every DC whose host value contains the domain or
+    naming pattern. The tstats subsearch returns only hosts that send
+    Directory Service logs, which means real DCs, so Schannel noise from
+    member servers stays out. Change contoso here to target another domain. ```
+[| tstats count where index=wineventlog source="WinEventLog:Directory Service" host="*contoso*" by host | fields host]
+
+``` Option B: explicit list of DCs. Wildcards work, e.g. contosodc*.
+    To use it, comment out Option A and remove the backticks below. ```
+```host IN (dc01, dc02, dc03)```
+
+``` Events of interest. The Directory Service log only exists on DCs.
+    Schannel events are in the System log on every server, which is why
+    the scope above limits results to DCs. ```
+((source="WinEventLog:Directory Service" EventCode IN (1216,2887,2888,2889,3039,3040,3041))
+ OR (source="WinEventLog:System" SourceName="Schannel" EventCode IN (36874,36887,36888)))
+
+``` Option C: use when host values are short names without the domain in
+    them. Comment out Option A, then remove the backticks on the next line.
+    This is slower, and member-server Schannel events get through unless
+    you also use Option B. ```
+```| search ComputerName="*.contoso.*"```
+
+``` Extract client details from the event message. ```
+| rex field=Message "Client IP(?: address)?:\s+(?<client_ip>\d{1,3}(?:\.\d{1,3}){3})"
+| rex field=Message "authenticate as:\s+(?<identity>\S+)"
+| rex field=Message "Binding Type:\s+(?<bind_type>\d)"
+| rex field=Message "Error value:\s+(?<ldap_error>[^\r\n]+)"
+
+``` Give each event a readable failure type. ```
+| eval failure=case(
+    EventCode=1216, "Bind/connection failed",
+    EventCode=2888, "Rejected insecure binds (summary)",
+    EventCode=2889 AND bind_type=0, "Unsigned SASL bind",
+    EventCode=2889 AND bind_type=1, "Cleartext simple bind",
+    EventCode=3039, "Channel binding failure",
+    in(EventCode,"2887","3040","3041"), "Insecure bind summary",
+    SourceName="Schannel", "LDAPS TLS handshake failure")
+
+``` stats drops rows with a null by-field. Without fillnull, the summary
+    and Schannel events (no IP or identity) would disappear. ```
+| fillnull value="-" client_ip identity ldap_error
+
+| stats count min(_time) as first_seen max(_time) as last_seen
+        values(host) as dcs by failure client_ip identity ldap_error
+| convert ctime(first_seen) ctime(last_seen)
+| sort - count
