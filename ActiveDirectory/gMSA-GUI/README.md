@@ -35,15 +35,7 @@ The status light next to the button shows which account is in use:
 | Amber | Alternate credentials set, not checked yet (no domain was filled in) |
 | Green | Alternate credentials verified against the domain |
 
-**Launch options**
-
-| Option | How |
-|---|---|
-| Pass credentials at launch | `.\gMSA-Creation-GUI.ps1 -Credential DOMAIN\admin` prompts for that account's password |
-| Run the whole tool as another user | `.\Launch-gMSA-GUI-RunAs.ps1 -Username DOMAIN\admin` |
-| Same, from a workstation not joined to the domain | `.\Launch-gMSA-GUI-RunAs.ps1 -Username DOMAIN\admin -NetOnly` |
-
-`-NetOnly` uses `runas /netonly`, so the account is used only for network access such as AD. The status bar still shows your local user name, because that's the local identity.
+To start with credentials already set, run `.\gMSA-Creation-GUI.ps1 -Credential DOMAIN\admin`, which prompts for that account's password.
 
 Credentials are held in memory only for the session. They are never written to disk or to the Console Log.
 
