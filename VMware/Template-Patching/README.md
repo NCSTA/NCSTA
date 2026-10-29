@@ -22,16 +22,38 @@ Settings in the CONFIGURATION block are written `Name = value`, without a `$` in
 For each template listed in the templates CSV:
 
 1. Clones `<name>` to `<name>_patching` and waits for the clone task.
-2. Converts the clone to a VM, powers it on, records an Appx baseline and copies this month's patches in.
-3. Registers the `LoopingPatch` scheduled task and reboots the guest.
-4. Waits for the patch cycle to finish. The guest powers itself off when done.
-5. Powers on, shows the latest hotfixes, runs the Appx sysprep check and pauses for operator review.
-6. Shuts down, stamps the notes and promotes:
+2. Converts the clone to a VM, powers it on, records an Appx baseline, and copies this month's patches and the guest patch-cycle script in.
+3. Registers the patch-cycle scheduled task and reboots the guest.
+4. Waits for the patch cycle to finish. The guest always powers itself off when done.
+5. Powers on, checks the patch-cycle status, shows the latest hotfixes, runs the Appx sysprep check and pauses for operator review.
+6. Seals the guest (SCCM client cleanup) and shuts it down, stamps the notes and promotes:
    - `<name>_unpatch` is removed (last month's rollback)
    - `<name>` becomes `<name>_unpatch`
    - `<name>_patching` becomes `<name>`
 
 Each template is tracked independently. A template that fails any step is skipped for the rest of the run and is never promoted, so its production template and rollback copy are left untouched. A summary table is printed at the end, and `$jobs` stays in the session for inspection.
+
+### Guest patch cycle
+
+The script that runs inside the guest is embedded in `Invoke-TemplatePatching.ps1` and copied into each VM on every run, so nothing has to be kept on the templates. It replaces the old `LoopingPatch.ps1`, `logoff.ps1` and `TriggerLoopingPatch.ps1`.
+
+It runs at each boot as SYSTEM from the `TemplatePatchCycle` scheduled task and:
+
+- Installs only `.cab` and `.msu` files from `C:\temp\Patches`, smallest first, and restarts only when a package needs it.
+- Skips packages that are not applicable (superseded or for another OS).
+- Stops retrying a package after `GuestPatchMaxAttempts` failures and moves it to a `Failed` folder, so a bad package cannot cause a reboot loop.
+- Writes its progress to `C:\temp\PatchCycle\status.json` and `patchcycle.log`.
+- Always ends with a forced shutdown, whether it succeeded or failed.
+
+When the VM is powered on for validation, the orchestrator reads the status file. If a package failed, or the cycle did not finish, the template fails and the log shows the reason and the end of `patchcycle.log`.
+
+### Seal
+
+The SCCM client cleanup runs as the very last thing before the final shutdown: stop `CcmExec`, remove `SMSCFG.INI`, and remove the SMS certificates. The VM is not booted again after that. A cleared client that starts up again creates a new client identity, which would then be baked into the template. If any part of the cleanup cannot be confirmed, the VM is left running and the template is not promoted.
+
+### Retiring the old template scripts
+
+The old scripts on the templates (`logoff.ps1`, `LoopingPatch.ps1` and `TriggerLoopingPatch.ps1` on the Administrator desktop) are no longer used. They are left in place until the new patch cycle has completed a successful run. After that, set `RemoveLegacyGuestScripts = $true`, and the seal step deletes them from each template on the next run. The paths are listed in `LegacyGuestScripts`.
 
 ### Appx sysprep check
 
